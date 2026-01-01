@@ -17,5 +17,11 @@
     "New: 'focusd browser' command set",
     "Improved: Wider stats tables (53 chars) for better visibility",
     "Improved: Generic window title cleaning for cleaner logs"
+  ],
+  "1.1.1": [
+    "Optimization: Removed 'net/http' dependency for lighter binary",
+    "Optimization: Switched to native PowerShell/curl for updates",
+    "Performance: Binary size reduced to ~2.3MB",
+    "Performance: SQLite Optimized for low memory usage"
   ]
 }

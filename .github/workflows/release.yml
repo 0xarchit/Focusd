@@ -54,9 +54,11 @@ jobs:
         install-only: true
 
     - name: Build and Compress
+      env:
+        CGO_ENABLED: 0
       run: |
         go build -ldflags="-s -w -X 'focusd/system.Version=${{ env.VERSION }}'" -trimpath -o focusd.exe ./cmd/focusd
-        upx --best --lzma focusd.exe
+        upx --ultra-brute focusd.exe
 
     - name: Create Release
       uses: softprops/action-gh-release@v1

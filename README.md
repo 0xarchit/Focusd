@@ -87,7 +87,7 @@ focusd limit
 *   Focusd will alert you when you exceed this limit (blocking features coming in v1.2).
 
 ### 4. Background Monitoring
-*   **Zero Impact**: The daemon uses ~3MB of RAM and <0.1% CPU.
+*   **Zero Impact**: The daemon uses ~10MB of RAM and <0.1% CPU.
 *   **Auto-Start**: Can be configured to start with Windows during `init`.
 *   **Privacy**: Data is stored in `%APPDATA%\focusd\db.sqlite`. It never leaves your machine.
 

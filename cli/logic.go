@@ -6,6 +6,7 @@ import (
 	"focusd/system"
 	"focusd/ui"
 	"os"
+	"strings"
 )
 
 func SetRetentionLogic(days int) error {
@@ -86,7 +87,20 @@ func InitLogic(consent bool, autoStart bool, path bool) error {
 		if err := storage.SetConsent(true); err != nil {
 			return fmt.Errorf("failed to grant consent: %w", err)
 		}
+
+		if err := system.InstallExes(); err != nil {
+			return fmt.Errorf("failed to install binaries: %w", err)
+		}
 		ui.PrintOK("Consent granted.")
+
+		currentExe, _ := os.Executable()
+		installedExe := system.GetInstalledExePath()
+
+		if currentExe != "" && installedExe != "" && !strings.EqualFold(currentExe, installedExe) {
+			ui.PrintInfo("focusd installed to: " + installedExe)
+			ui.PrintWarn(fmt.Sprintf("You can now delete this setup file: %s", currentExe))
+		}
+
 	} else {
 		if err := storage.SetConsent(false); err != nil {
 			return fmt.Errorf("failed to revoke consent: %w", err)

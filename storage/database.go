@@ -69,6 +69,10 @@ func Init() error {
 	db.Exec("PRAGMA busy_timeout=5000")
 	db.Exec("PRAGMA synchronous=NORMAL")
 
+	db.Exec("PRAGMA cache_size = -500")
+	db.Exec("PRAGMA mmap_size = 0")
+	db.Exec("PRAGMA temp_store = FILE")
+
 	return createSchema()
 }
 

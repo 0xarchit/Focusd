@@ -5,11 +5,10 @@ import (
 	"focusd/system"
 	"focusd/ui"
 	"io"
-	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 const (
@@ -53,23 +52,20 @@ func RunUpdate() {
 }
 
 func fetchLatestVersion() (string, error) {
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(versionURL)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
+		fmt.Sprintf("(Invoke-WebRequest -Uri '%s' -UseBasicParsing).Content", versionURL))
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("server returned status %d", resp.StatusCode)
+	out, err := cmd.Output()
+	if err == nil {
+		return strings.TrimSpace(string(out)), nil
 	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
+	cmd = exec.Command("curl", "-sL", versionURL)
+	out, err = cmd.Output()
+	if err == nil {
+		return strings.TrimSpace(string(out)), nil
 	}
 
-	return strings.TrimSpace(string(body)), nil
+	return "", fmt.Errorf("failed to fetch version: %v", err)
 }
 
 func performUpdate(version string) error {
@@ -82,26 +78,19 @@ func performUpdate(version string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
+	tmpFile.Close()
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
 
-	resp, err := http.Get(downloadURL)
-	if err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("download failed: %w", err)
-	}
-	defer resp.Body.Close()
+	downloadCmd := fmt.Sprintf("Invoke-WebRequest -Uri '%s' -OutFile '%s'", downloadURL, tmpPath)
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", downloadCmd)
 
-	if resp.StatusCode != http.StatusOK {
-		tmpFile.Close()
-		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+	if err := cmd.Run(); err != nil {
+		cmd = exec.Command("curl", "-L", "-o", tmpPath, downloadURL)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("download failed: %w", err)
+		}
 	}
-
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("write failed: %w", err)
-	}
-	tmpFile.Close()
 
 	ui.PrintStatus("Installing...", "   ", false)
 
@@ -124,11 +113,16 @@ func performUpdate(version string) error {
 	}
 
 	if err := os.Rename(tmpPath, exePath); err != nil {
-
 		if err := copyFile(tmpPath, exePath); err != nil {
-
 			os.Rename(oldPath, exePath)
 			return fmt.Errorf("failed to install new binary: %w", err)
+		}
+	}
+
+	if system.IsInstalled() {
+		if err := system.InstallExes(); err != nil {
+
+			ui.PrintWarn(fmt.Sprintf("Failed to sync installed binary: %v", err))
 		}
 	}
 
