@@ -1,4 +1,4 @@
-# Focusd 🛡️
+# Focusd
 
 [![License](https://img.shields.io/github/license/0xarchit/focusd?style=flat-square)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/0xarchit/focusd?style=flat-square&color=22d3ee)](https://github.com/0xarchit/focusd/releases/latest)

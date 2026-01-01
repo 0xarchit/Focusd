@@ -6,6 +6,9 @@
     "Silent background monitoring",
     "Auto-update capability",
     "Pomodoro timer & Break reminders",
-    "UPX compressed binary (~2.5MB)"
+    "UPX compressed binary (~3MB)"
+  ],
+  "1.0.1": [
+    "Fixed: Initialisation on first start"
   ]
 }

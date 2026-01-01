@@ -427,7 +427,9 @@ function fetchLatestVersion() {
         .then(response => response.json())
         .then(data => {
             if (data.tag_name) {
-                badge.textContent = `Latest: ${data.tag_name}`;
+                const ver = data.tag_name;
+                badge.textContent = `Latest: ${ver}`;
+                commands.status = `focusd ${ver} is ONLINE. Privacy protocols active. Zero leaks detected.`;
             }
         })
         .catch(err => {
