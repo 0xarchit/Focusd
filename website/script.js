@@ -438,18 +438,52 @@ function fetchLatestVersion() {
         });
 }
 
+function copyToClipboard(text, successMsg) {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast(successMsg);
+        }).catch(err => {
+            console.error('Async: Could not copy text: ', err);
+            fallbackCopyText(text, successMsg);
+        });
+    } else {
+        fallbackCopyText(text, successMsg);
+    }
+}
+
+function fallbackCopyText(text, successMsg) {
+    var textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.position = "fixed";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    try {
+        var successful = document.execCommand('copy');
+        if (successful) {
+            showToast(successMsg);
+        } else {
+            showToast("Copy failed. Please select manually.");
+        }
+    } catch (err) {
+        console.error('Fallback: Oops, unable to copy', err);
+        showToast("Copy error.");
+    }
+
+    document.body.removeChild(textArea);
+}
+
 function copyCommand() {
     const cmd = `iwr "https://github.com/0xarchit/Focusd/releases/latest/download/focusd.exe" -OutFile focusd.exe; ./focusd.exe init`;
-    navigator.clipboard.writeText(cmd).then(() => {
-        showToast("PowerShell command copied");
-    });
+    copyToClipboard(cmd, "PowerShell command copied");
 }
 
 function copyCurl() {
     const cmd = `curl -L -o focusd.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd.exe" && focusd.exe init`;
-    navigator.clipboard.writeText(cmd).then(() => {
-        showToast("CMD command copied");
-    });
+    copyToClipboard(cmd, "CMD command copied");
 }
 
 function showToast(msg) {
