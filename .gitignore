@@ -6,6 +6,7 @@
 *.dylib
 *.test
 *.out
+*.upx
 
 # Test binary, built with `go test -c`
 *.test

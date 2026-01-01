@@ -14,6 +14,9 @@ func EnforceRetention() error {
 	if _, err := db.Exec("DELETE FROM apps_daily WHERE date < ?", cutoff); err != nil {
 		return err
 	}
+	if _, err := db.Exec("DELETE FROM browsing_daily WHERE date < ?", cutoff); err != nil {
+		return err
+	}
 
 	_, err := db.Exec("VACUUM")
 	return err

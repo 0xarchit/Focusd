@@ -111,6 +111,15 @@ func createSchema() error {
 		date TEXT NOT NULL
 	);
 
+	CREATE TABLE IF NOT EXISTS browsing_daily (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		date TEXT NOT NULL,
+		domain_or_title TEXT NOT NULL,
+		total_duration_secs INTEGER DEFAULT 0,
+		open_count INTEGER DEFAULT 0,
+		UNIQUE(date, domain_or_title)
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date);
 	CREATE INDEX IF NOT EXISTS idx_sessions_start ON sessions(start_time);
 	CREATE INDEX IF NOT EXISTS idx_apps_daily_date ON apps_daily(date);

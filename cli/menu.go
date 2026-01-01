@@ -409,6 +409,7 @@ func handleMenuCustomize(reader *bufio.Reader) {
 		fmt.Println()
 
 		fmt.Println("  1. View/Add Whitelist (apps to ignore)")
+		fmt.Println("  2. Manage Browsers")
 		fmt.Println()
 		fmt.Println("  0. Back")
 		fmt.Println()
@@ -419,6 +420,90 @@ func handleMenuCustomize(reader *bufio.Reader) {
 		switch input {
 		case "1":
 			handleWhitelist(reader)
+		case "2":
+			handleManageBrowsers(reader)
+		case "0", "":
+			return
+		}
+	}
+}
+
+func handleManageBrowsers(reader *bufio.Reader) {
+	for {
+		ui.ClearScreen()
+		fmt.Println()
+		fmt.Println("─────────────── Manage Browsers ───────────────")
+		fmt.Println()
+		fmt.Println("  Add custom browsers here if they aren't detected automatically.")
+		fmt.Println("  (Standard browsers like Chrome, Edge, Firefox are already supported)")
+		fmt.Println()
+
+		customs := storage.GetCustomBrowsersList()
+		if len(customs) > 0 {
+			fmt.Println("  User-Defined Browsers:")
+			for _, b := range customs {
+				fmt.Printf("    • %s\n", b)
+			}
+		} else {
+			fmt.Println("  No user-defined browsers added.")
+		}
+
+		fmt.Println()
+		fmt.Println("  1. Add custom browser")
+		if len(customs) > 0 {
+			fmt.Println("  2. Remove custom browser")
+		}
+		fmt.Println()
+		fmt.Println("  0. Back")
+		fmt.Println()
+		fmt.Print("Enter choice: ")
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		switch input {
+		case "1":
+			fmt.Print("Enter browser exe name (e.g., mybrowser.exe): ")
+			name, _ := reader.ReadString('\n')
+			name = strings.TrimSpace(name)
+			if name == "" {
+				ui.PrintError("No name entered")
+				waitForEnterWithReader(reader)
+				continue
+			}
+			if err := storage.AddCustomBrowser(name); err != nil {
+				ui.PrintError(err.Error())
+			} else {
+				ui.PrintOK(fmt.Sprintf("Added %s", name))
+			}
+			waitForEnterWithReader(reader)
+		case "2":
+			fmt.Println("\n  Select browser to remove:")
+			for i, b := range customs {
+				fmt.Printf("    %d. %s\n", i+1, b)
+			}
+			fmt.Print("\n  Enter number (or name): ")
+			name, _ := reader.ReadString('\n')
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+
+			if num, err := strconv.Atoi(name); err == nil && num >= 1 && num <= len(customs) {
+				toRemove := customs[num-1]
+				if err := storage.RemoveCustomBrowser(toRemove); err != nil {
+					ui.PrintError(err.Error())
+				} else {
+					ui.PrintOK(fmt.Sprintf("Removed %s", toRemove))
+				}
+			} else {
+
+				if err := storage.RemoveCustomBrowser(name); err != nil {
+					ui.PrintError(err.Error())
+				} else {
+					ui.PrintOK(fmt.Sprintf("Removed %s", name))
+				}
+			}
+			waitForEnterWithReader(reader)
 		case "0", "":
 			return
 		}
@@ -873,14 +958,14 @@ func showStatsInMenu() {
 
 	ui.PrintSectionHeader("Apps (Today)")
 	columns := []ui.TableColumn{
-		{Header: "App", Width: 22},
+		{Header: "App", Width: 53},
 		{Header: "Time", Width: 10},
 		{Header: "Opens", Width: 6},
 	}
 	var rows [][]string
 	for _, app := range apps {
 		rows = append(rows, []string{
-			ui.TruncateString(app.AppName, 20),
+			ui.TruncateString(app.AppName, 53),
 			ui.FormatDurationShort(app.TotalDurationSecs),
 			fmt.Sprintf("%d", app.OpenCount),
 		})

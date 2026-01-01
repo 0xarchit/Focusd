@@ -50,10 +50,16 @@
             </section>
 
             <section class="install-block delayed-reveal">
-                <p class="prompt">C:\Users\You> curl -sL focusd.exe</p>
+                <p class="prompt">C:\Users\You> Powershell (Recommended)</p>
                 <div class="code-box">
                     <code>iwr "https://github.com/0xarchit/Focusd/releases/latest/download/focusd.exe" -OutFile focusd.exe; ./focusd.exe init</code>
                     <button class="copy-btn" onclick="copyCommand()">[COPY]</button>
+                </div>
+
+                <p class="prompt brs">C:\Users\You> CMD (Terminal)</p>
+                <div class="code-box">
+                    <code>curl -L -o focusd.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd.exe" && focusd.exe init</code>
+                    <button class="copy-btn" onclick="copyCurl()">[COPY]</button>
                 </div>
             </section>
 

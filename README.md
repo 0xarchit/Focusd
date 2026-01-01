@@ -108,6 +108,7 @@ focusd limit
 | `focusd version` | `v` | Show version info |
 | `focusd init` | `i` | Run the setup wizard/repair |
 | `focusd uninstall`| | Remove database, config, and binary |
+| `focusd browser` | | Manage browser tracking configuration |
 
 ---
 

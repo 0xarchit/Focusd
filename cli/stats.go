@@ -106,14 +106,14 @@ func DisplayStats(summary *core.DailySummary) {
 		fmt.Println("  No app data.")
 	} else {
 		columns := []ui.TableColumn{
-			{Header: "App", Width: 22},
+			{Header: "App", Width: 53},
 			{Header: "Time", Width: 12},
 			{Header: "Opens", Width: 8},
 		}
 		var rows [][]string
 		for _, app := range summary.TopApps {
 			rows = append(rows, []string{
-				ui.TruncateString(app.AppName, 20),
+				ui.TruncateString(app.AppName, 53),
 				ui.FormatDurationShort(app.TotalDurationSecs),
 				fmt.Sprintf("%d", app.OpenCount),
 			})
@@ -121,4 +121,23 @@ func DisplayStats(summary *core.DailySummary) {
 		ui.PrintTable(columns, rows)
 	}
 	fmt.Println()
+
+	if len(summary.TopSites) > 0 {
+		ui.PrintSectionHeader("Top Browsing")
+		columns := []ui.TableColumn{
+			{Header: "Site / Title", Width: 53},
+			{Header: "Time", Width: 12},
+			{Header: "Visits", Width: 8},
+		}
+		var rows [][]string
+		for _, site := range summary.TopSites {
+			rows = append(rows, []string{
+				ui.TruncateString(site.AppName, 53),
+				ui.FormatDurationShort(site.TotalDurationSecs),
+				fmt.Sprintf("%d", site.OpenCount),
+			})
+		}
+		ui.PrintTable(columns, rows)
+		fmt.Println()
+	}
 }

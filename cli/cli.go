@@ -35,6 +35,7 @@ func PrintHelp() {
 	fmt.Println("  focusd retention (ret)    Show/set retention days")
 	fmt.Println("  focusd autostart (auto)   Manage auto-start")
 	fmt.Println("  focusd path               Manage PATH integration")
+	fmt.Println("  focusd browser            Manage custom browsers")
 	fmt.Println()
 	fmt.Println("Other:")
 	fmt.Println("  focusd help      (h)      Show this help message")
@@ -85,6 +86,8 @@ func Run(args []string) {
 		handleAutostart(args)
 	case "path":
 		handlePath(args)
+	case "browser":
+		HandleBrowsersCommand(args)
 	case "export", "e":
 		RunExport()
 	case "uninstall":

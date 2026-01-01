@@ -258,6 +258,62 @@ func GetAllAppStats() ([]AppDailyStat, error) {
 	return stats, rows.Err()
 }
 
+func GetAllBrowserStats() ([]AppDailyStat, error) {
+	rows, err := db.Query(`
+		SELECT date, domain_or_title, '', total_duration_secs, open_count
+		FROM browsing_daily
+		ORDER BY date DESC, total_duration_secs DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []AppDailyStat
+	for rows.Next() {
+		var s AppDailyStat
+		if err := rows.Scan(&s.Date, &s.AppName, &s.ExeName, &s.TotalDurationSecs, &s.OpenCount); err != nil {
+			return nil, err
+		}
+		stats = append(stats, s)
+	}
+	return stats, rows.Err()
+}
+
+func UpdateBrowserDaily(date, domainOrTitle string, durationSecs int) error {
+	_, err := db.Exec(`
+		INSERT INTO browsing_daily (date, domain_or_title, total_duration_secs, open_count)
+		VALUES (?, ?, ?, 1)
+		ON CONFLICT(date, domain_or_title) DO UPDATE SET
+			total_duration_secs = total_duration_secs + excluded.total_duration_secs,
+			open_count = open_count + 1
+	`, date, domainOrTitle, durationSecs)
+	return err
+}
+
+func GetBrowserStatsForDate(date string) ([]AppDailyStat, error) {
+	rows, err := db.Query(`
+		SELECT date, domain_or_title, '', total_duration_secs, open_count
+		FROM browsing_daily
+		WHERE date = ?
+		ORDER BY total_duration_secs DESC
+	`, date)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []AppDailyStat
+	for rows.Next() {
+		var s AppDailyStat
+		if err := rows.Scan(&s.Date, &s.AppName, &s.ExeName, &s.TotalDurationSecs, &s.OpenCount); err != nil {
+			return nil, err
+		}
+		stats = append(stats, s)
+	}
+	return stats, rows.Err()
+}
+
 type ActiveSessionRecord struct {
 	AppName     string
 	ExeName     string

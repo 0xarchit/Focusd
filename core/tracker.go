@@ -231,6 +231,11 @@ func (t *Tracker) flushPendingSessions() {
 	for _, s := range sessions {
 		storage.InsertSession(s)
 		storage.UpdateAppDaily(s.Date, s.AppName, s.ExeName, s.DurationSecs)
+
+		if IsBrowser(s.ExeName) {
+			cleanTitle := CleanWindowTitle(s.WindowTitle, s.ExeName)
+			storage.UpdateBrowserDaily(s.Date, cleanTitle, s.DurationSecs)
+		}
 	}
 }
 

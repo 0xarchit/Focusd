@@ -12,6 +12,7 @@ type DailySummary struct {
 	TotalAppTime int
 	AppCount     int
 	TopApps      []storage.AppDailyStat
+	TopSites     []storage.AppDailyStat
 	RangeMessage string
 	RangeStart   string
 	RangeEnd     string
@@ -23,7 +24,12 @@ func GetDailySummary(date string) (*DailySummary, error) {
 		return nil, err
 	}
 
-	return createSummary(date, apps), nil
+	sites, _ := storage.GetBrowserStatsForDate(date)
+
+	summary := createSummary(date, apps)
+	summary.TopSites = limitStats(sites, 10)
+
+	return summary, nil
 }
 
 func GetPeriodSummary(days int) (*DailySummary, error) {
@@ -36,10 +42,13 @@ func GetPeriodSummary(days int) (*DailySummary, error) {
 		return nil, err
 	}
 
+	allSites, _ := storage.GetAllBrowserStats()
+
 	cutoff := time.Now().AddDate(0, 0, -days+1).Format("2006-01-02")
 
 	var minDate, maxDate string
 	appMap := make(map[string]storage.AppDailyStat)
+	siteMap := make(map[string]storage.AppDailyStat)
 
 	for _, s := range allApps {
 		if s.Date >= cutoff {
@@ -60,10 +69,20 @@ func GetPeriodSummary(days int) (*DailySummary, error) {
 		}
 	}
 
-	var apps []storage.AppDailyStat
-	for _, s := range appMap {
-		apps = append(apps, s)
+	for _, s := range allSites {
+		if s.Date >= cutoff {
+			existing, exists := siteMap[s.AppName]
+			if !exists {
+				existing = storage.AppDailyStat{AppName: s.AppName}
+			}
+			existing.TotalDurationSecs += s.TotalDurationSecs
+			existing.OpenCount += s.OpenCount
+			siteMap[s.AppName] = existing
+		}
 	}
+
+	apps := mapToSlice(appMap)
+	sites := mapToSlice(siteMap)
 
 	label := "Last 30 Days"
 	if days == 7 {
@@ -71,6 +90,7 @@ func GetPeriodSummary(days int) (*DailySummary, error) {
 	}
 
 	summary := createSummary(label, apps)
+	summary.TopSites = limitStats(sites, 10)
 	summary.RangeStart = minDate
 	summary.RangeEnd = maxDate
 
@@ -83,6 +103,24 @@ func GetPeriodSummary(days int) (*DailySummary, error) {
 	return summary, nil
 }
 
+func mapToSlice(m map[string]storage.AppDailyStat) []storage.AppDailyStat {
+	var s []storage.AppDailyStat
+	for _, v := range m {
+		s = append(s, v)
+	}
+	return s
+}
+
+func limitStats(stats []storage.AppDailyStat, limit int) []storage.AppDailyStat {
+	sort.Slice(stats, func(i, j int) bool {
+		return stats[i].TotalDurationSecs > stats[j].TotalDurationSecs
+	})
+	if len(stats) > limit {
+		return stats[:limit]
+	}
+	return stats
+}
+
 func createSummary(label string, apps []storage.AppDailyStat) *DailySummary {
 	summary := &DailySummary{
 		Date:     label,
@@ -93,15 +131,7 @@ func createSummary(label string, apps []storage.AppDailyStat) *DailySummary {
 		summary.TotalAppTime += app.TotalDurationSecs
 	}
 
-	sort.Slice(apps, func(i, j int) bool {
-		return apps[i].TotalDurationSecs > apps[j].TotalDurationSecs
-	})
-
-	if len(apps) > 10 {
-		summary.TopApps = apps[:10]
-	} else {
-		summary.TopApps = apps
-	}
+	summary.TopApps = limitStats(apps, 10)
 
 	return summary
 }
