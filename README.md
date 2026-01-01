@@ -1,17 +1,16 @@
 # Focusd 🛡️
 
-[![License](https://img.shields.io/github/license/0xarchit/Focusd?style=flat-square)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/0xarchit/Focusd?style=flat-square&color=22d3ee)](https://github.com/0xarchit/Focusd/releases/latest)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/0xarchit/Focusd/release.yml?style=flat-square&label=Build%20Status)](https://github.com/0xarchit/Focusd/actions/workflows/release.yml)
+[![License](https://img.shields.io/github/license/0xarchit/focusd?style=flat-square)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/0xarchit/focusd?style=flat-square&color=22d3ee)](https://github.com/0xarchit/focusd/releases/latest)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/0xarchit/focusd/release.yml?style=flat-square&label=Build%20Status)](https://github.com/0xarchit/focusd/actions/workflows/release.yml)
 [![Website](https://img.shields.io/website?url=https%3A%2F%2Fdab.0xarchit.is-a.dev&style=flat-square)](https://dab.0xarchit.is-a.dev/)
-[![Dependencies](https://img.shields.io/badge/dependencies-up--to--date-brightgreen?style=flat-square)](#)
-
-[![Stars](https://img.shields.io/github/stars/0xarchit/Focusd?style=flat-square&color=yellow)](https://github.com/0xarchit/Focusd/stargazers)
-[![Downloads](https://img.shields.io/github/downloads/0xarchit/Focusd/total?style=flat-square&color=orange)](https://github.com/0xarchit/Focusd/releases)
-[![Repo Size](https://img.shields.io/github/repo-size/0xarchit/Focusd?style=flat-square&color=blue)](https://github.com/0xarchit/Focusd)
-[![Issues](https://img.shields.io/github/issues/0xarchit/Focusd?style=flat-square&color=red)](https://github.com/0xarchit/Focusd/issues)
-[![Last Commit](https://img.shields.io/github/last-commit/0xarchit/Focusd?style=flat-square&color=green)](https://github.com/0xarchit/Focusd/commits/main)
-![Platform](https://img.shields.io/badge/platform-Windows_x64-blue)
+[![Dependencies](https://img.shields.io/badge/dependencies-up--to--date-brightgreen?style=flat-square)](#)  
+[![Stars](https://img.shields.io/github/stars/0xarchit/focusd?style=flat-square&color=yellow)](https://github.com/0xarchit/focusd/stargazers)
+[![Downloads](https://img.shields.io/github/downloads/0xarchit/focusd/total?style=flat-square&color=orange)](https://github.com/0xarchit/focusd/releases)
+[![Repo Size](https://img.shields.io/github/repo-size/0xarchit/focusd?style=flat-square&color=blue)](https://github.com/0xarchit/focusd)
+[![Issues](https://img.shields.io/github/issues/0xarchit/focusd?style=flat-square&color=red)](https://github.com/0xarchit/focusd/issues)
+[![Last Commit](https://img.shields.io/github/last-commit/0xarchit/focusd?style=flat-square&color=green)](https://github.com/0xarchit/focusd/commits/main)
+![Platform](https://img.shields.io/badge/platform-Windows_x64-blue?style=flat-square)
 
 ```text
    __                           _ 
@@ -30,14 +29,20 @@
 
 ## 🚀 Installation
 
-### ⚡ One-Line Install (PowerShell)
-Copy and paste this into your terminal to install immediately:
+### ⚡ One-Line Install
+
+**PowerShell** (Recommended):
 ```powershell
-iwr "https://github.com/0xarchit/Focusd/releases/latest/download/focusd.exe" -OutFile focusd.exe; ./focusd.exe init
+iwr "https://github.com/0xarchit/focusd/releases/latest/download/focusd.exe" -OutFile focusd.exe; ./focusd.exe init
+```
+
+**Command Prompt** (cmd.exe):
+```cmd
+curl -L -o focusd.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd.exe" && focusd.exe init
 ```
 
 ### 📦 Manual Download
-1.  Download the latest `focusd.exe` from the [**Releases Page**](https://github.com/0xarchit/Focusd/releases/latest).
+1.  Download the latest `focusd.exe` from the [**Releases Page**](https://github.com/0xarchit/focusd/releases/latest).
 2.  Place it in a folder of your choice (e.g., `C:\Program Files\Focusd`).
 3.  Open a terminal (cmd/PowerShell) in the download folder.
 4.  Run `focusd init`.
