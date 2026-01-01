@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>focusd | privacy-first tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+
+<body>
+    <canvas id="matrix-canvas"></canvas>
+    <button id="sfx-btn" class="theme-toggle" onclick="toggleSFX()">[SFX: OFF]</button>
+    <button id="theme-btn" class="theme-toggle" onclick="toggleTheme()">[LIGHT MODE]</button>
+    <div class="crt-overlay"></div>
+    <div id="toast">[SYSTEM] Copied to clipboard</div>
+
+    <div id="start-overlay" onclick="startSystem()">
+        <div class="blink">SYSTEM STANDBY<br><br>[ CLICK TO INITIALIZE ]</div>
+    </div>
+
+    <div class="terminal">
+        <header>
+            <div class="logo">
+                <pre>
+   __                           _ 
+  / _|                         | |
+ | |_ ___   ___ _   _ ___  ____| |
+ |  _/ _ \ / __| | | / __|/ _  | |
+ | || (_) | (__| |_| \__ \ (_| |_|
+ |_| \___/ \___|\__,_|___/\____(_)
+                                  
+</pre>
+            </div>
+            <div class="nav-links">
+                <a href="https://github.com/0xarchit/Focusd" target="_blank">[GITHUB]</a>
+                <a href="https://github.com/0xarchit/Focusd/releases" target="_blank">[DOWNLOAD]</a>
+                <span id="github-badge">Latest: checking...</span>
+            </div>
+        </header>
+
+        <main>
+            <section class="hero">
+                <div id="terminal-history"></div>
+                <div class="terminal-input-area">
+                    <span class="terminal-prompt">C:\Users\You></span>
+                    <input type="text" id="cmd-input" autocomplete="off" spellcheck="false" autofocus>
+                </div>
+            </section>
+
+            <section class="install-block delayed-reveal">
+                <p class="prompt">C:\Users\You> curl -sL focusd.exe</p>
+                <div class="code-box">
+                    <code>iwr "https://github.com/0xarchit/Focusd/releases/latest/download/focusd.exe" -OutFile focusd.exe; ./focusd.exe init</code>
+                    <button class="copy-btn" onclick="copyCommand()">[COPY]</button>
+                </div>
+            </section>
+
+            <section class="features delayed-reveal">
+                <p class="prompt">C:\Users\You> focusd stats --features</p>
+                <div class="grid">
+                    <div class="card">
+                        <h3>[PRIVACY]</h3>
+                        <p>Zero data exfiltration. All databases stored locally in %APPDATA%.</p>
+                    </div>
+                    <div class="card">
+                        <h3>[PERFORMANCE]</h3>
+                        <p>Written in Go. Uses &lt;1% CPU. Compressed to ~3MB.</p>
+                    </div>
+                    <div class="card">
+                        <h3>[CONTROL]</h3>
+                        <p>Auto-delete retention policies. You own your data.</p>
+                    </div>
+                    <div class="card">
+                        <h3>[INSIGHTS]</h3>
+                        <p>Detailed CLI dashboard with breakdown by app and time.</p>
+                    </div>
+                    <div class="card">
+                        <h3>[POMODORO]</h3>
+                        <p>Integrated focus timer with system notifications.</p>
+                    </div>
+                    <div class="card">
+                        <h3>[APP LIMITS]</h3>
+                        <p>Set daily screen time limits for distracting apps.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="usage delayed-reveal">
+                <p class="prompt">C:\Users\You> focusd --help</p>
+                <div class="grid-table">
+                    <div class="row header">
+                        <span class="col-cmd">COMMAND</span>
+                        <span class="col-alias">ALIAS</span>
+                        <span class="col-desc">DESCRIPTION</span>
+                    </div>
+                    <div class="row"><span class="col-cmd">focusd init</span><span class="col-alias">i</span><span
+                            class="col-desc">Initialize / Reconfigure</span></div>
+                    <div class="row"><span class="col-cmd">focusd start</span><span class="col-alias"></span><span
+                            class="col-desc">Start background daemon</span></div>
+                    <div class="row"><span class="col-cmd">focusd stop</span><span class="col-alias"></span><span
+                            class="col-desc">Stop tracking daemon</span></div>
+                    <div class="row"><span class="col-cmd">focusd status</span><span class="col-alias">s</span><span
+                            class="col-desc">Show live tracking status</span></div>
+                    <div class="row"><span class="col-cmd">focusd stats</span><span class="col-alias">st</span><span
+                            class="col-desc">Interactive dashboard</span></div>
+                    <div class="row"><span class="col-cmd">focusd pause</span><span class="col-alias">p</span><span
+                            class="col-desc">Pause tracking temporarily</span></div>
+                    <div class="row"><span class="col-cmd">focusd resume</span><span class="col-alias">r</span><span
+                            class="col-desc">Resume tracking</span></div>
+                    <div class="row"><span class="col-cmd">focusd export</span><span class="col-alias">e</span><span
+                            class="col-desc">Export usage data to CSV</span></div>
+                    <div class="row"><span class="col-cmd">focusd update</span><span class="col-alias"></span><span
+                            class="col-desc">Check for updates</span></div>
+                    <div class="row"><span class="col-cmd">focusd retention</span><span
+                            class="col-alias">ret</span><span class="col-desc">Set data retention policy</span></div>
+                    <div class="row"><span class="col-cmd">focusd autostart</span><span
+                            class="col-alias">auto</span><span class="col-desc">Toggle Windows auto-start</span></div>
+                    <div class="row"><span class="col-cmd">focusd path</span><span class="col-alias"></span><span
+                            class="col-desc">Add/Remove from PATH</span></div>
+                </div>
+            </section>
+
+            <section class="roadmap delayed-reveal">
+                <p class="prompt">C:\Users\You> cat roadmap.txt</p>
+                <div class="grid">
+                    <div class="card planned">
+                        <h3>[PLANNED] WEB UI</h3>
+                        <p>Localhost web interface for beautiful charts.</p>
+                    </div>
+                    <div class="card planned">
+                        <h3>[PLANNED] ADVANCED LIMITS</h3>
+                        <p>Severity levels: 'High' (Block) vs 'Low' (Popup).</p>
+                    </div>
+                    <div class="card planned">
+                        <h3>[PLANNED] GAMIFICATION</h3>
+                        <p>Daily productivity streaks and focus scores.</p>
+                    </div>
+                </div>
+                <div class="contribute">
+                    <p class="prompt">C:\Users\You> git commit -m "suggestion"</p>
+                    <p>Have an idea? <a href="https://github.com/0xarchit/Focusd/issues" target="_blank">[SUGGEST A
+                            FEATURE]</a></p>
+                </div>
+            </section>
+    </div>
+    </section>
+    </main>
+
+    <footer>
+        <p>MIT License. Copyright © 2025 oxarchit.</p>
+        <p class="status">STATUS: ONLINE | LATENCY: 12ms</p>
+    </footer>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>

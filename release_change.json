@@ -1,0 +1,11 @@
+{
+  "1.0.0": [
+    "Initial Production Release",
+    "Privacy-first offline tracking",
+    "Interactive CLI dashboard",
+    "Silent background monitoring",
+    "Auto-update capability",
+    "Pomodoro timer & Break reminders",
+    "UPX compressed binary (~2.5MB)"
+  ]
+}

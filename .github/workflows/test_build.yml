@@ -1,0 +1,35 @@
+name: Test Build
+
+on:
+  push:
+    branches: [ "test" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Install UPX
+      uses: crazy-max/ghaction-upx@v3
+      with:
+        install-only: true
+
+    - name: Build and Compress
+      run: |
+        go build -ldflags="-s -w" -trimpath -o focusd.exe ./cmd/focusd
+        upx --best --lzma focusd.exe
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: focusd-test-build
+        path: focusd.exe
+        retention-days: 5

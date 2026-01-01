@@ -1,0 +1,67 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set Version
+      id: set_version
+      shell: bash
+      run: |
+        VERSION=${GITHUB_REF_NAME#v}
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "Detected version from tag: $VERSION"
+
+    - name: Extract Release Notes
+      id: get_notes
+      shell: powershell
+      run: |
+        $version = "${{ env.VERSION }}"
+        if (Test-Path release_change.json) {
+            $json = Get-Content release_change.json | ConvertFrom-Json
+            $notes = $json.$version
+        }
+        if (-not $notes) {
+            $formattedNotes = "Automated release for version $version"
+        } else {
+            $formattedNotes = $notes -join "`n- "
+            $formattedNotes = "- " + $formattedNotes
+        }
+        "RELEASE_NOTES<<EOF" >> $env:GITHUB_ENV
+        $formattedNotes >> $env:GITHUB_ENV
+        "EOF" >> $env:GITHUB_ENV
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Install UPX
+      uses: crazy-max/ghaction-upx@v3
+      with:
+        install-only: true
+
+    - name: Build and Compress
+      run: |
+        go build -ldflags="-s -w -X 'focusd/system.Version=${{ env.VERSION }}'" -trimpath -o focusd.exe ./cmd/focusd
+        upx --best --lzma focusd.exe
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: focusd v${{ env.VERSION }}
+        body: ${{ env.RELEASE_NOTES }}
+        files: focusd.exe
+        token: ${{ secrets.GIT_TOKEN }}
