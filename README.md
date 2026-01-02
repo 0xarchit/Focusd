@@ -11,140 +11,136 @@
 [![Issues](https://img.shields.io/github/issues/0xarchit/focusd?style=flat-square&color=red)](https://github.com/0xarchit/focusd/issues)
 [![Last Commit](https://img.shields.io/github/last-commit/0xarchit/focusd?style=flat-square&color=green)](https://github.com/0xarchit/focusd/commits/main)
 ![Platform](https://img.shields.io/badge/platform-Windows_x64-blue?style=flat-square)
-
-```text
+<center>
+  <pre>
    __                           _ 
   / _|                         | |
  | |_ ___   ___ _   _ ___  ____| |
  |  _/ _ \ / __| | | / __|/ _  | |
  | || (_) | (__| |_| \__ \ (_| |_|
  |_| \___/ \___|\__,_|___/\____(_)
-```
+  </pre>
+</center>
 
-**Privacy-first, offline digital wellbeing tracker for Windows.**
+<h3 align="center">Privacy-First Digital Wellbeing for Windows</h3>
 
-**Focusd** is an ultra-lightweight CLI daemon that tracks your application usage locally. It gives you deep insights into your digital habits without ever sending a single byte of data to the cloud.
+<p align="center">
+  <strong>Track your screen time. Own your data. No cloud required.</strong>
+</p>
 
 ---
 
-## 🚀 Installation
+## Why Focusd?
 
-### ⚡ One-Line Install
+Every productivity tracker on the market uploads your data to their servers. **Focusd doesn't.** Your usage data stays on your machine, stored in a local SQLite database that you fully control.
+
+| App | Installer / Disk Size | RAM Usage (Idle) | Tech Stack |
+|-----|----------------------|------------------|------------|
+| StayFree (Windows) | ~164 MB | 150MB - 400MB | likely Electron / UWP |
+| Toggl Track | ~100 MB | 200MB - 500MB | Electron (Chromium bundled) |
+| RescueTime (Classic) | ~25 MB | 20 - 50 MB | Native C++ / Qt |
+| **Focusd** | **<11 MB** | **~4 - 10 MB** | **Go (Native Syscalls)** |
+
+---
+
+## Quick Start
 
 **PowerShell** (Recommended):
 ```powershell
 iwr "https://github.com/0xarchit/focusd/releases/latest/download/focusd.exe" -OutFile focusd.exe; ./focusd.exe init
 ```
 
-**Command Prompt** (cmd.exe):
+**Command Prompt**:
 ```cmd
 curl -L -o focusd.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd.exe" && focusd.exe init
 ```
 
-### 📦 Manual Download
-1.  Download the latest `focusd.exe` from the [**Releases Page**](https://github.com/0xarchit/focusd/releases/latest).
-2.  Place it in a folder of your choice (e.g., `C:\Program Files\Focusd`).
-3.  Open a terminal (cmd/PowerShell) in the download folder.
-4.  Run `focusd init`.
-
-> [!NOTE] 
-> The `focusd` command is only available globally after you run `init` and accept the "Add to PATH" option. Until then, use `./focusd.exe` in the download folder.
+> After running `init`, the `focusd` command is available globally from any terminal.
 
 ---
 
-## 📘 User Guide
+## Features
 
-### 1. The Main Menu
-Simply type `focusd` (without arguments) to open the interactive main menu. From here you can navigate to Stats, Settings, or Focus Mode using arrow keys or numbers.
-
-```powershell
-focusd
+### 📊 Usage Dashboard
+View daily and historical screen time with a beautiful terminal UI.
+```
+focusd stats
 ```
 
-### 2. The Dashboard (`stats`)
-Your central hub for insights. Run `focusd stats` (or select it from the menu) to open the interactive terminal UI.
-*   **Daily Overview**: See total screen time and unique apps used today.
-*   **Top Apps**: A visual bar chart of your most used applications.
-*   **History**: view "Last 7 Days" or "All Time" trends to track your productivity over time.
-    *(Note: The dashboard uses ANSI color codes for a beautiful, hacker-style aesthetic.)*
-
-### 3. Focus Sessions (Pomodoro)
-Need to get work done? Start a focus timer:
-```powershell
+### ⏱️ Focus Sessions
+Built-in Pomodoro timer with completion notifications.
+```
 focusd focus 25
 ```
-*   Starts a **25-minute** deep work session.
-*   Focusd will notify you when the session ends.
-*   Usage during this time is tracked separately to calculate your "Focus Score".
 
-### 3. App Limits (Digital Detox)
-Prevent doom-scrolling by setting daily allowances for distraction apps.
-```powershell
+### 🌐 Browser Tracking
+Tracks time spent per browser tab (by page title, not URL for privacy).
+- View in `focusd stats` → Browser Usage
+- Add custom browsers: `focusd browser add <exe_name>`
+
+### 🧪 Smart App Grouping (Experimental)
+Automatically groups related browser tabs (e.g., all YouTube videos under "YouTube").
+- 80+ supported sites (YouTube, GitHub, Reddit, Discord, LeetCode, etc.)
+- Shows parent category with sub-entries
+- *Note: This feature is under active development. Some titles may not group correctly.*
+
+### ⏳ App Limits
+Set daily time limits for distracting applications.
+```
 focusd limit
 ```
-*   Select an app from your recent usage list.
-*   Set a daily cap (e.g., "30 minutes").
-*   Focusd will alert you when you exceed this limit (blocking features coming in v1.2).
 
-### 4. Background Monitoring
-*   **Zero Impact**: The daemon uses ~10MB of RAM and <0.1% CPU.
-*   **Auto-Start**: Can be configured to start with Windows during `init`.
-*   **Privacy**: Data is stored in `%APPDATA%\focusd\db.sqlite`. It never leaves your machine.
+### 🔕 Background Daemon
+Silent background process with minimal resource usage (~5MB RAM, ~0% CPU).
 
 ---
 
-## 📖 Command Reference
+## Commands
 
-| Command | Short | Action |
-| :--- | :--- | :--- |
-| `focusd start` | | Start the background tracking service |
-| `focusd stop` | | Stop the service |
-| `focusd restart` | | Restart the service (useful after updates) |
-| `focusd stats` | `st` | **Open the Dashbaord** (Main UI) |
-| `focusd focus <m>`| `f` | Start a Pomodoro timer for `m` minutes |
-| `focusd limit` | `l` | Configure app time limits |
-| `focusd status` | `s` | Check daemon status and PID |
-| `focusd update` | | Check for and install version updates |
-| `focusd version` | `v` | Show version info |
-| `focusd init` | `i` | Run the setup wizard/repair |
-| `focusd uninstall`| | Remove database, config, and binary |
-| `focusd browser` | | Manage browser tracking configuration |
+| Command | Description |
+|---------|-------------|
+| `focusd` | Interactive menu |
+| `focusd stats` | Open usage dashboard |
+| `focusd focus <mins>` | Start focus timer |
+| `focusd limit` | Configure app limits |
+| `focusd browser` | Add/remove custom browsers |
+| `focusd start/stop` | Control background service |
+| `focusd update` | Check for updates |
+| `focusd uninstall` | Remove all data |
 
 ---
 
-## 🔒 Privacy Architecture
+## Privacy
 
-Focusd is built on a "Local-First" philosophy:
-1.  **No Telemetry**: We don't track you. Period.
-2.  **No Cloud Sync**: Your data lives on your SSD.
-3.  **Open Database**: Your data is stored in standard SQLite format. You technically own it and can query it yourself using any SQL viewer.
+- **No telemetry.** Zero network requests except for update checks.
+- **No cloud.** All data stored locally in `%APPDATA%\focusd\focusd.db`.
+- **Open database.** Standard SQLite—query it yourself with any SQL tool.
+- **Open source.** Audit the code anytime.
 
 ---
 
-## 🏗️ Development
-
-**Requirements**: Go 1.21+
+## Building from Source
 
 ```powershell
-# Clone the repo
 git clone https://github.com/0xarchit/Focusd.git
 cd Focusd
-
-# Build the binary (with linker flags for optimization)
 go build -ldflags="-s -w" -trimpath -o focusd.exe ./cmd/focusd
-
-# (Optional) Compress using UPX
-upx focusd.exe
 ```
+
+**Requirements:** Go 1.21+
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to submit Pull Requests or report bugs.
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## 📜 License
+## License
 
-Distributed under the MIT License. See [LICENSE](LICENSE) for more information.
+MIT License. See [LICENSE](LICENSE).
 
-Copyright (c) 2025 0xArchit
+---
+
+<p align="center">
+  <sub>Built by <a href="https://github.com/0xarchit">@0xarchit</a></sub>
+</p>

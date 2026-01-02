@@ -207,35 +207,6 @@ func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Sessi
 	return sessions, total, rows.Err()
 }
 
-func GetSessionsByDateRange(startDate, endDate string) ([]Session, error) {
-	rows, err := db.Query(`
-		SELECT id, app_name, exe_name, window_title, start_time, end_time, duration_secs, date
-		FROM sessions
-		WHERE date >= ? AND date <= ?
-		ORDER BY start_time DESC
-	`, startDate, endDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var sessions []Session
-	for rows.Next() {
-		var s Session
-		var startTime int64
-		var endTime *int64
-		if err := rows.Scan(&s.ID, &s.AppName, &s.ExeName, &s.WindowTitle, &startTime, &endTime, &s.DurationSecs, &s.Date); err != nil {
-			return nil, err
-		}
-		s.StartTime = time.Unix(startTime, 0)
-		if endTime != nil {
-			s.EndTime = time.Unix(*endTime, 0)
-		}
-		sessions = append(sessions, s)
-	}
-	return sessions, rows.Err()
-}
-
 func GetAllAppStats() ([]AppDailyStat, error) {
 	rows, err := db.Query(`
 		SELECT date, app_name, exe_name, total_duration_secs, open_count

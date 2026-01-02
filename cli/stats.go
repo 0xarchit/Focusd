@@ -122,7 +122,30 @@ func DisplayStats(summary *core.DailySummary) {
 	}
 	fmt.Println()
 
-	if len(summary.TopSites) > 0 {
+	if len(summary.GroupedSites) > 0 {
+		ui.PrintSectionHeader("Top Browsing (Grouped)")
+		for _, group := range summary.GroupedSites {
+			if len(group.SubEntries) > 1 {
+				fmt.Printf("  %s%-40s%s  %s%s%s\n",
+					ui.Cyan, ui.TruncateString(group.Category, 40), ui.Reset,
+					ui.Green, ui.FormatDurationShort(group.TotalSecs), ui.Reset)
+				for i, sub := range group.SubEntries {
+					prefix := "├─"
+					if i == len(group.SubEntries)-1 {
+						prefix = "└─"
+					}
+					fmt.Printf("    %s %s%-36s%s  %s\n",
+						prefix, ui.Dim, ui.TruncateString(sub.Title, 36), ui.Reset,
+						ui.FormatDurationShort(sub.Duration))
+				}
+			} else {
+				fmt.Printf("  %-40s  %s%s%s\n",
+					ui.TruncateString(group.Category, 40),
+					ui.Green, ui.FormatDurationShort(group.TotalSecs), ui.Reset)
+			}
+		}
+		fmt.Println()
+	} else if len(summary.TopSites) > 0 {
 		ui.PrintSectionHeader("Top Browsing")
 		columns := []ui.TableColumn{
 			{Header: "Site / Title", Width: 53},

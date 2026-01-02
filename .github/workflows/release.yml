@@ -48,17 +48,11 @@ jobs:
       with:
         go-version: '1.21'
 
-    - name: Install UPX
-      uses: crazy-max/ghaction-upx@v3
-      with:
-        install-only: true
-
-    - name: Build and Compress
+    - name: Build
       env:
         CGO_ENABLED: 0
       run: |
         go build -ldflags="-s -w -X 'focusd/system.Version=${{ env.VERSION }}'" -trimpath -o focusd.exe ./cmd/focusd
-        upx --ultra-brute focusd.exe
 
     - name: Create Release
       uses: softprops/action-gh-release@v1

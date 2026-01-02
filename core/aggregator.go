@@ -13,6 +13,7 @@ type DailySummary struct {
 	AppCount     int
 	TopApps      []storage.AppDailyStat
 	TopSites     []storage.AppDailyStat
+	GroupedSites []GroupedBrowserStat
 	RangeMessage string
 	RangeStart   string
 	RangeEnd     string
@@ -28,6 +29,7 @@ func GetDailySummary(date string) (*DailySummary, error) {
 
 	summary := createSummary(date, apps)
 	summary.TopSites = limitStats(sites, 10)
+	summary.GroupedSites = groupSitesFromStats(sites)
 
 	return summary, nil
 }
@@ -91,6 +93,7 @@ func GetPeriodSummary(days int) (*DailySummary, error) {
 
 	summary := createSummary(label, apps)
 	summary.TopSites = limitStats(sites, 10)
+	summary.GroupedSites = groupSitesFromStats(sites)
 	summary.RangeStart = minDate
 	summary.RangeEnd = maxDate
 
@@ -136,21 +139,19 @@ func createSummary(label string, apps []storage.AppDailyStat) *DailySummary {
 	return summary
 }
 
-func GetWeeklySummary() ([]DailySummary, error) {
-	var summaries []DailySummary
-	for i := 0; i < 7; i++ {
-		date := getDateNDaysAgo(i)
-		summary, err := GetDailySummary(date)
-		if err != nil {
-			continue
-		}
-		if summary.AppCount > 0 {
-			summaries = append(summaries, *summary)
-		}
+func groupSitesFromStats(sites []storage.AppDailyStat) []GroupedBrowserStat {
+	var input []struct {
+		Title    string
+		Duration int
 	}
-	return summaries, nil
-}
-
-func getDateNDaysAgo(n int) string {
-	return time.Now().AddDate(0, 0, -n).Format("2006-01-02")
+	for _, s := range sites {
+		input = append(input, struct {
+			Title    string
+			Duration int
+		}{
+			Title:    s.AppName,
+			Duration: s.TotalDurationSecs,
+		})
+	}
+	return GroupBrowserStats(input)
 }

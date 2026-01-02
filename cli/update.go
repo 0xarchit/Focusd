@@ -5,15 +5,20 @@ import (
 	"focusd/system"
 	"focusd/ui"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 )
 
 const (
 	versionURL = "https://raw.githubusercontent.com/0xarchit/Focusd/main/version"
 )
+
+var httpClient = &http.Client{Timeout: 15 * time.Second}
 
 func RunUpdate() {
 	ui.PrintHeader()
@@ -41,31 +46,64 @@ func RunUpdate() {
 		return
 	}
 
+	daemonWasRunning := system.GetProcessCount(system.DaemonProcessName) > 1
+	if daemonWasRunning {
+		ui.PrintStatus("Stopping focusd daemon...", "", false)
+		system.KillOtherInstances(system.DaemonProcessName)
+		time.Sleep(500 * time.Millisecond)
+	}
+
 	if err := performUpdate(latestVer); err != nil {
 		ui.PrintError(fmt.Sprintf("Update failed: %v", err))
+		if daemonWasRunning {
+			ui.PrintInfo("Attempting to restart daemon...")
+			restartDaemon()
+		}
 		return
 	}
 
 	ui.PrintOK(fmt.Sprintf("Successfully updated to v%s!", latestVer))
-	ui.PrintWarn("Please restart focusd to use the new version.")
+
+	if daemonWasRunning {
+		ui.PrintStatus("Restarting focusd daemon...", "", false)
+		time.Sleep(500 * time.Millisecond)
+		restartDaemon()
+		ui.PrintOK("Daemon restarted with new version.")
+	}
+
 	os.Exit(0)
 }
 
+func restartDaemon() {
+	installedExe := system.GetInstalledExePath()
+	if installedExe == "" {
+		return
+	}
+
+	cmd := exec.Command(installedExe, "--daemon")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008,
+	}
+	cmd.Start()
+}
+
 func fetchLatestVersion() (string, error) {
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
-		fmt.Sprintf("(Invoke-WebRequest -Uri '%s' -UseBasicParsing).Content", versionURL))
-
-	out, err := cmd.Output()
-	if err == nil {
-		return strings.TrimSpace(string(out)), nil
+	resp, err := httpClient.Get(versionURL)
+	if err != nil {
+		return "", err
 	}
-	cmd = exec.Command("curl", "-sL", versionURL)
-	out, err = cmd.Output()
-	if err == nil {
-		return strings.TrimSpace(string(out)), nil
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("server returned status %d", resp.StatusCode)
 	}
 
-	return "", fmt.Errorf("failed to fetch version: %v", err)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(body)), nil
 }
 
 func performUpdate(version string) error {
@@ -78,19 +116,26 @@ func performUpdate(version string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
-	tmpFile.Close()
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
 
-	downloadCmd := fmt.Sprintf("Invoke-WebRequest -Uri '%s' -OutFile '%s'", downloadURL, tmpPath)
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", downloadCmd)
-
-	if err := cmd.Run(); err != nil {
-		cmd = exec.Command("curl", "-L", "-o", tmpPath, downloadURL)
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("download failed: %w", err)
-		}
+	resp, err := httpClient.Get(downloadURL)
+	if err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("download failed: %w", err)
 	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		tmpFile.Close()
+		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+	}
+
+	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("write failed: %w", err)
+	}
+	tmpFile.Close()
 
 	ui.PrintStatus("Installing...", "   ", false)
 
@@ -105,7 +150,6 @@ func performUpdate(version string) error {
 	}
 
 	oldPath := exePath + ".old"
-
 	os.Remove(oldPath)
 
 	if err := os.Rename(exePath, oldPath); err != nil {
@@ -121,7 +165,6 @@ func performUpdate(version string) error {
 
 	if system.IsInstalled() {
 		if err := system.InstallExes(); err != nil {
-
 			ui.PrintWarn(fmt.Sprintf("Failed to sync installed binary: %v", err))
 		}
 	}

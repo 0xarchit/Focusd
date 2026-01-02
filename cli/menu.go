@@ -682,7 +682,7 @@ func handlePomodoro(reader *bufio.Reader) {
 
 		switch input {
 		case "1":
-			core.StartPomodoro(0)
+			core.StartPomodoro(system.GetPomodoroMinutes())
 			ui.PrintOK("Pomodoro started!")
 			waitForEnterWithReader(reader)
 		case "2":

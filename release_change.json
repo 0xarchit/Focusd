@@ -12,16 +12,26 @@
     "Fixed: Initialisation on first start"
   ],
   "1.1.0": [
-    "New: Smart Browser Tracking (Chrome, Zen, Edge, etc.)",
+    "New: Browser Title Logging (Chrome, Zen, Edge, etc.)",
     "New: Dynamic Browser Configuration (add/remove custom browsers)",
     "New: 'focusd browser' command set",
     "Improved: Wider stats tables (53 chars) for better visibility",
     "Improved: Generic window title cleaning for cleaner logs"
   ],
   "1.1.1": [
-    "Optimization: Removed 'net/http' dependency for lighter binary",
-    "Optimization: Switched to native PowerShell/curl for updates",
     "Performance: Binary size reduced to ~2.3MB",
     "Performance: SQLite Optimized for low memory usage"
+  ],
+  "1.2.0": [
+    "Feature: Browser Tab Title Tracking (tracks active tab across browsers)",
+    "Feature: Smart App Grouping [EXPERIMENTAL] (YouTube, Instagram, GitHub, etc.)",
+    "Architecture: Restored net/http for reliable self-update",
+    "Architecture: Simple MessageBox notifications (no COM/PowerShell)",
+    "Architecture: Repository interface pattern for testability",
+    "Performance: Native process checks via CreateToolhelp32Snapshot",
+    "Performance: ~5MB RAM, ~0% CPU, ~10MB binary",
+    "Feature: Graceful update flow (stop daemon → update → restart)",
+    "Security: Removed UPX compression (prevents AV false positives)",
+    "Security: Removed go-toast dependency"
   ]
 }

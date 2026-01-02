@@ -1,18 +1,28 @@
 package core
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"sync"
+	"syscall"
 	"time"
+	"unsafe"
 )
 
 var (
 	lastNotificationTime time.Time
 	notificationMutex    sync.Mutex
 	notificationCooldown = 30 * time.Second
+)
+
+var (
+	user32          = syscall.NewLazyDLL("user32.dll")
+	procMessageBoxW = user32.NewProc("MessageBoxW")
+)
+
+const (
+	MB_OK              = 0x00000000
+	MB_ICONINFORMATION = 0x00000040
+	MB_SYSTEMMODAL     = 0x00001000
+	MB_SETFOREGROUND   = 0x00010000
 )
 
 func ShowNotification(title, message string) {
@@ -24,39 +34,14 @@ func ShowNotification(title, message string) {
 	lastNotificationTime = time.Now()
 	notificationMutex.Unlock()
 
-	title = strings.ReplaceAll(title, "'", "''")
-	message = strings.ReplaceAll(message, "'", "''")
-
-	ps := `
-$app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
-
-$template = @"
-<toast>
-    <visual>
-        <binding template="ToastText02">
-            <text id="1">` + title + `</text>
-            <text id="2">` + message + `</text>
-        </binding>
-    </visual>
-    <audio src="ms-winsoundevent:Notification.Default"/>
-</toast>
-"@
-
-$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
-$xml.LoadXml($template)
-$toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($app).Show($toast)
-`
-
-	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		return
-	}
-
-	psPath := filepath.Join(appData, "focusd", "notify.ps1")
-	os.WriteFile(psPath, []byte(ps), 0644)
-
-	exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", psPath).Start()
+	go func() {
+		titlePtr, _ := syscall.UTF16PtrFromString(title)
+		messagePtr, _ := syscall.UTF16PtrFromString(message)
+		procMessageBoxW.Call(
+			0,
+			uintptr(unsafe.Pointer(messagePtr)),
+			uintptr(unsafe.Pointer(titlePtr)),
+			uintptr(MB_OK|MB_ICONINFORMATION|MB_SETFOREGROUND),
+		)
+	}()
 }
