@@ -619,11 +619,14 @@ func handleFocusTools(reader *bufio.Reader) {
 			ui.PrintStatus("App Limits", fmt.Sprintf("%d apps", len(limits)), true)
 		}
 
+		ui.PrintStatus("Snooze Duration", fmt.Sprintf("%d min", system.GetSnoozeDurationMinutes()), false)
+
 		fmt.Println()
 		fmt.Printf("     %s1.%s Pomodoro Timer\n", ui.Cyan, ui.Reset)
 		fmt.Printf("     %s2.%s Break Reminder\n", ui.Cyan, ui.Reset)
 		fmt.Printf("     %s3.%s App Time Limits\n", ui.Cyan, ui.Reset)
 		fmt.Printf("     %s4.%s Password Settings\n", ui.Cyan, ui.Reset)
+		fmt.Printf("     %s5.%s Snooze Duration\n", ui.Cyan, ui.Reset)
 		fmt.Println()
 		fmt.Printf("     %s0.%s Back\n", ui.Dim, ui.Reset)
 		fmt.Println()
@@ -640,6 +643,8 @@ func handleFocusTools(reader *bufio.Reader) {
 			handleAppTimeLimits(reader)
 		case "4":
 			handlePasswordSettings(reader)
+		case "5":
+			handleSnoozeDuration(reader)
 		case "0", "":
 			return
 		}
@@ -977,5 +982,30 @@ func handleMenuUpdate(reader *bufio.Reader) {
 	ui.ClearScreen()
 	ui.PrintSectionHeader("Update Check")
 	RunUpdate()
+	waitForEnterWithReader(reader)
+}
+
+func handleSnoozeDuration(reader *bufio.Reader) {
+	ui.ClearScreen()
+	fmt.Println()
+	fmt.Println("─────────────────── Snooze Duration ───────────────────")
+	fmt.Println()
+	fmt.Printf("  Current: %d minutes\n", system.GetSnoozeDurationMinutes())
+	fmt.Println()
+	fmt.Println("  When you click OK on a notification, it will be")
+	fmt.Println("  snoozed for this duration before showing again.")
+	fmt.Println()
+	fmt.Print("  Enter new duration in minutes (or press Enter to cancel): ")
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return
+	}
+	if mins, err := strconv.Atoi(input); err == nil && mins > 0 {
+		system.SetSnoozeDurationMinutes(mins)
+		ui.PrintOK(fmt.Sprintf("Snooze duration set to %d minutes", mins))
+	} else {
+		ui.PrintError("Invalid number. Enter a positive number.")
+	}
 	waitForEnterWithReader(reader)
 }

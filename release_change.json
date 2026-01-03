@@ -33,5 +33,13 @@
     "Feature: Graceful update flow (stop daemon → update → restart)",
     "Security: Removed UPX compression (prevents AV false positives)",
     "Security: Removed go-toast dependency"
+  ],
+  "1.3.0": [
+    "Feature: Actionable Notifications (OK to snooze, Cancel to dismiss)",
+    "Feature: Configurable Snooze Duration (default 60min, adjustable in menu)",
+    "Feature: Break Reminder repeats every interval",
+    "Feature: App Limit notifies on each switch to over-limit app",
+    "Feature: Password Recovery via 'focusd reset-password' command",
+    "Improved: Dead code cleanup and optimized ExtractAppCategory"
   ]
 }

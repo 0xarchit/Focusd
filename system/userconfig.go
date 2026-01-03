@@ -8,12 +8,13 @@ import (
 )
 
 type UserConfig struct {
-	WhitelistApps        []string       `json:"whitelist_apps"`
-	BreakReminderEnabled bool           `json:"break_reminder_enabled"`
-	BreakReminderMinutes int            `json:"break_reminder_minutes"`
-	AppTimeLimits        map[string]int `json:"app_time_limits"`
-	PomodoroMinutes      int            `json:"pomodoro_minutes"`
-	Password             string         `json:"password"`
+	WhitelistApps         []string       `json:"whitelist_apps"`
+	BreakReminderEnabled  bool           `json:"break_reminder_enabled"`
+	BreakReminderMinutes  int            `json:"break_reminder_minutes"`
+	AppTimeLimits         map[string]int `json:"app_time_limits"`
+	PomodoroMinutes       int            `json:"pomodoro_minutes"`
+	Password              string         `json:"password"`
+	SnoozeDurationMinutes int            `json:"snooze_duration_minutes"`
 }
 
 var userConfig *UserConfig
@@ -33,12 +34,13 @@ func loadUserConfig() *UserConfig {
 
 	userConfig = &UserConfig{
 
-		WhitelistApps:        []string{},
-		BreakReminderEnabled: false,
-		BreakReminderMinutes: 60,
-		AppTimeLimits:        make(map[string]int),
-		PomodoroMinutes:      25,
-		Password:             "",
+		WhitelistApps:         []string{},
+		BreakReminderEnabled:  false,
+		BreakReminderMinutes:  60,
+		AppTimeLimits:         make(map[string]int),
+		PomodoroMinutes:       25,
+		Password:              "",
+		SnoozeDurationMinutes: 60,
 	}
 
 	configPath, err := getUserConfigPath()
@@ -225,4 +227,24 @@ func IsPasswordEnabled() bool {
 
 func CheckPassword(input string) bool {
 	return loadUserConfig().Password == input
+}
+
+func ClearPassword() error {
+	config := loadUserConfig()
+	config.Password = ""
+	return SaveUserConfig()
+}
+
+func GetSnoozeDurationMinutes() int {
+	mins := loadUserConfig().SnoozeDurationMinutes
+	if mins < 1 {
+		return 60
+	}
+	return mins
+}
+
+func SetSnoozeDurationMinutes(minutes int) error {
+	config := loadUserConfig()
+	config.SnoozeDurationMinutes = minutes
+	return SaveUserConfig()
 }

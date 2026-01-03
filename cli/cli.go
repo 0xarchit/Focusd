@@ -40,6 +40,7 @@ func PrintHelp() {
 	fmt.Println("Other:")
 	fmt.Println("  focusd help      (h)      Show this help message")
 	fmt.Println("  focusd version   (-v)     Show version")
+	fmt.Println("  focusd reset-password     Reset password (when locked out)")
 	fmt.Println()
 }
 
@@ -96,6 +97,8 @@ func Run(args []string) {
 		PrintHelp()
 	case "version", "-v", "--version":
 		PrintVersion()
+	case "reset-password":
+		RunResetPassword()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		fmt.Println("Run 'focusd help' for usage information.")
