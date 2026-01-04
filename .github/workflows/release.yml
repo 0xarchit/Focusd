@@ -54,10 +54,18 @@ jobs:
       run: |
         go build -ldflags="-s -w -X 'focusd/system.Version=${{ env.VERSION }}'" -trimpath -o focusd.exe ./cmd/focusd
 
+    - name: Generate Checksum
+      shell: powershell
+      run: |
+        $hash = (Get-FileHash -Path focusd.exe -Algorithm SHA256).Hash.ToLower()
+        "$hash  focusd.exe" | Out-File -FilePath checksums.txt -Encoding ASCII
+
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         name: focusd v${{ env.VERSION }}
         body: ${{ env.RELEASE_NOTES }}
-        files: focusd.exe
+        files: |
+          focusd.exe
+          checksums.txt
         token: ${{ secrets.GIT_TOKEN }}

@@ -61,7 +61,7 @@ func Init() error {
 		return fmt.Errorf("failed to open database after retries: %w", lastErr)
 	}
 
-	db.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(2)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
 

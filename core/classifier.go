@@ -2,39 +2,30 @@ package core
 
 import (
 	"focusd/storage"
-	"regexp"
 	"strings"
-	"sync"
 )
 
-var (
-	browserSuffixRegex = regexp.MustCompile(`(?i)(\s*[-—|]\s*(Google Chrome|Mozilla Firefox|Microsoft Edge|Brave|Opera|Vivaldi|Thorium|LibreWolf|Chromium|Zen Browser|Arc|Internet Explorer|Personal|Work|Profile \d+).*)$`)
-	regexCache         = make(map[string]*regexp.Regexp)
-	regexMu            sync.RWMutex
-)
+var browserSuffixes = []string{
+	"google chrome", "mozilla firefox", "microsoft edge", "brave",
+	"opera", "vivaldi", "thorium", "liberwolf", "chromium",
+	"zen browser", "arc", "internet explorer", "personal", "work",
+}
 
 func IsBrowser(exeName string) bool {
 	return storage.IsBrowser(exeName)
 }
 
-func getOrCompileRegex(pattern string) *regexp.Regexp {
-	regexMu.RLock()
-	if re, ok := regexCache[pattern]; ok {
-		regexMu.RUnlock()
-		return re
+func isBrowserSuffix(suffix string) bool {
+	suffix = strings.ToLower(suffix)
+	for _, b := range browserSuffixes {
+		if strings.Contains(suffix, b) {
+			return true
+		}
 	}
-	regexMu.RUnlock()
-
-	regexMu.Lock()
-	defer regexMu.Unlock()
-
-	if re, ok := regexCache[pattern]; ok {
-		return re
+	if strings.HasPrefix(suffix, "profile ") {
+		return true
 	}
-
-	re := regexp.MustCompile(pattern)
-	regexCache[pattern] = re
-	return re
+	return false
 }
 
 func CleanWindowTitle(rawTitle, exeName string) string {
@@ -42,18 +33,17 @@ func CleanWindowTitle(rawTitle, exeName string) string {
 		return "Unknown Tab"
 	}
 
-	clean := browserSuffixRegex.ReplaceAllString(rawTitle, "")
-
 	baseName := strings.TrimSuffix(strings.ToLower(exeName), ".exe")
+	clean := rawTitle
 
-	patternStr := `(?i)(\s*[-—|]\s*` + regexp.QuoteMeta(baseName) + `.*)$`
-	genericPattern := getOrCompileRegex(patternStr)
-	clean = genericPattern.ReplaceAllString(clean, "")
-
-	if strings.Contains(strings.ToLower(rawTitle), "browser") {
-		browserPatternStr := `(?i)(\s*[-—|]\s*` + regexp.QuoteMeta(baseName) + `\s+Browser.*)$`
-		genericBrowserPattern := getOrCompileRegex(browserPatternStr)
-		clean = genericBrowserPattern.ReplaceAllString(clean, "")
+	separators := []string{" - ", " — ", " | "}
+	for _, sep := range separators {
+		if idx := strings.LastIndex(clean, sep); idx != -1 {
+			suffix := strings.ToLower(clean[idx+len(sep):])
+			if strings.Contains(suffix, baseName) || isBrowserSuffix(suffix) {
+				clean = clean[:idx]
+			}
+		}
 	}
 
 	clean = strings.TrimSpace(clean)

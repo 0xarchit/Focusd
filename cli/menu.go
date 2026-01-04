@@ -8,6 +8,7 @@ import (
 	"focusd/system"
 	"focusd/ui"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 )
@@ -49,7 +50,7 @@ func RunInteractiveMenu() {
 		printCurrentStatus()
 		printMenuOptions()
 
-		fmt.Print("\nEnter choice (0-11): ")
+		fmt.Print("\nEnter choice (0-13): ")
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
 
@@ -78,6 +79,8 @@ func RunInteractiveMenu() {
 			handleMenuUninstall(reader)
 		case "12":
 			handleMenuUpdate(reader)
+		case "13":
+			handleStarOnGitHub()
 		case "0":
 			fmt.Println("\nGoodbye!")
 			return
@@ -147,6 +150,7 @@ func printMenuOptions() {
 	fmt.Println()
 	fmt.Printf("   %sSystem%s\n", ui.Yellow, ui.Reset)
 	fmt.Printf("     %s11.%s Uninstall               %s12.%s Check Updates\n", ui.Red, ui.Reset, ui.Cyan, ui.Reset)
+	fmt.Printf("     %s13.%s ⭐ Star on GitHub\n", ui.Yellow, ui.Reset)
 	fmt.Printf("     %s 0.%s Exit\n", ui.Dim, ui.Reset)
 	fmt.Println()
 }
@@ -1008,4 +1012,9 @@ func handleSnoozeDuration(reader *bufio.Reader) {
 		ui.PrintError("Invalid number. Enter a positive number.")
 	}
 	waitForEnterWithReader(reader)
+}
+
+func handleStarOnGitHub() {
+	repoURL := fmt.Sprintf("https://github.com/%s/%s", system.RepoOwner, system.RepoName)
+	exec.Command("cmd", "/c", "start", repoURL).Start()
 }

@@ -1,9 +1,8 @@
 package system
 
 import (
+	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -12,6 +11,7 @@ import (
 const (
 	TH32CS_SNAPPROCESS = 0x00000002
 	MAX_PATH           = 260
+	PROCESS_TERMINATE  = 0x0001
 )
 
 type PROCESSENTRY32W struct {
@@ -31,6 +31,7 @@ var (
 	procCreateToolhelp32 = kernel32.NewProc("CreateToolhelp32Snapshot")
 	procProcess32FirstW  = kernel32.NewProc("Process32FirstW")
 	procProcess32NextW   = kernel32.NewProc("Process32NextW")
+	procTerminateProcess = kernel32.NewProc("TerminateProcess")
 )
 
 func getProcessSnapshot() (syscall.Handle, error) {
@@ -107,20 +108,45 @@ func GetPIDByName(name string) (uint32, error) {
 	return pid, nil
 }
 
+func terminateProcessByPID(pid uint32) error {
+	handle, _, _ := procOpenProcess.Call(uintptr(PROCESS_TERMINATE), 0, uintptr(pid))
+	if handle == 0 {
+		return fmt.Errorf("failed to open process %d", pid)
+	}
+	defer procCloseHandle.Call(handle)
+
+	ret, _, _ := procTerminateProcess.Call(handle, 1)
+	if ret == 0 {
+		return fmt.Errorf("failed to terminate process %d", pid)
+	}
+	return nil
+}
+
 func KillProcess(name string) error {
-	cmd := exec.Command("taskkill", "/F", "/IM", name)
-	return cmd.Run()
+	var lastErr error
+	iterateProcesses(func(pe *PROCESSENTRY32W) bool {
+		if strings.EqualFold(processName(pe), name) {
+			if err := terminateProcessByPID(pe.ProcessID); err != nil {
+				lastErr = err
+			}
+		}
+		return true
+	})
+	return lastErr
 }
 
 func KillOtherInstances(name string) error {
 	myPID := uint32(os.Getpid())
+	var lastErr error
 	iterateProcesses(func(pe *PROCESSENTRY32W) bool {
 		if strings.EqualFold(processName(pe), name) && pe.ProcessID != myPID {
-			exec.Command("taskkill", "/F", "/PID", strconv.Itoa(int(pe.ProcessID))).Run()
+			if err := terminateProcessByPID(pe.ProcessID); err != nil {
+				lastErr = err
+			}
 		}
 		return true
 	})
-	return nil
+	return lastErr
 }
 
 func getMyPID() int {

@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"focusd/system"
 	"focusd/ui"
@@ -106,6 +108,47 @@ func fetchLatestVersion() (string, error) {
 	return strings.TrimSpace(string(body)), nil
 }
 
+func fetchChecksum(version string) (string, error) {
+	checksumURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s/checksums.txt",
+		system.RepoOwner, system.RepoName, version)
+
+	resp, err := httpClient.Get(checksumURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("checksums not available (status %d)", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	line := strings.TrimSpace(string(body))
+	parts := strings.Fields(line)
+	if len(parts) >= 1 {
+		return strings.ToLower(parts[0]), nil
+	}
+	return "", fmt.Errorf("invalid checksum format")
+}
+
+func calculateFileHash(filePath string) (string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 func performUpdate(version string) error {
 	ui.PrintStatus("Downloading update...", "0%", false)
 
@@ -136,6 +179,21 @@ func performUpdate(version string) error {
 		return fmt.Errorf("write failed: %w", err)
 	}
 	tmpFile.Close()
+
+	ui.PrintStatus("Verifying checksum...", "", false)
+	expectedHash, err := fetchChecksum(version)
+	if err != nil {
+		ui.PrintWarn(fmt.Sprintf("Checksum verification skipped: %v", err))
+	} else {
+		actualHash, err := calculateFileHash(tmpPath)
+		if err != nil {
+			return fmt.Errorf("failed to calculate hash: %w", err)
+		}
+		if actualHash != expectedHash {
+			return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actualHash)
+		}
+		ui.PrintOK("Checksum verified")
+	}
 
 	ui.PrintStatus("Installing...", "   ", false)
 

@@ -107,11 +107,11 @@ func (t *Tracker) Start() {
 					ShowNotificationWithAction("Break Reminder",
 						fmt.Sprintf("You've been working for %d min. Take a break!", mins),
 						func(disable bool) {
+							continuousUseStart = time.Now()
 							if disable {
 								breakSnoozedUntil = time.Now().Add(snoozeDuration)
 							}
 						})
-					continuousUseStart = time.Now()
 				}
 			}
 
