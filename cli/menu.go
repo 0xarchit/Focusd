@@ -276,6 +276,7 @@ func handleMenuSettings(reader *bufio.Reader) {
 		fmt.Println("  2. Toggle auto-start")
 		fmt.Println("  3. Toggle PATH")
 		fmt.Println("  4. Clear Data")
+		fmt.Println("  5. Password Settings")
 		fmt.Println()
 		fmt.Println("  0. Back")
 		fmt.Println()
@@ -320,6 +321,8 @@ func handleMenuSettings(reader *bufio.Reader) {
 			waitForEnterWithReader(reader)
 		case "4":
 			handleClearData(reader)
+		case "5":
+			handlePasswordSettings(reader)
 		case "0", "":
 			return
 		}
@@ -629,8 +632,7 @@ func handleFocusTools(reader *bufio.Reader) {
 		fmt.Printf("     %s1.%s Pomodoro Timer\n", ui.Cyan, ui.Reset)
 		fmt.Printf("     %s2.%s Break Reminder\n", ui.Cyan, ui.Reset)
 		fmt.Printf("     %s3.%s App Time Limits\n", ui.Cyan, ui.Reset)
-		fmt.Printf("     %s4.%s Password Settings\n", ui.Cyan, ui.Reset)
-		fmt.Printf("     %s5.%s Snooze Duration\n", ui.Cyan, ui.Reset)
+		fmt.Printf("     %s4.%s Snooze Duration\n", ui.Cyan, ui.Reset)
 		fmt.Println()
 		fmt.Printf("     %s0.%s Back\n", ui.Dim, ui.Reset)
 		fmt.Println()
@@ -646,8 +648,6 @@ func handleFocusTools(reader *bufio.Reader) {
 		case "3":
 			handleAppTimeLimits(reader)
 		case "4":
-			handlePasswordSettings(reader)
-		case "5":
 			handleSnoozeDuration(reader)
 		case "0", "":
 			return
