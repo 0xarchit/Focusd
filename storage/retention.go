@@ -18,7 +18,7 @@ func EnforceRetention() error {
 		return err
 	}
 
-	_, err := db.Exec("VACUUM")
+	_, err := db.Exec("PRAGMA incremental_vacuum")
 	return err
 }
 

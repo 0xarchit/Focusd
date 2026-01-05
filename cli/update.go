@@ -16,11 +16,12 @@ import (
 	"time"
 )
 
-const (
-	versionURL = "https://raw.githubusercontent.com/0xarchit/Focusd/main/version"
-)
-
 var httpClient = &http.Client{Timeout: 15 * time.Second}
+
+func getVersionURL() string {
+	return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/main/version",
+		system.RepoOwner, system.RepoName)
+}
 
 func RunUpdate() {
 	ui.PrintHeader()
@@ -90,7 +91,7 @@ func restartDaemon() {
 }
 
 func fetchLatestVersion() (string, error) {
-	resp, err := httpClient.Get(versionURL)
+	resp, err := httpClient.Get(getVersionURL())
 	if err != nil {
 		return "", err
 	}

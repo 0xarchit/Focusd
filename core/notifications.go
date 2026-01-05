@@ -8,9 +8,10 @@ import (
 )
 
 var (
-	lastNotificationTime time.Time
-	notificationMutex    sync.Mutex
-	notificationCooldown = 10 * time.Second
+	lastNotificationTime  time.Time
+	notificationMutex     sync.Mutex
+	notificationCooldown  = 10 * time.Second
+	isNotificationVisible bool
 )
 
 var (
@@ -33,14 +34,21 @@ const (
 
 func ShowNotification(title, message string) {
 	notificationMutex.Lock()
-	if time.Since(lastNotificationTime) < notificationCooldown {
+	if time.Since(lastNotificationTime) < notificationCooldown || isNotificationVisible {
 		notificationMutex.Unlock()
 		return
 	}
 	lastNotificationTime = time.Now()
+	isNotificationVisible = true
 	notificationMutex.Unlock()
 
 	go func() {
+		defer func() {
+			notificationMutex.Lock()
+			isNotificationVisible = false
+			notificationMutex.Unlock()
+		}()
+
 		titlePtr, _ := syscall.UTF16PtrFromString(title)
 		messagePtr, _ := syscall.UTF16PtrFromString(message)
 		procMessageBoxW.Call(
@@ -54,14 +62,21 @@ func ShowNotification(title, message string) {
 
 func ShowNotificationWithAction(title, message string, callback func(disable bool)) {
 	notificationMutex.Lock()
-	if time.Since(lastNotificationTime) < notificationCooldown {
+	if time.Since(lastNotificationTime) < notificationCooldown || isNotificationVisible {
 		notificationMutex.Unlock()
 		return
 	}
 	lastNotificationTime = time.Now()
+	isNotificationVisible = true
 	notificationMutex.Unlock()
 
 	go func() {
+		defer func() {
+			notificationMutex.Lock()
+			isNotificationVisible = false
+			notificationMutex.Unlock()
+		}()
+
 		titlePtr, _ := syscall.UTF16PtrFromString(title)
 		fullMessage := message + "\n\n[OK] Disable this reminder\n[Cancel] Just close"
 		messagePtr, _ := syscall.UTF16PtrFromString(fullMessage)

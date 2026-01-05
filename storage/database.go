@@ -61,15 +61,16 @@ func Init() error {
 		return fmt.Errorf("failed to open database after retries: %w", lastErr)
 	}
 
-	db.SetMaxOpenConns(2)
+	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
 	db.Exec("PRAGMA journal_mode=WAL")
 	db.Exec("PRAGMA busy_timeout=5000")
 	db.Exec("PRAGMA synchronous=NORMAL")
+	db.Exec("PRAGMA auto_vacuum=INCREMENTAL")
 
-	db.Exec("PRAGMA cache_size = -500")
+	db.Exec("PRAGMA cache_size = -2000")
 	db.Exec("PRAGMA mmap_size = 0")
 	db.Exec("PRAGMA temp_store = FILE")
 

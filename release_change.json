@@ -49,5 +49,17 @@
     "Performance: Faster window title cleaning (removed regex in hot path)",
     "Fixed: Database concurrency (WAL now works with concurrent read/write)",
     "Fixed: Break reminder timer resets only when user acknowledges"
+  ],
+  "1.3.2": [
+    "Fixed: Concurrent map write panic (added mutex for thread safety)",
+    "Fixed: Fork-safe updater (version URL now dynamic)",
+    "Fixed: Notification stacking (no more AFK message boxes piling up)",
+    "Fixed: Strip notification counts from tab titles (avoids duplicate entries)",
+    "Fixed: LibreWolf browser name typo (was 'liberwolf')",
+    "Fixed: Emoji crash in table display (proper Unicode handling)",
+    "Improved: (4), [4], {4} patterns removed from start/end of browser titles",
+    "Improved: Database connection limit (10 conns for better WAL concurrency)",
+    "Improved: SQLite cache increased to 2MB (faster stats queries)",
+    "Improved: Incremental VACUUM for automatic space reclamation"
   ]
 }

@@ -65,6 +65,7 @@ func (t *Tracker) Start() {
 
 	storage.EnforceRetention()
 
+	var stateMu sync.Mutex
 	var continuousUseStart time.Time
 	var breakSnoozedUntil time.Time
 	prevSessionApp := ""
@@ -100,25 +101,32 @@ func (t *Tracker) Start() {
 			now := time.Now()
 			snoozeDuration := time.Duration(system.GetSnoozeDurationMinutes()) * time.Minute
 
+			stateMu.Lock()
 			breakSnoozed := !breakSnoozedUntil.IsZero() && now.Before(breakSnoozedUntil)
+			stateMu.Unlock()
+
 			if system.GetBreakReminderEnabled() && !breakSnoozed && !continuousUseStart.IsZero() {
 				mins := system.GetBreakReminderMinutes()
 				if time.Since(continuousUseStart) >= time.Duration(mins)*time.Minute {
 					ShowNotificationWithAction("Break Reminder",
 						fmt.Sprintf("You've been working for %d min. Take a break!", mins),
 						func(disable bool) {
+							stateMu.Lock()
 							continuousUseStart = time.Now()
 							if disable {
 								breakSnoozedUntil = time.Now().Add(snoozeDuration)
 							}
+							stateMu.Unlock()
 						})
 				}
 			}
 
+			stateMu.Lock()
 			if appLimitDate != today {
 				disabledLimitApps = make(map[string]time.Time)
 				appLimitDate = today
 			}
+			stateMu.Unlock()
 
 			limits := system.GetAppTimeLimits()
 			if len(limits) > 0 && t.currentSession != nil {
@@ -128,7 +136,10 @@ func (t *Tracker) Start() {
 				if currentExe != prevSessionApp {
 					prevSessionApp = currentExe
 
+					stateMu.Lock()
 					appSnoozed := !disabledLimitApps[currentExe].IsZero() && now.Before(disabledLimitApps[currentExe])
+					stateMu.Unlock()
+
 					if limit, ok := limits[currentExe]; ok && !appSnoozed {
 						todayUsage := storage.GetAppUsageTodayMinutes(currentExe)
 						if todayUsage >= limit {
@@ -137,7 +148,9 @@ func (t *Tracker) Start() {
 								currentAppName+" has exceeded daily limit!",
 								func(disable bool) {
 									if disable {
+										stateMu.Lock()
 										disabledLimitApps[exeCopy] = time.Now().Add(snoozeDuration)
+										stateMu.Unlock()
 									}
 								})
 						}
