@@ -33,8 +33,9 @@ type Tracker struct {
 
 func NewTracker() *Tracker {
 	ctx, cancel := context.WithCancel(context.Background())
+	pollSeconds := storage.GetTrackingIntervalSeconds()
 	return &Tracker{
-		pollInterval:  1 * time.Second,
+		pollInterval:  time.Duration(pollSeconds) * time.Second,
 		batchInterval: 10 * time.Second,
 		ctx:           ctx,
 		cancel:        cancel,
