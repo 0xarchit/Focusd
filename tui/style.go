@@ -3,75 +3,65 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	colorBg        = lipgloss.Color("#0F141A")
-	colorPanel     = lipgloss.Color("#18212B")
-	colorPanelSoft = lipgloss.Color("#202B37")
-	colorSlate     = lipgloss.Color("#6E7B8B")
-	colorSteel     = lipgloss.Color("#B0BBC9")
-	colorWhite     = lipgloss.Color("#F5F7FA")
-	colorNavy      = lipgloss.Color("#1F3042")
-	colorGold      = lipgloss.Color("#BDA57B")
-	colorGreen     = lipgloss.Color("#6FA08C")
-	colorRed       = lipgloss.Color("#A06A6A")
+	colorBg      = lipgloss.Color("#1E1E1E")
+	colorPanel   = lipgloss.Color("#252525")
+	colorSlate   = lipgloss.Color("#5C5C5C")
+	colorWhite   = lipgloss.Color("#E0E0E0")
+	colorGold    = lipgloss.Color("#CBA153")
+	colorNavy    = lipgloss.Color("#1F2D3D")
+	colorGreen   = lipgloss.Color("#4A7056")
+	colorDim     = lipgloss.Color("#707070")
 
-	appFrameStyle = lipgloss.NewStyle().
-			Background(colorBg)
+	appStyle = lipgloss.NewStyle().
+			Padding(0, 1).
+			Background(colorBg).
+			Foreground(colorWhite)
 
-	headerBoxStyle = lipgloss.NewStyle().
-			Background(colorPanel).
-			Foreground(colorWhite).
-			BorderStyle(lipgloss.NormalBorder()).
+	headerStyle = lipgloss.NewStyle().
+			Height(3).
+			Border(lipgloss.NormalBorder(), false, false, true, false).
 			BorderForeground(colorSlate).
-			BorderBottom(true).
 			Padding(0, 1)
 
-	footerBoxStyle = lipgloss.NewStyle().
-			Background(colorPanel).
-			Foreground(colorSteel).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderForeground(colorSlate).
-			BorderTop(true).
-			Padding(0, 1)
+	logoStyle = lipgloss.NewStyle().
+			Foreground(colorGold).
+			Bold(true).
+			MarginRight(4)
 
-	sectionTitleStyle = lipgloss.NewStyle().
-				Foreground(colorGold).
-				Bold(true)
-
-	cardStyle = lipgloss.NewStyle().
-			Background(colorPanel).
-			Foreground(colorSteel).
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(colorSlate).
-			Padding(1, 2)
-
-	cardSoftStyle = lipgloss.NewStyle().
-			Background(colorPanelSoft).
-			Foreground(colorWhite).
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(colorSlate).
-			Padding(1, 2)
+	tabStyle = lipgloss.NewStyle().
+			Padding(0, 2).
+			Foreground(colorDim)
 
 	activeTabStyle = lipgloss.NewStyle().
+			Padding(0, 2).
 			Foreground(colorWhite).
-			Background(colorNavy).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderForeground(colorGold).
-			Bold(true).
-			Padding(0, 2)
+			Bold(true)
 
-	inactiveTabStyle = lipgloss.NewStyle().
-				Foreground(colorSteel).
-				Padding(0, 2)
+	statusRunningStyle = lipgloss.NewStyle().
+				Foreground(colorGreen)
 
-	statusOnStyle = lipgloss.NewStyle().
-			Foreground(colorWhite).
-			Background(colorGreen).
-			Bold(true).
+	statusStoppedStyle = lipgloss.NewStyle().
+				Foreground(colorDim)
+
+	mainViewportStyle = lipgloss.NewStyle().
+				Padding(1, 2)
+
+	footerStyle = lipgloss.NewStyle().
+			Height(1).
+			Foreground(colorDim).
 			Padding(0, 1)
 
-	statusOffStyle = lipgloss.NewStyle().
-			Foreground(colorWhite).
-			Background(colorRed).
+	boxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorSlate).
+			Padding(1, 2)
+
+	titleStyle = lipgloss.NewStyle().
+			Foreground(colorGold).
 			Bold(true).
-			Padding(0, 1)
+			MarginBottom(1)
+
+	selectedRowStyle = lipgloss.NewStyle().
+				Background(colorSlate).
+				Foreground(colorWhite)
 )

@@ -17,27 +17,17 @@ import (
 func RunInteractiveMenu() {
 	if err := storage.Init(); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
-		fmt.Println("\nPress Enter to exit...")
-		bufio.NewReader(os.Stdin).ReadBytes('\n')
-		os.Exit(1)
+		return
 	}
 	defer storage.Close()
 
 	if system.IsPasswordEnabled() {
 		reader := bufio.NewReader(os.Stdin)
-		ui.ClearScreen()
-		fmt.Println()
-		fmt.Println("╔══════════════════════════════════════════════════════════╗")
-		fmt.Println("║                    Password Required                     ║")
-		fmt.Println("╚══════════════════════════════════════════════════════════╝")
-		fmt.Println()
 		fmt.Print("Enter password: ")
 		pwd, _ := reader.ReadString('\n')
 		pwd = strings.TrimSpace(pwd)
 		if !system.CheckPassword(pwd) {
 			ui.PrintError("Incorrect password!")
-			fmt.Println("\nPress Enter to exit...")
-			reader.ReadString('\n')
 			return
 		}
 	}
@@ -45,7 +35,7 @@ func RunInteractiveMenu() {
 	core.CheckPomodoroAndNotify()
 
 	if err := tui.StartTUI(); err != nil {
-		fmt.Printf("Error running TUI: %v\n", err)
+		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
 }
