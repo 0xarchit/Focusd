@@ -48,18 +48,26 @@ func (d *dashboardModel) SetSize(width, height int) {
 	d.width = width
 	d.height = height
 	leftWidth := int(float64(width) * 0.65)
-	if leftWidth < 30 {
+	if leftWidth < 24 {
 		leftWidth = width
 	}
 	tableHeight := height - 6
 	if tableHeight < 6 {
 		tableHeight = 6
 	}
-	d.table.SetWidth(leftWidth - 8)
+	tableWidth := leftWidth - 8
+	if tableWidth < 16 {
+		tableWidth = 16
+	}
+	d.table.SetWidth(tableWidth)
 	d.table.SetHeight(tableHeight)
 	cols := d.table.Columns()
 	if len(cols) == 3 {
-		cols[0].Width = maxInt(20, leftWidth-32)
+		nameWidth := leftWidth - 28
+		if nameWidth < 12 {
+			nameWidth = 12
+		}
+		cols[0].Width = nameWidth
 		cols[1].Width = 12
 		cols[2].Width = 8
 		d.table.SetColumns(cols)
@@ -110,14 +118,14 @@ func (d dashboardModel) HandleKey(msg tea.KeyMsg) (dashboardModel, tea.Cmd, bool
 
 func (d dashboardModel) View() string {
 	leftWidth := int(float64(d.width) * 0.65)
-	if leftWidth < 30 {
+	if leftWidth < 24 {
 		leftWidth = d.width
 	}
 	rightWidth := d.width - leftWidth - 1
 	if rightWidth < 24 {
 		rightWidth = 24
 		leftWidth = d.width - rightWidth - 1
-		if leftWidth < 30 {
+		if leftWidth < 24 {
 			leftWidth = d.width
 			rightWidth = 0
 		}

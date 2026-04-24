@@ -77,7 +77,11 @@ func newToolsModel() toolsModel {
 func (t *toolsModel) SetSize(width, height int) {
 	t.width = width
 	t.height = height
-	t.limitsList.SetSize(maxInt(32, width/2), maxInt(8, height/2))
+	listWidth := width - 10
+	if listWidth < 24 {
+		listWidth = 24
+	}
+	t.limitsList.SetSize(listWidth, maxInt(8, height/2))
 }
 
 func (t *toolsModel) SetData(state appSnapshot) {
@@ -225,11 +229,18 @@ func (t *toolsModel) resetInputs() {
 }
 
 func (t toolsModel) View() string {
+	panelWidth := t.width - 4
+	if panelWidth < 28 {
+		panelWidth = 28
+	}
+	if panelWidth > t.width {
+		panelWidth = t.width
+	}
 	pStatus := "Inactive"
 	if t.pomodoroOn {
 		pStatus = "Active"
 	}
-	header := cardStyle.Width(maxInt(42, t.width/2)).Render(
+	header := cardStyle.Width(panelWidth).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
 			sectionTitleStyle.Render("Focus Tools"),
 			"Pomodoro: "+pStatus,
@@ -253,8 +264,8 @@ func (t toolsModel) View() string {
 	if t.mode == toolsEditLimitInput {
 		modeBox = "Edit App Limit\nApp: " + t.appInput.View() + "\nMinutes (0 removes): " + t.minutesInput.View() + "\nenter: save • esc: cancel"
 	}
-	inputPanel := cardSoftStyle.Width(maxInt(42, t.width/2)).Render(modeBox)
-	limitsPanel := cardStyle.Width(maxInt(42, t.width/2)).Render(t.limitsList.View())
+	inputPanel := cardSoftStyle.Width(panelWidth).Render(modeBox)
+	limitsPanel := cardStyle.Width(panelWidth).Render(t.limitsList.View())
 	content := lipgloss.JoinVertical(lipgloss.Left, header, inputPanel, limitsPanel)
 	return lipgloss.Place(t.width, t.height, lipgloss.Center, lipgloss.Top, content)
 }

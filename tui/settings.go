@@ -76,10 +76,27 @@ func newSystemModel() systemModel {
 func (s *systemModel) SetSize(width, height int) {
 	s.width = width
 	s.height = height
-	leftW := maxInt(26, width/3)
+	leftW := width / 3
+	if leftW < 22 {
+		leftW = 22
+	}
+	if leftW > width-20 {
+		leftW = width - 20
+	}
 	rightW := width - leftW - 2
-	s.categoryList.SetSize(leftW-4, maxInt(8, height-4))
-	s.valueList.SetSize(maxInt(24, rightW-4), maxInt(8, height-11))
+	if rightW < 16 {
+		rightW = 16
+	}
+	categoryWidth := leftW - 4
+	if categoryWidth < 14 {
+		categoryWidth = 14
+	}
+	valueWidth := rightW - 4
+	if valueWidth < 12 {
+		valueWidth = 12
+	}
+	s.categoryList.SetSize(categoryWidth, maxInt(8, height-4))
+	s.valueList.SetSize(valueWidth, maxInt(8, height-11))
 }
 
 func (s *systemModel) SetData(state appSnapshot) {
@@ -219,11 +236,20 @@ func (s *systemModel) confirmInput() tea.Cmd {
 }
 
 func (s systemModel) View() string {
-	leftW := maxInt(26, s.width/3)
+	leftW := s.width / 3
+	if leftW < 22 {
+		leftW = 22
+	}
+	if leftW > s.width-20 {
+		leftW = s.width - 20
+	}
 	rightW := s.width - leftW - 1
+	if rightW < 16 {
+		rightW = 16
+	}
 	leftBox := cardStyle.Width(leftW).Height(s.height - 1).Render(s.categoryList.View())
 	rightContent := s.contextView()
-	rightBox := cardSoftStyle.Width(maxInt(34, rightW)).Height(s.height - 1).Render(rightContent)
+	rightBox := cardSoftStyle.Width(rightW).Height(s.height - 1).Render(rightContent)
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
 }
 

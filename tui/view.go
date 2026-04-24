@@ -129,13 +129,15 @@ func (m mainModel) View() string {
 		warn := lipgloss.NewStyle().Foreground(colorGold).Bold(true).Render("Please enlarge terminal for optimal viewing")
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, warn)
 	}
-	headerHeight := m.headerHeight()
-	footerHeight := m.footerHeight()
-	mainHeight := m.mainHeight()
-	header := lipgloss.NewStyle().Width(m.width).Height(headerHeight).Render(m.renderHeader())
-	mainContent := lipgloss.NewStyle().Width(m.width).Height(mainHeight).Render(m.renderMain())
-	footer := lipgloss.NewStyle().Width(m.width).Height(footerHeight).Render(m.renderFooter())
-	return appFrameStyle.Render(lipgloss.JoinVertical(lipgloss.Left, header, mainContent, footer))
+	header := lipgloss.NewStyle().Width(m.width).Render(m.renderHeader())
+	footer := lipgloss.NewStyle().Width(m.width).Render(m.renderFooter())
+	remainingHeight := m.height - lipgloss.Height(header) - lipgloss.Height(footer)
+	if remainingHeight < 6 {
+		remainingHeight = 6
+	}
+	mainContent := lipgloss.NewStyle().Width(m.width).Height(remainingHeight).Render(m.renderMain())
+	frame := lipgloss.JoinVertical(lipgloss.Left, header, mainContent, footer)
+	return appFrameStyle.Width(m.width).Render(frame)
 }
 
 func (m mainModel) headerHeight() int {
