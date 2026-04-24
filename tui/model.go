@@ -6,13 +6,14 @@ import (
 	"focusd/core"
 	"focusd/storage"
 	"focusd/system"
-	tea "github.com/charmbracelet/bubbletea"
 	"os"
 	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 type tabID int

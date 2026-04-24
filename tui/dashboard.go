@@ -3,11 +3,12 @@ package tui
 import (
 	"fmt"
 	"focusd/storage"
+	"math"
+	"strings"
+
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"math"
-	"strings"
 )
 
 type dashboardModel struct {

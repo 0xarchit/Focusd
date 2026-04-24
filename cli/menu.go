@@ -6,6 +6,7 @@ import (
 	"focusd/core"
 	"focusd/storage"
 	"focusd/system"
+	"focusd/tui"
 	"focusd/ui"
 	"os"
 	"os/exec"
