@@ -113,6 +113,19 @@ func GetAppStatsForDate(date string) ([]AppDailyStat, error) {
 	return stats, rows.Err()
 }
 
+func GetTotalScreenTimeTodaySecs() int {
+	today := Today()
+	var secs int
+	err := db.QueryRow(`
+		SELECT COALESCE(SUM(total_duration_secs), 0) FROM apps_daily
+		WHERE date = ?
+	`, today).Scan(&secs)
+	if err != nil {
+		return 0
+	}
+	return secs
+}
+
 func GetAppUsageTodayMinutes(exeName string) int {
 	today := Today()
 	var secs int

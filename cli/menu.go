@@ -22,9 +22,8 @@ func RunInteractiveMenu() {
 	}
 	defer storage.Close()
 
-	reader := bufio.NewReader(os.Stdin)
-
 	if system.IsPasswordEnabled() {
+		reader := bufio.NewReader(os.Stdin)
 		ui.ClearScreen()
 		fmt.Println()
 		fmt.Println("╔══════════════════════════════════════════════════════════╗")
@@ -44,50 +43,9 @@ func RunInteractiveMenu() {
 
 	core.CheckPomodoroAndNotify()
 
-	for {
-		ui.ClearScreen()
-		printMenuHeader()
-		printCurrentStatus()
-		printMenuOptions()
-
-		fmt.Print("\nEnter choice (0-13): ")
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
-
-		switch input {
-		case "1":
-			handleMenuStart(reader)
-		case "2":
-			handleMenuStop(reader)
-		case "3":
-			handleMenuStatus(reader)
-		case "4":
-			handleMenuStats(reader)
-		case "5":
-			handleMenuPause(reader)
-		case "6":
-			handleMenuResume(reader)
-		case "7":
-			handleFocusTools(reader)
-		case "8":
-			handleMenuExport(reader)
-		case "9":
-			handleMenuCustomize(reader)
-		case "10":
-			handleMenuSettings(reader)
-		case "11":
-			handleMenuUninstall(reader)
-		case "12":
-			handleMenuUpdate(reader)
-		case "13":
-			handleStarOnGitHub()
-		case "0":
-			fmt.Println("\nGoodbye!")
-			return
-		default:
-			fmt.Println("\n[ERROR] Invalid choice. Press Enter to continue...")
-			reader.ReadString('\n')
-		}
+	if err := tui.StartTUI(); err != nil {
+		fmt.Printf("Error running TUI: %v\n", err)
+		os.Exit(1)
 	}
 }
 
