@@ -51,6 +51,26 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, fetchSnapshotCmd(m.repo)
 
 	case tea.KeyMsg:
+		if m.pending != "" {
+			switch typed.String() {
+			case "y", "enter":
+				action := m.pending
+				m.pending = ""
+				m.errText = ""
+				if action == "update" {
+					m.notice = "Starting update..."
+					return m, runExternalCmd("update", "update")
+				}
+				m.notice = "Starting uninstall..."
+				return m, runExternalCmd("uninstall", "uninstall")
+			case "n", "esc":
+				m.pending = ""
+				m.notice = "Action cancelled"
+				return m, nil
+			default:
+				return m, nil
+			}
+		}
 		switch typed.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -69,9 +89,13 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			return m, fetchSnapshotCmd(m.repo)
 		case "u":
-			return m, runExternalCmd("update", "update")
+			m.pending = "update"
+			m.notice = "Confirm update: press y to continue, n to cancel"
+			return m, nil
 		case "U":
-			return m, runExternalCmd("uninstall", "uninstall")
+			m.pending = "uninstall"
+			m.notice = "Confirm uninstall: press y to continue, n to cancel"
+			return m, nil
 		}
 		if m.activeTab == tabDashboard {
 			var consumed bool
@@ -181,7 +205,7 @@ func (m mainModel) renderMain() string {
 }
 
 func (m mainModel) renderFooter() string {
-	help := "tab: next tab • 1/2/3: jump • r: refresh • u: update • shift+u: uninstall • q: quit"
+	help := "tab: next tab • 1/2/3: jump • r: refresh • u: update • shift+u: uninstall • y/n: confirm"
 	if m.activeTab == tabDashboard {
 		help = "up/down: table • s: start daemon • x: stop daemon • space: pause/resume • tab: switch • q: quit"
 	}

@@ -113,8 +113,13 @@ func (d dashboardModel) View() string {
 		leftWidth = d.width
 	}
 	rightWidth := d.width - leftWidth - 1
-	if rightWidth < 28 {
-		rightWidth = 28
+	if rightWidth < 24 {
+		rightWidth = 24
+		leftWidth = d.width - rightWidth - 1
+		if leftWidth < 30 {
+			leftWidth = d.width
+			rightWidth = 0
+		}
 	}
 	leftPane := cardStyle.Width(leftWidth).Height(d.height - 1).Render(
 		lipgloss.JoinVertical(lipgloss.Left,
@@ -122,6 +127,9 @@ func (d dashboardModel) View() string {
 			d.table.View(),
 		),
 	)
+	if rightWidth <= 0 {
+		return leftPane
+	}
 	limitText := "No app limits configured"
 	progress := 0.0
 	if d.limitTotal > 0 {

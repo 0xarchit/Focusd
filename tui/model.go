@@ -70,6 +70,7 @@ type mainModel struct {
 	data       appSnapshot
 	notice     string
 	errText    string
+	pending    string
 	dashboard  dashboardModel
 	tools      toolsModel
 	systemPane systemModel
@@ -162,7 +163,7 @@ func getAppStatsWithRetry(repo storage.Repository, date string) ([]storage.AppDa
 	if lastErr != nil {
 		msg := strings.ToLower(lastErr.Error())
 		if strings.Contains(msg, "locked") || strings.Contains(msg, "busy") {
-			return []storage.AppDailyStat{}, "Database temporarily busy, displaying last stable snapshot", nil
+			return []storage.AppDailyStat{}, "Database temporarily busy, values may lag briefly", nil
 		}
 	}
 	return nil, "", lastErr
