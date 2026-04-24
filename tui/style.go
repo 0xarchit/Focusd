@@ -3,55 +3,75 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	accentColor = lipgloss.Color("#C5B358")
-	slateColor  = lipgloss.Color("#708090")
-	steelColor  = lipgloss.Color("#A9A9A9")
-	whiteColor  = lipgloss.Color("#FFFFFF")
-	navyColor   = lipgloss.Color("#000080")
-	bgNavy      = lipgloss.Color("#001F3F")
+	colorBg        = lipgloss.Color("#0F141A")
+	colorPanel     = lipgloss.Color("#18212B")
+	colorPanelSoft = lipgloss.Color("#202B37")
+	colorSlate     = lipgloss.Color("#6E7B8B")
+	colorSteel     = lipgloss.Color("#B0BBC9")
+	colorWhite     = lipgloss.Color("#F5F7FA")
+	colorNavy      = lipgloss.Color("#1F3042")
+	colorGold      = lipgloss.Color("#BDA57B")
+	colorGreen     = lipgloss.Color("#6FA08C")
+	colorRed       = lipgloss.Color("#A06A6A")
 
-	headerStyle = lipgloss.NewStyle().
-			Foreground(whiteColor).
-			Background(navyColor).
-			Padding(0, 1).
-			Bold(true)
+	appFrameStyle = lipgloss.NewStyle().
+			Background(colorBg)
 
-	tabStyle = lipgloss.NewStyle().
-			Foreground(steelColor).
-			Padding(0, 2)
+	headerBoxStyle = lipgloss.NewStyle().
+			Background(colorPanel).
+			Foreground(colorWhite).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(colorSlate).
+			BorderBottom(true).
+			Padding(0, 1)
 
-	activeTabStyle = lipgloss.NewStyle().
-			Foreground(accentColor).
-			Border(lipgloss.NormalBorder(), false, false, true, false).
-			BorderForeground(accentColor).
-			Padding(0, 2).
-			Bold(true)
+	footerBoxStyle = lipgloss.NewStyle().
+			Background(colorPanel).
+			Foreground(colorSteel).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(colorSlate).
+			BorderTop(true).
+			Padding(0, 1)
 
-	footerStyle = lipgloss.NewStyle().
-			Foreground(slateColor).
-			Italic(true)
-
-	cardStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(slateColor).
-			Padding(1, 2).
-			MarginRight(1)
-
-	titleStyle = lipgloss.NewStyle().
-			Foreground(accentColor).
-			Bold(true).
-			MarginBottom(1)
-
-	tableHeaderStyle = lipgloss.NewStyle().
-				Foreground(whiteColor).
-				Background(slateColor).
+	sectionTitleStyle = lipgloss.NewStyle().
+				Foreground(colorGold).
 				Bold(true)
 
-	tableSelectedStyle = lipgloss.NewStyle().
-				Foreground(whiteColor).
-				Background(navyColor)
+	cardStyle = lipgloss.NewStyle().
+			Background(colorPanel).
+			Foreground(colorSteel).
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(colorSlate).
+			Padding(1, 2)
 
-	statusRunning = lipgloss.NewStyle().Foreground(lipgloss.Color("#4CAF50"))
-	statusStopped = lipgloss.NewStyle().Foreground(lipgloss.Color("#F44336"))
-	statusPaused  = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF9800"))
+	cardSoftStyle = lipgloss.NewStyle().
+			Background(colorPanelSoft).
+			Foreground(colorWhite).
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(colorSlate).
+			Padding(1, 2)
+
+	activeTabStyle = lipgloss.NewStyle().
+			Foreground(colorWhite).
+			Background(colorNavy).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(colorGold).
+			Bold(true).
+			Padding(0, 2)
+
+	inactiveTabStyle = lipgloss.NewStyle().
+				Foreground(colorSteel).
+				Padding(0, 2)
+
+	statusOnStyle = lipgloss.NewStyle().
+			Foreground(colorWhite).
+			Background(colorGreen).
+			Bold(true).
+			Padding(0, 1)
+
+	statusOffStyle = lipgloss.NewStyle().
+			Foreground(colorWhite).
+			Background(colorRed).
+			Bold(true).
+			Padding(0, 1)
 )
