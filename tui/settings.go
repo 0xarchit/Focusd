@@ -16,7 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
+func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 	if m.settingsAddingBrowser {
 		switch key {
 		case "esc":
@@ -29,7 +29,7 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 		case "enter":
 			if strings.TrimSpace(m.settingsBrowserInput) == "" {
 				m.addToast("Browser name is required", toastError)
-				return m, nil
+				return *m, nil
 			}
 			if err := storage.AddCustomBrowser(m.settingsBrowserInput); err != nil {
 				m.addToast(err.Error(), toastError)
@@ -43,7 +43,7 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 				m.settingsBrowserInput += key
 			}
 		}
-		return m, nil
+		return *m, nil
 	}
 
 	switch key {
@@ -240,10 +240,10 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			}
 		}
 	}
-	return m, nil
+	return *m, nil
 }
 
-func (m Model) renderSettings(width, height int) string {
+func (m *Model) renderSettings(width, height int) string {
 	auto, _, _ := system.GetAutoStartEnabled()
 	paused := storage.IsPaused()
 	trackingInterval := storage.GetTrackingIntervalSeconds()
@@ -260,34 +260,40 @@ func (m Model) renderSettings(width, height int) string {
 	if m.settingsAddingBrowser {
 		browserValue = "New browser: [ " + cyanStyle.Render(padRight(m.settingsBrowserInput, 18)) + " ]"
 	}
+	
+	// Enforce 1-line spacer gap and distinct color treatment for danger zone
 	lines := []string{
 		"DAEMON",
-		settingRow(0, m.settingsSelected, "Background service", statusPill(m.daemonActive)+"  "+buttonText(ifThen(m.daemonActive, "Stop", "Start")), inner),
-		settingRow(1, m.settingsSelected, "Auto-start on login", toggleText(auto), inner),
+		m.settingRow(0, m.settingsSelected, "Background service", statusPill(m.daemonActive)+"  "+buttonText(ifThen(m.daemonActive, "Stop", "Start")), inner),
+		m.settingRow(1, m.settingsSelected, "Auto-start on login", toggleText(auto), inner),
 		"",
 		"TRACKING",
-		settingRow(2, m.settingsSelected, "Browser tracking", toggleText(!paused), inner),
-		settingRow(3, m.settingsSelected, "Smart app grouping", toggleText(system.GetSmartGroupingEnabled())+"  "+mutedStyle.Render("(experimental)"), inner),
-		settingRow(4, m.settingsSelected, "Tracking interval", fmt.Sprintf("[ %d ] seconds", trackingInterval), inner),
-		settingRow(5, m.settingsSelected, "Idle threshold", fmt.Sprintf("[ %d ] seconds", idleThreshold), inner),
+		m.settingRow(2, m.settingsSelected, "Browser tracking", toggleText(!paused), inner),
+		m.settingRow(3, m.settingsSelected, "Smart app grouping", toggleText(system.GetSmartGroupingEnabled())+"  "+mutedStyle.Render("(experimental)"), inner),
+		m.settingRow(4, m.settingsSelected, "Tracking interval", fmt.Sprintf("[ %d ] seconds", trackingInterval), inner),
+		m.settingRow(5, m.settingsSelected, "Idle threshold", fmt.Sprintf("[ %d ] seconds", idleThreshold), inner),
 		"",
 		"NOTIFICATIONS",
-		settingRow(6, m.settingsSelected, "Focus complete alert", toggleText(focusAlerts), inner),
-		settingRow(7, m.settingsSelected, "Limit warning at", fmt.Sprintf("[ %d ] %% usage", warningThreshold), inner),
+		m.settingRow(6, m.settingsSelected, "Focus complete alert", toggleText(focusAlerts), inner),
+		m.settingRow(7, m.settingsSelected, "Limit warning at", fmt.Sprintf("[ %d ] %% usage", warningThreshold), inner),
 		"",
 		"BROWSERS",
-		settingRow(8, m.settingsSelected, "Tracked browsers", browserValue, inner),
+		m.settingRow(8, m.settingsSelected, "Tracked browsers", browserValue, inner),
 		"",
 		"DATA",
-		settingRow(9, m.settingsSelected, "Database path", mutedStyle.Render(truncate(dbPath, max(10, inner-45)))+"   "+buttonText("Open Folder"), inner),
-		settingRow(10, m.settingsSelected, "Export data", renderExportButtons(m.settingsSelected == 10, m.settingsExportSelected), inner),
-		settingRow(11, m.settingsSelected, "Update app", buttonText("Update from GitHub"), inner),
-		settingRow(12, m.settingsSelected, "Danger zone", redStyle.Bold(true).Render("[ Uninstall / Wipe All Data ]"), inner),
+		m.settingRow(9, m.settingsSelected, "Database path", mutedStyle.Render(truncate(dbPath, max(10, inner-45)))+"   "+buttonText("Open Folder"), inner),
+		m.settingRow(10, m.settingsSelected, "Export data", renderExportButtons(m.settingsSelected == 10, m.settingsExportSelected), inner),
+		m.settingRow(11, m.settingsSelected, "Update app", buttonText("Update from GitHub"), inner),
+		"",
+		"DANGER ZONE",
+		m.settingRow(12, m.settingsSelected, "Danger zone", redStyle.Bold(true).Render("[ Uninstall / Wipe All Data ]"), inner),
 	}
 	for i, line := range lines {
 		switch line {
 		case "DAEMON", "TRACKING", "NOTIFICATIONS", "BROWSERS", "DATA":
 			lines[i] = boldStyle.Render(line) + "\n" + mutedStyle.Render("────────────────────────────────────────")
+		case "DANGER ZONE":
+			lines[i] = redStyle.Bold(true).Render(line) + "\n" + redStyle.Render("────────────────────────────────────────")
 		}
 	}
 	bodyLines := strings.Split(strings.Join(lines, "\n"), "\n")
@@ -311,10 +317,17 @@ func (m Model) renderSettings(width, height int) string {
 		}
 		bodyLines = window
 	}
-	return panel("SETTINGS", "", width-2, "\n"+strings.Join(bodyLines, "\n")+"\n", true)
+
+	// Register settings panel coordinates
+	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+		X1: 1, Y1: 5, X2: width - 1, Y2: height - 1,
+		ID: "panel-0", Kind: "panel",
+	})
+
+	return panelWithHover("SETTINGS", "", width-2, "\n"+strings.Join(bodyLines, "\n")+"\n", true, m.hoveredPanel == 0)
 }
 
-func settingRow(index, selected int, label, value string, width int) string {
+func (m *Model) settingRow(index, selected int, label, value string, width int) string {
 	cursor := "  "
 	if index == selected {
 		cursor = cyanStyle.Render("> ")

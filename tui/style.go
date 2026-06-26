@@ -66,16 +66,32 @@ var (
 	activeButtonStyle = lipgloss.NewStyle().
 				Foreground(cCyan).
 				Bold(true)
+
+	hoverRowStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("#1B2230")).
+			Foreground(cWhite)
 )
 
 func borderColor(focused bool) lipgloss.Color {
+	return borderColorWithHover(focused, false)
+}
+
+func borderColorWithHover(focused bool, hovered bool) lipgloss.Color {
 	if focused {
 		return cCyan
+	}
+	if hovered {
+		// Hover highlight: desaturated/reduced intensity cyan or grey highlight
+		return lipgloss.Color("#008FAD")
 	}
 	return cMuted
 }
 
 func panel(title string, right string, width int, body string, focused bool) string {
+	return panelWithHover(title, right, width, body, focused, false)
+}
+
+func panelWithHover(title string, right string, width int, body string, focused bool, hovered bool) string {
 	if width < 8 {
 		width = 8
 	}
@@ -91,7 +107,7 @@ func panel(title string, right string, width int, body string, focused bool) str
 	if topFill < 1 {
 		topFill = 1
 	}
-	edge := lipgloss.NewStyle().Foreground(borderColor(focused))
+	edge := lipgloss.NewStyle().Foreground(borderColorWithHover(focused, hovered))
 	top := edge.Render("╭─") + titleStyle().Render(titleText) + edge.Render(strings.Repeat("─", topFill))
 	if right != "" {
 		top += mutedStyle.Render(right)
@@ -103,7 +119,7 @@ func panel(title string, right string, width int, body string, focused bool) str
 	}
 	bottom := edge.Render("╰" + strings.Repeat("─", inner) + "╯")
 	box := lipgloss.JoinVertical(lipgloss.Left, append(append([]string{top}, lines...), bottom)...)
-	return lipgloss.NewStyle().BorderForeground(borderColor(focused)).Render(box)
+	return lipgloss.NewStyle().BorderForeground(borderColorWithHover(focused, hovered)).Render(box)
 }
 
 func titleStyle() lipgloss.Style {

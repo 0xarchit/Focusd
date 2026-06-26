@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func (m Model) handleLimitsKey(key string) (Model, tea.Cmd) {
+func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 	if m.limitForm.Visible {
 		switch key {
 		case "esc":
@@ -50,16 +50,16 @@ func (m Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 					if m.limitForm.Editing && m.limitForm.OriginalApp != "" && !strings.EqualFold(m.limitForm.App, m.limitForm.OriginalApp) {
 						if err := system.RemoveAppTimeLimit(m.limitForm.OriginalApp); err != nil {
 							m.addToast("Failed to rename limit: "+err.Error(), toastError)
-							return m, nil
+							return *m, nil
 						}
 					}
 					if err := system.SetAppTimeLimit(m.limitForm.App, mins); err != nil {
 						m.addToast("Failed to save limit: "+err.Error(), toastError)
-						return m, nil
+						return *m, nil
 					}
 					m.addToast("Limit saved for "+m.limitForm.App, toastSuccess)
 					m.limitForm = limitForm{}
-					return m, loadDashboard()
+					return *m, loadDashboard()
 				}
 				m.addToast("App and limit are required", toastError)
 			}
@@ -79,7 +79,7 @@ func (m Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 				}
 			}
 		}
-		return m, nil
+		return *m, nil
 	}
 
 	switch key {
@@ -101,26 +101,38 @@ func (m Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 			appName := rows[m.limitsSelected].Name
 			if err := system.RemoveAppTimeLimit(appName); err != nil {
 				m.addToast("Failed to delete limit: "+err.Error(), toastError)
-				return m, nil
+				return *m, nil
 			}
 			m.addToast("Limit deleted for "+appName, toastWarning)
-			return m, loadDashboard()
+			return *m, loadDashboard()
 		}
 	}
-	return m, nil
+	return *m, nil
 }
 
-func (m Model) renderLimits(width, height int) string {
+func (m *Model) renderLimits(width, height int) string {
 	rows := m.limitRows()
 	warnAt := storage.GetWarningThresholdPercent()
 	maxW := width - 2
 	var lines []string
-	lines = append(lines, boldStyle.Render(padRight("App", maxW-48)+padLeft("Limit", 8)+padLeft("Used", 8)+padLeft("Remaining", 11)+"   Status"))
+
+	// Align to spec column widths:
+	// App name — 30%, Limit — 15%, Used — 15%, Remaining — 15%, Status — 25%
+	col1W := (maxW * 30) / 100
+	col2W := (maxW * 15) / 100
+	col3W := (maxW * 15) / 100
+	col4W := (maxW * 15) / 100
+	col5W := maxW - col1W - col2W - col3W - col4W - 4
+
+	headerPlain := padRight("App", col1W) + padLeft("Limit", col2W) + padLeft("Used", col3W) + padLeft("Remaining", col4W) + "   Status"
+	lines = append(lines, boldStyle.Render(headerPlain))
 	lines = append(lines, mutedStyle.Render(fill(maxW-4, "─")))
+
 	visibleRows := max(3, height-10)
 	if m.limitForm.Visible {
 		visibleRows = max(3, height-18)
 	}
+
 	start := scrollStart(m.limitsSelected, visibleRows, len(rows))
 	end := min(len(rows), start+visibleRows)
 	for i := start; i < end; i++ {
@@ -141,11 +153,12 @@ func (m Model) renderLimits(width, height int) string {
 			style = amberStyle
 			status = "⚠ WARNING"
 		}
-		line := padRight(truncate(r.Name, maxW-52), maxW-52) +
-			padLeft(formatDuration(limitSecs), 8) +
-			padLeft(formatDuration(used), 8) +
-			padLeft(formatDuration(remaining), 11) + "  " +
-			style.Render(bar(pct, 100, 8, "█")) + "  " + style.Render(status)
+
+		line := padRight(truncate(r.Name, col1W), col1W) +
+			padLeft(formatDuration(limitSecs), col2W) +
+			padLeft(formatDuration(used), col3W) +
+			padLeft(formatDuration(remaining), col4W) + "  " +
+			style.Render(bar(pct, 100, max(4, col5W-12), "█")) + "  " + style.Render(status)
 		if pct >= 95 {
 			line = dangerRowStyle.Render(padRight(line, maxW-2))
 		} else if i == m.limitsSelected && !m.limitForm.Visible {
@@ -153,13 +166,22 @@ func (m Model) renderLimits(width, height int) string {
 		}
 		lines = append(lines, line)
 	}
+
 	if len(rows) == 0 {
-		lines = append(lines, mutedStyle.Render("No limits set. Press n to add one."))
+		lines = append(lines, "", mutedStyle.Render("No limits set. Press n to add one."))
 	}
-	table := panel("APP LIMITS", fmt.Sprintf("(%d limits set)", len(rows)), maxW, "\n"+strings.Join(lines, "\n")+"\n", m.panelFocus == 0)
+
+	// Register limits panel coordinates
+	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+		X1: 1, Y1: 5, X2: width - 1, Y2: 5 + height - 2,
+		ID: "panel-0", Kind: "panel",
+	})
+
+	table := panelWithHover("APP LIMITS", fmt.Sprintf("(%d limits set)", len(rows)), maxW, "\n"+strings.Join(lines, "\n")+"\n", m.panelFocus == 0, m.hoveredPanel == 0)
 	if !m.limitForm.Visible {
 		return table
 	}
+
 	formTitle := "ADD LIMIT"
 	if m.limitForm.Editing {
 		formTitle = "EDIT LIMIT"
@@ -174,10 +196,18 @@ func (m Model) renderLimits(width, height int) string {
 			fields[i] = cyanStyle.Bold(true).Render(fields[i])
 		}
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, table, panel(formTitle, "", maxW, "\n"+strings.Join(fields, "\n")+"\n", m.panelFocus == 1))
+	
+	// Register form panel coordinates (as panel-1)
+	formY := 5 + height - 8
+	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+		X1: 1, Y1: formY, X2: width - 1, Y2: height - 1,
+		ID: "panel-1", Kind: "panel",
+	})
+
+	return lipgloss.JoinVertical(lipgloss.Left, table, panelWithHover(formTitle, "", maxW, "\n"+strings.Join(fields, "\n")+"\n", m.panelFocus == 1, m.hoveredPanel == 1))
 }
 
-func (m Model) limitRows() []appUsage {
+func (m *Model) limitRows() []appUsage {
 	limits := system.GetAppTimeLimits()
 	rows := make([]appUsage, 0, len(limits))
 	for app, mins := range limits {

@@ -69,9 +69,9 @@ Section "Install"
 
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
-  ; Start the daemon immediately
+  ; Start the daemon immediately in a detached process context
   DetailPrint "Starting Focusd daemon..."
-  Exec '"$INSTDIR\focusd.exe" start'
+  ExecShell "open" "$INSTDIR\focusd.exe" "start" SW_HIDE
 SectionEnd
 
 Section "Uninstall"

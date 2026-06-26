@@ -48,7 +48,9 @@ func ClearAllTrackingData() error {
 	if _, err := db.Exec("DELETE FROM apps_daily"); err != nil {
 		return err
 	}
-
+	if _, err := db.Exec("DELETE FROM browsing_daily"); err != nil {
+		return err
+	}
 	if _, err := db.Exec("DELETE FROM active_session"); err != nil {
 		return err
 	}
