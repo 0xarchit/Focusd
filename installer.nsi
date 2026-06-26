@@ -59,7 +59,7 @@ Section "Install"
   ; Write registry keys for Windows Add/Remove Programs (uninstaller)
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "Focusd Screen Time Tracker"
   WriteRegStr HKCU "${UNINST_KEY}" "UninstallString" '"$INSTDIR\uninstall.exe"'
-  WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "1.0.0"
+  WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "0xarchit"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayIcon" '"$INSTDIR\focusd.exe"'
 
