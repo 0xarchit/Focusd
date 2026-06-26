@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"log"
 	"time"
 )
 
@@ -81,6 +82,7 @@ func GetTotalScreenTimeTodaySecs() int {
 		WHERE date = ?
 	`, today).Scan(&secs)
 	if err != nil {
+		log.Printf("WARN: GetTotalScreenTimeTodaySecs query failed: %v", err)
 		return 0
 	}
 	return secs
@@ -94,6 +96,9 @@ func GetAppUsageTodayMinutes(exeName string) int {
 		WHERE date = ? AND exe_name = ?
 	`, today, exeName).Scan(&secs)
 	if err != nil {
+		if err.Error() != "sql: no rows in result set" {
+			log.Printf("WARN: GetAppUsageTodayMinutes query failed for %s: %v", exeName, err)
+		}
 		return 0
 	}
 	return secs / 60

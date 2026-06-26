@@ -2,9 +2,11 @@ package system
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type UserConfig struct {
@@ -17,7 +19,10 @@ type UserConfig struct {
 	SnoozeDurationMinutes int            `json:"snooze_duration_minutes"`
 }
 
-var userConfig *UserConfig
+var (
+	userConfig     *UserConfig
+	userConfigOnce sync.Once
+)
 
 func getUserConfigPath() (string, error) {
 	appData := os.Getenv("APPDATA")
@@ -28,35 +33,36 @@ func getUserConfigPath() (string, error) {
 }
 
 func loadUserConfig() *UserConfig {
-	if userConfig != nil {
-		return userConfig
-	}
+	// P2: use sync.Once so concurrent callers don't race on the nil-check init.
+	userConfigOnce.Do(func() {
+		userConfig = &UserConfig{
+			WhitelistApps:         []string{},
+			BreakReminderEnabled:  false,
+			BreakReminderMinutes:  60,
+			AppTimeLimits:         make(map[string]int),
+			PomodoroMinutes:       25,
+			Password:              "",
+			SnoozeDurationMinutes: 60,
+		}
 
-	userConfig = &UserConfig{
+		configPath, err := getUserConfigPath()
+		if err != nil || configPath == "" {
+			return
+		}
 
-		WhitelistApps:         []string{},
-		BreakReminderEnabled:  false,
-		BreakReminderMinutes:  60,
-		AppTimeLimits:         make(map[string]int),
-		PomodoroMinutes:       25,
-		Password:              "",
-		SnoozeDurationMinutes: 60,
-	}
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			return
+		}
 
-	configPath, err := getUserConfigPath()
-	if err != nil || configPath == "" {
-		return userConfig
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return userConfig
-	}
-
-	json.Unmarshal(data, userConfig)
-	if userConfig.AppTimeLimits == nil {
-		userConfig.AppTimeLimits = make(map[string]int)
-	}
+		// P3: log unmarshal errors instead of silently ignoring them.
+		if err := json.Unmarshal(data, userConfig); err != nil {
+			log.Printf("WARN: failed to parse user config %s: %v", configPath, err)
+		}
+		if userConfig.AppTimeLimits == nil {
+			userConfig.AppTimeLimits = make(map[string]int)
+		}
+	})
 	return userConfig
 }
 
@@ -147,6 +153,8 @@ func IsWhitelisted(exeName string) bool {
 }
 
 func ReloadUserConfig() {
+	// Reset the Once so the next loadUserConfig call re-reads from disk.
+	userConfigOnce = sync.Once{}
 	userConfig = nil
 	loadUserConfig()
 }

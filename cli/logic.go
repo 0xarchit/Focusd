@@ -5,6 +5,7 @@ import (
 	"focusd/storage"
 	"focusd/system"
 	"focusd/ui"
+	"log"
 	"os"
 	"strings"
 )
@@ -45,7 +46,9 @@ func EnablePathLogic() error {
 		return fmt.Errorf("failed to add to PATH: %w", err)
 	}
 
-	storage.SetConfig(storage.ConfigKeyPathEnabled, "true")
+	if err := storage.SetConfig(storage.ConfigKeyPathEnabled, "true"); err != nil {
+		log.Printf("WARN: failed to persist PATH-enabled flag: %v", err)
+	}
 	ui.PrintOK("Added to user PATH.")
 	ui.PrintWarn("Restart your terminal for changes to take effect.")
 	return nil
@@ -56,7 +59,9 @@ func DisablePathLogic() error {
 		return fmt.Errorf("failed to remove from PATH: %w", err)
 	}
 
-	storage.SetConfig(storage.ConfigKeyPathEnabled, "false")
+	if err := storage.SetConfig(storage.ConfigKeyPathEnabled, "false"); err != nil {
+		log.Printf("WARN: failed to persist PATH-disabled flag: %v", err)
+	}
 	ui.PrintOK("Removed from user PATH.")
 	ui.PrintWarn("Restart your terminal for changes to take effect.")
 	return nil
@@ -78,7 +83,9 @@ func EnableAutostartLogic() error {
 		return fmt.Errorf("failed to enable auto-start: %w", err)
 	}
 
-	storage.SetConfig(storage.ConfigKeyAutostart, "true")
+	if err := storage.SetConfig(storage.ConfigKeyAutostart, "true"); err != nil {
+		log.Printf("WARN: failed to persist autostart-enabled flag: %v", err)
+	}
 	ui.PrintOK("Auto-start enabled.")
 	fmt.Println("focusd will start automatically on Windows boot.")
 	fmt.Println("Visible in Task Manager → Startup tab.")
@@ -141,7 +148,9 @@ func DisableAutostartLogic() error {
 		return fmt.Errorf("failed to disable auto-start: %w", err)
 	}
 
-	storage.SetConfig(storage.ConfigKeyAutostart, "false")
+	if err := storage.SetConfig(storage.ConfigKeyAutostart, "false"); err != nil {
+		log.Printf("WARN: failed to persist autostart-disabled flag: %v", err)
+	}
 	ui.PrintOK("Auto-start disabled.")
 	return nil
 }

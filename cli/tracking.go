@@ -69,7 +69,7 @@ func RequestDaemonFlush() {
 }
 
 func sendIPCCmd(cmd string) bool {
-	conn, err := net.DialTimeout("tcp", "127.0.0.1:48321", 1*time.Second)
+	conn, err := net.DialTimeout("tcp", core.IPCAddress, 1*time.Second)
 	if err != nil {
 		return false
 	}

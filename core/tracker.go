@@ -15,6 +15,9 @@ import (
 	"time"
 )
 
+// IPCAddress is the single source of truth for the tracker's IPC endpoint.
+const IPCAddress = "127.0.0.1:48321"
+
 type ActiveSession struct {
 	AppName     string
 	ExeName     string
@@ -134,9 +137,19 @@ func (t *Tracker) Start() {
 			stateMu.Unlock()
 
 			limits := system.GetAppTimeLimits()
-			if len(limits) > 0 && t.currentSession != nil {
-				currentExe := strings.ToLower(t.currentSession.ExeName)
-				currentAppName := t.currentSession.AppName
+
+			// P1: snapshot currentSession under the tracker mutex to avoid data race.
+			t.mu.Lock()
+			var sessionExe, sessionAppName string
+			if t.currentSession != nil {
+				sessionExe = strings.ToLower(t.currentSession.ExeName)
+				sessionAppName = t.currentSession.AppName
+			}
+			t.mu.Unlock()
+
+			if len(limits) > 0 && sessionExe != "" {
+				currentExe := sessionExe
+				currentAppName := sessionAppName
 
 				if currentExe != prevSessionApp {
 					prevSessionApp = currentExe
@@ -175,8 +188,13 @@ func (t *Tracker) recoverOrphanedSession() {
 	if err != nil || recovered == nil {
 		return
 	}
-	storage.InsertSession(recovered)
-	storage.UpdateAppDaily(recovered.Date, recovered.AppName, recovered.ExeName, recovered.DurationSecs)
+	// P5: log errors from recovering orphaned sessions so they don't disappear silently.
+	if err := storage.InsertSession(recovered); err != nil {
+		log.Printf("ERROR: failed to recover orphaned session (insert): %v", err)
+	}
+	if err := storage.UpdateAppDaily(recovered.Date, recovered.AppName, recovered.ExeName, recovered.DurationSecs); err != nil {
+		log.Printf("ERROR: failed to recover orphaned session (daily): %v", err)
+	}
 }
 
 func (t *Tracker) persistActiveSession() {
@@ -342,7 +360,7 @@ func getAppName(exeName string) string {
 }
 
 func (t *Tracker) startIPCOnport() {
-	listener, err := net.Listen("tcp", "127.0.0.1:48321")
+	listener, err := net.Listen("tcp", IPCAddress)
 	if err != nil {
 		return
 	}

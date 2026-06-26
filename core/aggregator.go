@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"focusd/storage"
+	"log"
 	"sort"
 	"time"
 )
@@ -25,7 +26,10 @@ func GetDailySummary(date string) (*DailySummary, error) {
 		return nil, err
 	}
 
-	sites, _ := storage.GetBrowserStatsForDate(date)
+	sites, err := storage.GetBrowserStatsForDate(date)
+	if err != nil {
+		log.Printf("WARN: failed to load browser stats for %s: %v", date, err)
+	}
 
 	summary := createSummary(date, apps)
 	summary.TopSites = limitStats(sites, 10)
@@ -44,7 +48,10 @@ func GetPeriodSummary(days int) (*DailySummary, error) {
 		return nil, err
 	}
 
-	allSites, _ := storage.GetAllBrowserStats()
+	allSites, err := storage.GetAllBrowserStats()
+	if err != nil {
+		log.Printf("WARN: failed to load all browser stats: %v", err)
+	}
 
 	cutoff := time.Now().AddDate(0, 0, -days+1).Format("2006-01-02")
 

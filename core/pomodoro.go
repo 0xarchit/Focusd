@@ -2,11 +2,15 @@ package core
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 )
+
+// DefaultPomodoroMinutes is the fallback Pomodoro session length.
+const DefaultPomodoroMinutes = 25
 
 type PomodoroState struct {
 	Active    bool      `json:"active"`
@@ -35,12 +39,12 @@ func loadPomodoroStateFresh() *PomodoroState {
 
 	path := getPomodoroPath()
 	if path == "" {
-		return &PomodoroState{Duration: 25}
+		return &PomodoroState{Duration: DefaultPomodoroMinutes}
 	}
 
 	info, err := os.Stat(path)
 	if err != nil {
-		cachedState = &PomodoroState{Duration: 25}
+		cachedState = &PomodoroState{Duration: DefaultPomodoroMinutes}
 		cachedModTime = time.Time{}
 		return cachedState
 	}
@@ -50,10 +54,13 @@ func loadPomodoroStateFresh() *PomodoroState {
 		return cachedState
 	}
 
-	state := &PomodoroState{Duration: 25}
+	state := &PomodoroState{Duration: DefaultPomodoroMinutes}
 	data, err := os.ReadFile(path)
 	if err == nil {
-		json.Unmarshal(data, state)
+		// P3: log unmarshal errors instead of silently ignoring them.
+		if err := json.Unmarshal(data, state); err != nil {
+			log.Printf("WARN: failed to parse pomodoro state %s: %v", path, err)
+		}
 	}
 
 	cachedState = state
@@ -95,7 +102,7 @@ func savePomodoroState(state *PomodoroState) error {
 
 func StartPomodoro(minutes int) error {
 	if minutes <= 0 {
-		minutes = 25
+		minutes = DefaultPomodoroMinutes
 	}
 
 	state := &PomodoroState{
@@ -112,7 +119,7 @@ func StopPomodoro() error {
 	state := &PomodoroState{
 		Active:    false,
 		StartTime: time.Time{},
-		Duration:  25,
+		Duration:  DefaultPomodoroMinutes,
 		Notified:  false,
 	}
 	return savePomodoroState(state)
