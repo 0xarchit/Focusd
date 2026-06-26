@@ -1,6 +1,7 @@
 package core
 
 import (
+	"focusd/storage"
 	"regexp"
 	"sort"
 	"strings"
@@ -9,84 +10,83 @@ import (
 type appPattern struct {
 	Name     string
 	Patterns []string
-	Priority int
 }
 
 var appPatterns = []appPattern{
-	{Name: "YouTube", Patterns: []string{"youtube.com", "youtu.be", "- youtube", "| youtube"}, Priority: 100},
-	{Name: "GitHub", Patterns: []string{"github.com", "· github", "- github", "| github", "/github"}, Priority: 100},
-	{Name: "GitLab", Patterns: []string{"gitlab.com", "- gitlab", "| gitlab"}, Priority: 100},
-	{Name: "Instagram", Patterns: []string{"instagram.com", "- instagram", "| instagram"}, Priority: 100},
-	{Name: "Twitter/X", Patterns: []string{"twitter.com", "x.com/", "/ x", "| x", "- x"}, Priority: 100},
-	{Name: "Facebook", Patterns: []string{"facebook.com", "- facebook", "| facebook"}, Priority: 100},
-	{Name: "Reddit", Patterns: []string{"reddit.com", "- reddit", "| reddit"}, Priority: 100},
-	{Name: "LinkedIn", Patterns: []string{"linkedin.com", "- linkedin", "| linkedin"}, Priority: 100},
-	{Name: "TikTok", Patterns: []string{"tiktok.com", "- tiktok", "| tiktok"}, Priority: 100},
-	{Name: "Netflix", Patterns: []string{"netflix.com", "- netflix", "| netflix"}, Priority: 100},
-	{Name: "Prime Video", Patterns: []string{"primevideo.com", "amazon.com/gp/video", "- prime video"}, Priority: 100},
-	{Name: "Hotstar", Patterns: []string{"hotstar.com", "- hotstar", "disney+ hotstar"}, Priority: 100},
-	{Name: "JioCinema", Patterns: []string{"jiocinema.com", "- jiocinema"}, Priority: 100},
-	{Name: "Spotify", Patterns: []string{"spotify.com", "- spotify", "| spotify"}, Priority: 100},
-	{Name: "Twitch", Patterns: []string{"twitch.tv", "- twitch", "| twitch"}, Priority: 100},
-	{Name: "Discord", Patterns: []string{"discord.com", "- discord", "| discord"}, Priority: 100},
-	{Name: "Slack", Patterns: []string{"slack.com", "- slack", "| slack"}, Priority: 100},
-	{Name: "WhatsApp", Patterns: []string{"web.whatsapp.com", "- whatsapp"}, Priority: 100},
-	{Name: "Telegram", Patterns: []string{"web.telegram.org", "- telegram"}, Priority: 100},
-	{Name: "Gmail", Patterns: []string{"mail.google.com", "- gmail", "| gmail", "inbox -"}, Priority: 100},
-	{Name: "Outlook", Patterns: []string{"outlook.live.com", "outlook.office.com", "- outlook"}, Priority: 100},
-	{Name: "Google Drive", Patterns: []string{"drive.google.com", "- google drive"}, Priority: 100},
-	{Name: "Google Docs", Patterns: []string{"docs.google.com", "- google docs"}, Priority: 100},
-	{Name: "Google Sheets", Patterns: []string{"sheets.google.com", "- google sheets"}, Priority: 100},
-	{Name: "Google Meet", Patterns: []string{"meet.google.com", "- google meet"}, Priority: 100},
-	{Name: "Zoom", Patterns: []string{"zoom.us", "- zoom", "| zoom"}, Priority: 100},
-	{Name: "Microsoft Teams", Patterns: []string{"teams.microsoft.com", "- microsoft teams", "| teams"}, Priority: 100},
-	{Name: "Notion", Patterns: []string{"notion.so", "- notion", "| notion"}, Priority: 100},
-	{Name: "Figma", Patterns: []string{"figma.com", "- figma", "| figma"}, Priority: 100},
-	{Name: "Canva", Patterns: []string{"canva.com", "- canva", "| canva"}, Priority: 100},
-	{Name: "Trello", Patterns: []string{"trello.com", "- trello", "| trello"}, Priority: 100},
-	{Name: "Asana", Patterns: []string{"asana.com", "- asana", "| asana"}, Priority: 100},
-	{Name: "Jira", Patterns: []string{"atlassian.net", "- jira", "| jira"}, Priority: 100},
-	{Name: "StackOverflow", Patterns: []string{"stackoverflow.com", "- stack overflow"}, Priority: 100},
-	{Name: "LeetCode", Patterns: []string{"leetcode.com", "- leetcode", "| leetcode"}, Priority: 100},
-	{Name: "HackerRank", Patterns: []string{"hackerrank.com", "- hackerrank"}, Priority: 100},
-	{Name: "Codeforces", Patterns: []string{"codeforces.com", "- codeforces"}, Priority: 100},
-	{Name: "Medium", Patterns: []string{"medium.com", "- medium", "| medium"}, Priority: 100},
-	{Name: "Dev.to", Patterns: []string{"dev.to", "- dev community"}, Priority: 100},
-	{Name: "Quora", Patterns: []string{"quora.com", "- quora", "| quora"}, Priority: 100},
-	{Name: "Pinterest", Patterns: []string{"pinterest.com", "- pinterest", "| pinterest"}, Priority: 100},
-	{Name: "Snapchat", Patterns: []string{"snapchat.com", "- snapchat"}, Priority: 100},
-	{Name: "Amazon", Patterns: []string{"amazon.in", "amazon.com", "- amazon"}, Priority: 90},
-	{Name: "Flipkart", Patterns: []string{"flipkart.com", "- flipkart"}, Priority: 100},
-	{Name: "Myntra", Patterns: []string{"myntra.com", "- myntra"}, Priority: 100},
-	{Name: "Swiggy", Patterns: []string{"swiggy.com", "- swiggy"}, Priority: 100},
-	{Name: "Zomato", Patterns: []string{"zomato.com", "- zomato"}, Priority: 100},
-	{Name: "Uber", Patterns: []string{"uber.com", "- uber"}, Priority: 100},
-	{Name: "Ola", Patterns: []string{"olacabs.com", "- ola"}, Priority: 100},
-	{Name: "ChatGPT", Patterns: []string{"chat.openai.com", "chatgpt.com", "- chatgpt"}, Priority: 100},
-	{Name: "Claude", Patterns: []string{"claude.ai", "- claude"}, Priority: 100},
-	{Name: "Google Gemini", Patterns: []string{"gemini.google.com", "- gemini"}, Priority: 100},
-	{Name: "Perplexity", Patterns: []string{"perplexity.ai", "- perplexity"}, Priority: 100},
-	{Name: "Unstop", Patterns: []string{"unstop.com", "// unstop"}, Priority: 100},
-	{Name: "Internshala", Patterns: []string{"internshala.com", "- internshala"}, Priority: 100},
-	{Name: "Naukri", Patterns: []string{"naukri.com", "- naukri"}, Priority: 100},
-	{Name: "GeeksforGeeks", Patterns: []string{"geeksforgeeks.org", "- geeksforgeeks"}, Priority: 100},
-	{Name: "W3Schools", Patterns: []string{"w3schools.com", "- w3schools"}, Priority: 100},
-	{Name: "MDN", Patterns: []string{"developer.mozilla.org", "- mdn"}, Priority: 100},
-	{Name: "VS Code", Patterns: []string{"- visual studio code", "vscode"}, Priority: 100},
-	{Name: "CodePen", Patterns: []string{"codepen.io", "- codepen"}, Priority: 100},
-	{Name: "Replit", Patterns: []string{"replit.com", "- replit"}, Priority: 100},
-	{Name: "Vercel", Patterns: []string{"vercel.com", "- vercel"}, Priority: 100},
-	{Name: "Netlify", Patterns: []string{"netlify.com", "- netlify"}, Priority: 100},
-	{Name: "AWS", Patterns: []string{"aws.amazon.com", "console.aws", "- aws"}, Priority: 100},
-	{Name: "Google Cloud", Patterns: []string{"console.cloud.google", "- google cloud"}, Priority: 100},
-	{Name: "Azure", Patterns: []string{"portal.azure.com", "- azure"}, Priority: 100},
-	{Name: "Coursera", Patterns: []string{"coursera.org", "- coursera"}, Priority: 100},
-	{Name: "Udemy", Patterns: []string{"udemy.com", "- udemy"}, Priority: 100},
-	{Name: "Khan Academy", Patterns: []string{"khanacademy.org", "- khan academy"}, Priority: 100},
-	{Name: "Wikipedia", Patterns: []string{"wikipedia.org", "- wikipedia"}, Priority: 100},
-	{Name: "Google Search", Patterns: []string{"google.com/search", "- google search"}, Priority: 90},
-	{Name: "Bing", Patterns: []string{"bing.com/search", "- bing"}, Priority: 90},
-	{Name: "DuckDuckGo", Patterns: []string{"duckduckgo.com", "- duckduckgo"}, Priority: 100},
+	{Name: "YouTube", Patterns: []string{"youtube.com", "youtu.be", "- youtube", "| youtube"}},
+	{Name: "GitHub", Patterns: []string{"github.com", "· github", "- github", "| github", "/github"}},
+	{Name: "GitLab", Patterns: []string{"gitlab.com", "- gitlab", "| gitlab"}},
+	{Name: "Instagram", Patterns: []string{"instagram.com", "- instagram", "| instagram"}},
+	{Name: "Twitter/X", Patterns: []string{"twitter.com", "/ x", "| x", "- x"}},
+	{Name: "Facebook", Patterns: []string{"facebook.com", "- facebook", "| facebook"}},
+	{Name: "Reddit", Patterns: []string{"reddit.com", "- reddit", "| reddit"}},
+	{Name: "LinkedIn", Patterns: []string{"linkedin.com", "- linkedin", "| linkedin"}},
+	{Name: "TikTok", Patterns: []string{"tiktok.com", "- tiktok", "| tiktok"}},
+	{Name: "Netflix", Patterns: []string{"netflix.com", "- netflix", "| netflix"}},
+	{Name: "Prime Video", Patterns: []string{"primevideo.com", "amazon.com/gp/video", "- prime video"}},
+	{Name: "Hotstar", Patterns: []string{"hotstar.com", "- hotstar", "disney+ hotstar"}},
+	{Name: "JioCinema", Patterns: []string{"jiocinema.com", "- jiocinema"}},
+	{Name: "Spotify", Patterns: []string{"spotify.com", "- spotify", "| spotify"}},
+	{Name: "Twitch", Patterns: []string{"twitch.tv", "- twitch", "| twitch"}},
+	{Name: "Discord", Patterns: []string{"discord.com", "- discord", "| discord"}},
+	{Name: "Slack", Patterns: []string{"slack.com", "- slack", "| slack"}},
+	{Name: "WhatsApp", Patterns: []string{"web.whatsapp.com", "- whatsapp"}},
+	{Name: "Telegram", Patterns: []string{"web.telegram.org", "- telegram"}},
+	{Name: "Gmail", Patterns: []string{"mail.google.com", "- gmail", "| gmail", "inbox -"}},
+	{Name: "Outlook", Patterns: []string{"outlook.live.com", "outlook.office.com", "- outlook"}},
+	{Name: "Google Drive", Patterns: []string{"drive.google.com", "- google drive"}},
+	{Name: "Google Docs", Patterns: []string{"docs.google.com", "- google docs"}},
+	{Name: "Google Sheets", Patterns: []string{"sheets.google.com", "- google sheets"}},
+	{Name: "Google Meet", Patterns: []string{"meet.google.com", "- google meet"}},
+	{Name: "Zoom", Patterns: []string{"zoom.us", "- zoom", "| zoom"}},
+	{Name: "Microsoft Teams", Patterns: []string{"teams.microsoft.com", "- microsoft teams", "| teams"}},
+	{Name: "Notion", Patterns: []string{"notion.so", "- notion", "| notion"}},
+	{Name: "Figma", Patterns: []string{"figma.com", "- figma", "| figma"}},
+	{Name: "Canva", Patterns: []string{"canva.com", "- canva", "| canva"}},
+	{Name: "Trello", Patterns: []string{"trello.com", "- trello", "| trello"}},
+	{Name: "Asana", Patterns: []string{"asana.com", "- asana", "| asana"}},
+	{Name: "Jira", Patterns: []string{"atlassian.net", "- jira", "| jira"}},
+	{Name: "StackOverflow", Patterns: []string{"stackoverflow.com", "- stack overflow"}},
+	{Name: "LeetCode", Patterns: []string{"leetcode.com", "- leetcode", "| leetcode"}},
+	{Name: "HackerRank", Patterns: []string{"hackerrank.com", "- hackerrank"}},
+	{Name: "Codeforces", Patterns: []string{"codeforces.com", "- codeforces"}},
+	{Name: "Medium", Patterns: []string{"medium.com", "- medium", "| medium"}},
+	{Name: "Dev.to", Patterns: []string{"dev.to", "- dev community"}},
+	{Name: "Quora", Patterns: []string{"quora.com", "- quora", "| quora"}},
+	{Name: "Pinterest", Patterns: []string{"pinterest.com", "- pinterest", "| pinterest"}},
+	{Name: "Snapchat", Patterns: []string{"snapchat.com", "- snapchat"}},
+	{Name: "Amazon", Patterns: []string{"amazon.in", "amazon.com", "- amazon"}},
+	{Name: "Flipkart", Patterns: []string{"flipkart.com", "- flipkart"}},
+	{Name: "Myntra", Patterns: []string{"myntra.com", "- myntra"}},
+	{Name: "Swiggy", Patterns: []string{"swiggy.com", "- swiggy"}},
+	{Name: "Zomato", Patterns: []string{"zomato.com", "- zomato"}},
+	{Name: "Uber", Patterns: []string{"uber.com", "- uber"}},
+	{Name: "Ola", Patterns: []string{"olacabs.com", "- ola"}},
+	{Name: "ChatGPT", Patterns: []string{"chat.openai.com", "chatgpt.com", "- chatgpt"}},
+	{Name: "Claude", Patterns: []string{"claude.ai", "- claude"}},
+	{Name: "Google Gemini", Patterns: []string{"gemini.google.com", "- gemini"}},
+	{Name: "Perplexity", Patterns: []string{"perplexity.ai", "- perplexity"}},
+	{Name: "Unstop", Patterns: []string{"unstop.com", "// unstop"}},
+	{Name: "Internshala", Patterns: []string{"internshala.com", "- internshala"}},
+	{Name: "Naukri", Patterns: []string{"naukri.com", "- naukri"}},
+	{Name: "GeeksforGeeks", Patterns: []string{"geeksforgeeks.org", "- geeksforgeeks"}},
+	{Name: "W3Schools", Patterns: []string{"w3schools.com", "- w3schools"}},
+	{Name: "MDN", Patterns: []string{"developer.mozilla.org", "- mdn"}},
+	{Name: "VS Code", Patterns: []string{"- visual studio code", "vscode"}},
+	{Name: "CodePen", Patterns: []string{"codepen.io", "- codepen"}},
+	{Name: "Replit", Patterns: []string{"replit.com", "- replit"}},
+	{Name: "Vercel", Patterns: []string{"vercel.com", "- vercel"}},
+	{Name: "Netlify", Patterns: []string{"netlify.com", "- netlify"}},
+	{Name: "AWS", Patterns: []string{"aws.amazon.com", "console.aws", "- aws"}},
+	{Name: "Google Cloud", Patterns: []string{"console.cloud.google", "- google cloud"}},
+	{Name: "Azure", Patterns: []string{"portal.azure.com", "- azure"}},
+	{Name: "Coursera", Patterns: []string{"coursera.org", "- coursera"}},
+	{Name: "Udemy", Patterns: []string{"udemy.com", "- udemy"}},
+	{Name: "Khan Academy", Patterns: []string{"khanacademy.org", "- khan academy"}},
+	{Name: "Wikipedia", Patterns: []string{"wikipedia.org", "- wikipedia"}},
+	{Name: "Google Search", Patterns: []string{"google.com/search", "- google search"}},
+	{Name: "Bing", Patterns: []string{"bing.com/search", "- bing"}},
+	{Name: "DuckDuckGo", Patterns: []string{"duckduckgo.com", "- duckduckgo"}},
 }
 
 var defaultBrowserTitles = map[string]bool{
@@ -116,22 +116,21 @@ func ExtractAppCategory(title string) string {
 		return "Browser (Idle)"
 	}
 
-	var bestMatch *appPattern
+	// x.com exact-host check before first-match loop to avoid catching
+	// unrelated domains that happen to contain the substring "x.com/".
+	if titleLower == "x.com" ||
+		strings.HasPrefix(titleLower, "x.com/") ||
+		strings.Contains(titleLower, "://x.com/") {
+		return "Twitter/X"
+	}
 
 	for i := range appPatterns {
 		app := &appPatterns[i]
 		for _, pattern := range app.Patterns {
 			if strings.Contains(titleLower, strings.ToLower(pattern)) {
-				if bestMatch == nil || app.Priority > bestMatch.Priority {
-					bestMatch = app
-				}
-				break
+				return app.Name
 			}
 		}
-	}
-
-	if bestMatch != nil {
-		return bestMatch.Name
 	}
 
 	return ""
@@ -148,40 +147,40 @@ type SubEntry struct {
 	Duration int
 }
 
-func GroupBrowserStats(stats []struct {
-	Title    string
-	Duration int
-}) []GroupedBrowserStat {
+func GroupBrowserStats(stats []storage.AppDailyStat) []GroupedBrowserStat {
 	groups := make(map[string]*GroupedBrowserStat)
 	var order []string
 
 	for _, stat := range stats {
-		category := ExtractAppCategory(stat.Title)
+		title := stat.AppName
+		duration := stat.TotalDurationSecs
+
+		category := ExtractAppCategory(title)
 
 		if category == "" {
-			category = stat.Title
+			category = title
 		}
 
 		if g, ok := groups[category]; ok {
-			g.TotalSecs += stat.Duration
-			if category != stat.Title {
-				cleanTitle := cleanTitleForDisplay(stat.Title)
+			g.TotalSecs += duration
+			if category != title {
+				cleanTitle := cleanTitleForDisplay(title)
 				g.SubEntries = append(g.SubEntries, SubEntry{
 					Title:    cleanTitle,
-					Duration: stat.Duration,
+					Duration: duration,
 				})
 			}
 		} else {
 			order = append(order, category)
 			g := &GroupedBrowserStat{
 				Category:  category,
-				TotalSecs: stat.Duration,
+				TotalSecs: duration,
 			}
-			if category != stat.Title {
-				cleanTitle := cleanTitleForDisplay(stat.Title)
+			if category != title {
+				cleanTitle := cleanTitleForDisplay(title)
 				g.SubEntries = []SubEntry{{
 					Title:    cleanTitle,
-					Duration: stat.Duration,
+					Duration: duration,
 				}}
 			}
 			groups[category] = g

@@ -7,12 +7,11 @@ import (
 	"focusd/system"
 	"focusd/ui"
 	"io"
+	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -78,16 +77,9 @@ func RunUpdate() {
 }
 
 func restartDaemon() {
-	installedExe := system.GetInstalledExePath()
-	if installedExe == "" {
-		return
+	if _, err := system.StartDaemon(); err != nil {
+		log.Printf("WARN: failed to restart daemon after update: %v", err)
 	}
-
-	cmd := exec.Command(installedExe, "--daemon")
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008,
-	}
-	cmd.Start()
 }
 
 func fetchLatestVersion() (string, error) {
@@ -128,12 +120,18 @@ func fetchChecksum(version string) (string, error) {
 		return "", err
 	}
 
-	line := strings.TrimSpace(string(body))
-	parts := strings.Fields(line)
-	if len(parts) >= 1 {
-		return strings.ToLower(parts[0]), nil
+	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+	for _, line := range lines {
+		parts := strings.Fields(strings.TrimSpace(line))
+		if len(parts) >= 2 {
+			// Normalize: strip leading `*` or `./` as some tools emit them.
+			filename := strings.TrimPrefix(strings.TrimPrefix(parts[1], "*"), "./")
+			if strings.EqualFold(filename, "focusd.exe") {
+				return strings.ToLower(parts[0]), nil
+			}
+		}
 	}
-	return "", fmt.Errorf("invalid checksum format")
+	return "", fmt.Errorf("focusd.exe checksum not found in checksums.txt")
 }
 
 func calculateFileHash(filePath string) (string, error) {

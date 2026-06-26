@@ -26,13 +26,6 @@ func GetInstalledExePath() string {
 	return filepath.Join(installDir, "focusd.exe")
 }
 
-func GetLauncherPath() string {
-	installDir := GetInstallDir()
-	if installDir == "" {
-		return ""
-	}
-	return filepath.Join(installDir, "FocusDaemon.vbs")
-}
 
 func InstallExes() error {
 
@@ -61,34 +54,18 @@ func InstallExes() error {
 		return fmt.Errorf("failed to install focusd.exe: %w", err)
 	}
 
-	vbsContent := fmt.Sprintf(`Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """%s"" --daemon", 0, False
-`, dest)
-
-	vbsPath := filepath.Join(installDir, "FocusDaemon.vbs")
-	if err := os.WriteFile(vbsPath, []byte(vbsContent), 0644); err != nil {
-		return fmt.Errorf("failed to create VBS launcher: %w", err)
-	}
-
 	return nil
 }
 
 func installFile(src, dst string) error {
-
 	if _, err := os.Stat(dst); err == nil {
 		oldPath := dst + ".old"
-
 		os.Remove(oldPath)
-
 		if err := os.Rename(dst, oldPath); err != nil {
-
 			return fmt.Errorf("failed to move existing file %s to %s (is it locked?): %w", dst, oldPath, err)
 		}
 	}
-	return copyFile(src, dst)
-}
 
-func copyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -101,10 +78,8 @@ func copyFile(src, dst string) error {
 	}
 	defer dstFile.Close()
 
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return err
-	}
-	return nil
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }
 
 func CleanupOldBinary() {
@@ -125,25 +100,5 @@ func IsInstalled() bool {
 		return false
 	}
 	_, err := os.Stat(exePath)
-	if err != nil {
-		return false
-	}
-	launcherPath := GetLauncherPath()
-	if launcherPath == "" {
-		return false
-	}
-	_, err = os.Stat(launcherPath)
 	return err == nil
-}
-
-func UninstallExe() error {
-	exePath := GetInstalledExePath()
-	if exePath != "" {
-		os.Remove(exePath)
-	}
-	launcherPath := GetLauncherPath()
-	if launcherPath != "" {
-		os.Remove(launcherPath)
-	}
-	return nil
 }

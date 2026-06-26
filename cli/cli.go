@@ -16,9 +16,7 @@ func PrintHelp() {
 	fmt.Println("  focusd stop               Stop tracking")
 	fmt.Println()
 	fmt.Println("Setup:")
-	fmt.Println("  focusd init      (i)      Initialize and grant consent")
 	fmt.Println("  focusd update             Check for updates")
-	fmt.Println("  focusd uninstall          Remove focusd completely")
 	fmt.Println()
 	fmt.Println("Viewing Data:")
 	fmt.Println("  focusd status    (s)      Show tracking status")
@@ -57,8 +55,6 @@ func Run(args []string) {
 	command := args[1]
 
 	switch command {
-	case "init", "i":
-		RunInit()
 	case "update":
 		RunUpdate()
 	case "focus":
@@ -91,8 +87,6 @@ func Run(args []string) {
 		HandleBrowsersCommand(args)
 	case "export", "e":
 		RunExport()
-	case "uninstall":
-		RunUninstall()
 	case "help", "-h", "--help", "h":
 		PrintHelp()
 	case "version", "-v", "--version":

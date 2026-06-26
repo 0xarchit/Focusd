@@ -16,11 +16,7 @@ func RunAutostartEnable() {
 	defer storage.Close()
 
 	if err := EnableAutostartLogic(); err != nil {
-		if err.Error() == "not initialized" {
-			ui.PrintError("focusd is not initialized. Run 'focusd init' first.")
-		} else {
-			ui.PrintError(err.Error())
-		}
+		ui.PrintError(err.Error())
 		os.Exit(1)
 	}
 }

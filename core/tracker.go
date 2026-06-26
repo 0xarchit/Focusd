@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"focusd/storage"
 	"focusd/system"
+	"log"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -12,6 +14,31 @@ import (
 	"syscall"
 	"time"
 )
+
+// IPCAddress is the single source of truth for the tracker's IPC endpoint.
+const IPCAddress = "127.0.0.1:48321"
+
+// SendIPCCmd sends a command to the running daemon via the IPC socket and returns if it succeeded.
+func SendIPCCmd(cmd string) bool {
+	conn, err := net.DialTimeout("tcp", IPCAddress, 1*time.Second)
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(1 * time.Second)); err != nil {
+		return false
+	}
+
+	_, err = conn.Write([]byte(cmd))
+	if err != nil {
+		return false
+	}
+
+	buf := make([]byte, 16)
+	n, err := conn.Read(buf)
+	return err == nil && string(buf[:n]) == "ok"
+}
 
 type ActiveSession struct {
 	AppName     string
@@ -33,9 +60,10 @@ type Tracker struct {
 
 func NewTracker() *Tracker {
 	ctx, cancel := context.WithCancel(context.Background())
+	pollSeconds := storage.GetTrackingIntervalSeconds()
 	return &Tracker{
-		pollInterval:  1 * time.Second,
-		batchInterval: 10 * time.Second,
+		pollInterval:  time.Duration(pollSeconds) * time.Second,
+		batchInterval: 5 * time.Minute,
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -52,9 +80,11 @@ func (t *Tracker) Start() {
 
 	t.recoverOrphanedSession()
 
+	go t.startIPCOnport()
+
 	pollTicker := time.NewTicker(t.pollInterval)
 	batchTicker := time.NewTicker(t.batchInterval)
-	persistTicker := time.NewTicker(30 * time.Second)
+	persistTicker := time.NewTicker(5 * time.Minute)
 	retentionTicker := time.NewTicker(1 * time.Hour)
 	focusTicker := time.NewTicker(5 * time.Second)
 	defer pollTicker.Stop()
@@ -129,9 +159,19 @@ func (t *Tracker) Start() {
 			stateMu.Unlock()
 
 			limits := system.GetAppTimeLimits()
-			if len(limits) > 0 && t.currentSession != nil {
-				currentExe := strings.ToLower(t.currentSession.ExeName)
-				currentAppName := t.currentSession.AppName
+
+			// P1: snapshot currentSession under the tracker mutex to avoid data race.
+			t.mu.Lock()
+			var sessionExe, sessionAppName string
+			if t.currentSession != nil {
+				sessionExe = strings.ToLower(t.currentSession.ExeName)
+				sessionAppName = t.currentSession.AppName
+			}
+			t.mu.Unlock()
+
+			if len(limits) > 0 && sessionExe != "" {
+				currentExe := sessionExe
+				currentAppName := sessionAppName
 
 				if currentExe != prevSessionApp {
 					prevSessionApp = currentExe
@@ -170,8 +210,13 @@ func (t *Tracker) recoverOrphanedSession() {
 	if err != nil || recovered == nil {
 		return
 	}
-	storage.InsertSession(recovered)
-	storage.UpdateAppDaily(recovered.Date, recovered.AppName, recovered.ExeName, recovered.DurationSecs)
+	// P5: log errors from recovering orphaned sessions so they don't disappear silently.
+	if err := storage.InsertSession(recovered); err != nil {
+		log.Printf("ERROR: failed to recover orphaned session (insert): %v", err)
+	}
+	if err := storage.UpdateAppDaily(recovered.Date, recovered.AppName, recovered.ExeName, recovered.DurationSecs); err != nil {
+		log.Printf("ERROR: failed to recover orphaned session (daily): %v", err)
+	}
 }
 
 func (t *Tracker) persistActiveSession() {
@@ -271,49 +316,56 @@ func (t *Tracker) flushPendingSessions() {
 	t.mu.Unlock()
 
 	for _, s := range sessions {
-		storage.InsertSession(s)
-		storage.UpdateAppDaily(s.Date, s.AppName, s.ExeName, s.DurationSecs)
+		if err := storage.InsertSession(s); err != nil {
+			log.Printf("ERROR: failed to insert session: %v", err)
+			continue // skip aggregate update to avoid inconsistent state
+		}
+		if err := storage.UpdateAppDaily(s.Date, s.AppName, s.ExeName, s.DurationSecs); err != nil {
+			log.Printf("ERROR: failed to update app daily stats: %v", err)
+		}
 
-		if IsBrowser(s.ExeName) {
+		if storage.IsBrowser(s.ExeName) {
 			cleanTitle := CleanWindowTitle(s.WindowTitle, s.ExeName)
-			storage.UpdateBrowserDaily(s.Date, cleanTitle, s.DurationSecs)
+			if err := storage.UpdateBrowserDaily(s.Date, cleanTitle, s.DurationSecs); err != nil {
+				log.Printf("ERROR: failed to update browser daily stats: %v", err)
+			}
 		}
 	}
+}
+
+var nameMap = map[string]string{
+	"code":            "VS Code",
+	"Code":            "VS Code",
+	"devenv":          "Visual Studio",
+	"idea64":          "IntelliJ IDEA",
+	"pycharm64":       "PyCharm",
+	"webstorm64":      "WebStorm",
+	"goland64":        "GoLand",
+	"rider64":         "Rider",
+	"notepad++":       "Notepad++",
+	"sublime_text":    "Sublime Text",
+	"atom":            "Atom",
+	"explorer":        "File Explorer",
+	"Discord":         "Discord",
+	"Spotify":         "Spotify",
+	"slack":           "Slack",
+	"Teams":           "Microsoft Teams",
+	"Zoom":            "Zoom",
+	"WINWORD":         "Microsoft Word",
+	"EXCEL":           "Microsoft Excel",
+	"POWERPNT":        "PowerPoint",
+	"OUTLOOK":         "Outlook",
+	"Terminal":        "Windows Terminal",
+	"WindowsTerminal": "Windows Terminal",
+	"cmd":             "Command Prompt",
+	"powershell":      "PowerShell",
+	"pwsh":            "PowerShell",
+	"wt":              "Windows Terminal",
 }
 
 func getAppName(exeName string) string {
 	name := strings.TrimSuffix(exeName, ".exe")
 	name = strings.TrimSuffix(name, ".EXE")
-
-	nameMap := map[string]string{
-		"code":            "VS Code",
-		"Code":            "VS Code",
-		"devenv":          "Visual Studio",
-		"idea64":          "IntelliJ IDEA",
-		"pycharm64":       "PyCharm",
-		"webstorm64":      "WebStorm",
-		"goland64":        "GoLand",
-		"rider64":         "Rider",
-		"notepad++":       "Notepad++",
-		"sublime_text":    "Sublime Text",
-		"atom":            "Atom",
-		"explorer":        "File Explorer",
-		"Discord":         "Discord",
-		"Spotify":         "Spotify",
-		"slack":           "Slack",
-		"Teams":           "Microsoft Teams",
-		"Zoom":            "Zoom",
-		"WINWORD":         "Microsoft Word",
-		"EXCEL":           "Microsoft Excel",
-		"POWERPNT":        "PowerPoint",
-		"OUTLOOK":         "Outlook",
-		"Terminal":        "Windows Terminal",
-		"WindowsTerminal": "Windows Terminal",
-		"cmd":             "Command Prompt",
-		"powershell":      "PowerShell",
-		"pwsh":            "PowerShell",
-		"wt":              "Windows Terminal",
-	}
 
 	if mapped, ok := nameMap[name]; ok {
 		return mapped
@@ -329,3 +381,56 @@ func getAppName(exeName string) string {
 
 	return name
 }
+
+func (t *Tracker) startIPCOnport() {
+	listener, err := net.Listen("tcp", IPCAddress)
+	if err != nil {
+		log.Printf("ERROR: IPC listener failed to bind on %s: %v", IPCAddress, err)
+		return
+	}
+	defer listener.Close()
+
+	go func() {
+		<-t.ctx.Done()
+		listener.Close()
+	}()
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			select {
+			case <-t.ctx.Done():
+				return
+			default:
+				continue
+			}
+		}
+		go t.handleIPCConnection(conn)
+	}
+}
+
+func (t *Tracker) handleIPCConnection(conn net.Conn) {
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil {
+		log.Printf("WARN: IPC connection read failed: %v", err)
+		return
+	}
+
+	cmd := string(buf[:n])
+	switch cmd {
+	case "stop":
+		conn.Write([]byte("ok"))
+		t.Stop()
+	case "flush":
+		t.flushCurrentSession()
+		t.flushPendingSessions()
+		t.persistActiveSession()
+		conn.Write([]byte("ok"))
+	default:
+		log.Printf("WARN: Unknown IPC command received: %q", cmd)
+	}
+}
+

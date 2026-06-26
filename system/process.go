@@ -73,18 +73,6 @@ func processName(pe *PROCESSENTRY32W) string {
 	return syscall.UTF16ToString(pe.ExeFile[:])
 }
 
-func IsProcessRunning(name string) bool {
-	found := false
-	iterateProcesses(func(pe *PROCESSENTRY32W) bool {
-		if strings.EqualFold(processName(pe), name) {
-			found = true
-			return false
-		}
-		return true
-	})
-	return found
-}
-
 func GetProcessCount(name string) int {
 	count := 0
 	iterateProcesses(func(pe *PROCESSENTRY32W) bool {
@@ -94,18 +82,6 @@ func GetProcessCount(name string) int {
 		return true
 	})
 	return count
-}
-
-func GetPIDByName(name string) (uint32, error) {
-	var pid uint32
-	iterateProcesses(func(pe *PROCESSENTRY32W) bool {
-		if strings.EqualFold(processName(pe), name) {
-			pid = pe.ProcessID
-			return false
-		}
-		return true
-	})
-	return pid, nil
 }
 
 func terminateProcessByPID(pid uint32) error {
@@ -147,8 +123,4 @@ func KillOtherInstances(name string) error {
 		return true
 	})
 	return lastErr
-}
-
-func getMyPID() int {
-	return os.Getpid()
 }

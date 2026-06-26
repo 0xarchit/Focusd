@@ -12,9 +12,20 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
-    
+
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        persist-credentials: false
+
+    - name: Validate tag format
+      shell: bash
+      run: |
+        TAG="${GITHUB_REF_NAME}"
+        if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "ERROR: Tag '$TAG' does not match expected format vX.Y.Z"
+          exit 1
+        fi
 
     - name: Set Version
       id: set_version
@@ -44,28 +55,38 @@ jobs:
         "EOF" >> $env:GITHUB_ENV
 
     - name: Setup Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
       with:
-        go-version: '1.21'
+        go-version: '1.24'
+        cache: false
+
+    - name: Install NSIS
+      run: choco install nsis -y
 
     - name: Build
       env:
         CGO_ENABLED: 0
       run: |
-        go build -ldflags="-s -w -X 'focusd/system.Version=${{ env.VERSION }}'" -trimpath -o focusd.exe ./cmd/focusd
+        go build -ldflags="-s -w -H=windowsgui -X 'focusd/system.Version=${{ env.VERSION }}'" -trimpath -o focusd.exe ./cmd/focusd
+
+    - name: Build NSIS Installer
+      run: |
+        makensis /DVERSION=${{ env.VERSION }} installer.nsi
 
     - name: Generate Checksum
       shell: powershell
       run: |
-        $hash = (Get-FileHash -Path focusd.exe -Algorithm SHA256).Hash.ToLower()
-        "$hash  focusd.exe" | Out-File -FilePath checksums.txt -Encoding ASCII
+        $hashSetup = (Get-FileHash -Path focusd_setup.exe -Algorithm SHA256).Hash.ToLower()
+        $hashExe = (Get-FileHash -Path focusd.exe -Algorithm SHA256).Hash.ToLower()
+        "$hashSetup  focusd_setup.exe`n$hashExe  focusd.exe" | Out-File -FilePath checksums.txt -Encoding ASCII
 
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@da05d552573ad5aba039f9b999b2abb5f1a17c1a # v2.2.2
       with:
         name: focusd v${{ env.VERSION }}
         body: ${{ env.RELEASE_NOTES }}
         files: |
           focusd.exe
+          focusd_setup.exe
           checksums.txt
         token: ${{ secrets.GIT_TOKEN }}

@@ -2,9 +2,11 @@ package system
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type UserConfig struct {
@@ -15,9 +17,13 @@ type UserConfig struct {
 	PomodoroMinutes       int            `json:"pomodoro_minutes"`
 	Password              string         `json:"password"`
 	SnoozeDurationMinutes int            `json:"snooze_duration_minutes"`
+	SmartGroupingEnabled  bool           `json:"smart_grouping_enabled"`
 }
 
-var userConfig *UserConfig
+var (
+	userConfig *UserConfig
+	configMu   sync.RWMutex
+)
 
 func getUserConfigPath() (string, error) {
 	appData := os.Getenv("APPDATA")
@@ -27,13 +33,8 @@ func getUserConfigPath() (string, error) {
 	return filepath.Join(appData, "focusd", "config.json"), nil
 }
 
-func loadUserConfig() *UserConfig {
-	if userConfig != nil {
-		return userConfig
-	}
-
-	userConfig = &UserConfig{
-
+func defaultUserConfig() *UserConfig {
+	return &UserConfig{
 		WhitelistApps:         []string{},
 		BreakReminderEnabled:  false,
 		BreakReminderMinutes:  60,
@@ -41,36 +42,67 @@ func loadUserConfig() *UserConfig {
 		PomodoroMinutes:       25,
 		Password:              "",
 		SnoozeDurationMinutes: 60,
+		SmartGroupingEnabled:  true,
 	}
+}
 
-	configPath, err := getUserConfigPath()
-	if err != nil || configPath == "" {
-		return userConfig
+func ensureLoaded() {
+	configMu.RLock()
+	if userConfig != nil {
+		configMu.RUnlock()
+		return
 	}
+	configMu.RUnlock()
 
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return userConfig
+	configMu.Lock()
+	defer configMu.Unlock()
+	if userConfig == nil {
+		userConfig = defaultUserConfig()
+
+		configPath, err := getUserConfigPath()
+		if err == nil && configPath != "" {
+			data, err := os.ReadFile(configPath)
+			if err == nil {
+				if err := json.Unmarshal(data, userConfig); err != nil {
+					log.Printf("WARN: failed to parse user config %s: %v", configPath, err)
+				}
+			}
+		}
+		if userConfig.AppTimeLimits == nil {
+			userConfig.AppTimeLimits = make(map[string]int)
+		}
 	}
+}
 
-	json.Unmarshal(data, userConfig)
-	if userConfig.AppTimeLimits == nil {
-		userConfig.AppTimeLimits = make(map[string]int)
+func loadUserConfigLocked() *UserConfig {
+	if userConfig == nil {
+		userConfig = defaultUserConfig()
+
+		configPath, err := getUserConfigPath()
+		if err == nil && configPath != "" {
+			data, err := os.ReadFile(configPath)
+			if err == nil {
+				if err := json.Unmarshal(data, userConfig); err != nil {
+					log.Printf("WARN: failed to parse user config %s: %v", configPath, err)
+				}
+			}
+		}
+		if userConfig.AppTimeLimits == nil {
+			userConfig.AppTimeLimits = make(map[string]int)
+		}
 	}
 	return userConfig
 }
 
 func SaveUserConfig() error {
-	if userConfig == nil {
-		userConfig = &UserConfig{
+	configMu.Lock()
+	defer configMu.Unlock()
+	return saveUserConfigLocked()
+}
 
-			WhitelistApps:        []string{},
-			BreakReminderEnabled: false,
-			BreakReminderMinutes: 60,
-			AppTimeLimits:        make(map[string]int),
-			PomodoroMinutes:      25,
-			Password:             "",
-		}
+func saveUserConfigLocked() error {
+	if userConfig == nil {
+		userConfig = defaultUserConfig()
 	}
 
 	configPath, err := getUserConfigPath()
@@ -95,12 +127,22 @@ func SaveUserConfig() error {
 }
 
 func GetWhitelistApps() []string {
-	config := loadUserConfig()
-	return config.WhitelistApps
+	ensureLoaded()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	config := userConfig
+	if config.WhitelistApps == nil {
+		return nil
+	}
+	cloned := make([]string, len(config.WhitelistApps))
+	copy(cloned, config.WhitelistApps)
+	return cloned
 }
 
 func AddWhitelistApp(exeName string) error {
-	config := loadUserConfig()
+	configMu.Lock()
+	defer configMu.Unlock()
+	config := loadUserConfigLocked()
 
 	exeName = strings.ToLower(strings.TrimSpace(exeName))
 	if exeName == "" {
@@ -118,11 +160,13 @@ func AddWhitelistApp(exeName string) error {
 	}
 
 	config.WhitelistApps = append(config.WhitelistApps, exeName)
-	return SaveUserConfig()
+	return saveUserConfigLocked()
 }
 
 func RemoveWhitelistApp(exeName string) error {
-	config := loadUserConfig()
+	configMu.Lock()
+	defer configMu.Unlock()
+	config := loadUserConfigLocked()
 
 	var updated []string
 	for _, a := range config.WhitelistApps {
@@ -131,11 +175,14 @@ func RemoveWhitelistApp(exeName string) error {
 		}
 	}
 	config.WhitelistApps = updated
-	return SaveUserConfig()
+	return saveUserConfigLocked()
 }
 
 func IsWhitelisted(exeName string) bool {
-	config := loadUserConfig()
+	ensureLoaded()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	config := userConfig
 
 	exeName = strings.ToLower(exeName)
 	for _, a := range config.WhitelistApps {
@@ -147,16 +194,24 @@ func IsWhitelisted(exeName string) bool {
 }
 
 func ReloadUserConfig() {
+	configMu.Lock()
+	defer configMu.Unlock()
 	userConfig = nil
-	loadUserConfig()
+	loadUserConfigLocked()
 }
 
 func GetBreakReminderEnabled() bool {
-	return loadUserConfig().BreakReminderEnabled
+	ensureLoaded()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return userConfig.BreakReminderEnabled
 }
 
 func GetBreakReminderMinutes() int {
-	mins := loadUserConfig().BreakReminderMinutes
+	ensureLoaded()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	mins := userConfig.BreakReminderMinutes
 	if mins < 1 {
 		return 60
 	}
@@ -164,20 +219,35 @@ func GetBreakReminderMinutes() int {
 }
 
 func SetBreakReminder(enabled bool, minutes int) error {
-	config := loadUserConfig()
+	configMu.Lock()
+	defer configMu.Unlock()
+	config := loadUserConfigLocked()
 	config.BreakReminderEnabled = enabled
 	if minutes > 0 {
 		config.BreakReminderMinutes = minutes
 	}
-	return SaveUserConfig()
+	return saveUserConfigLocked()
 }
 
 func GetAppTimeLimits() map[string]int {
-	return loadUserConfig().AppTimeLimits
+	ensureLoaded()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	config := userConfig
+	if config.AppTimeLimits == nil {
+		return nil
+	}
+	cloned := make(map[string]int, len(config.AppTimeLimits))
+	for k, v := range config.AppTimeLimits {
+		cloned[k] = v
+	}
+	return cloned
 }
 
 func SetAppTimeLimit(exeName string, minutes int) error {
-	config := loadUserConfig()
+	configMu.Lock()
+	defer configMu.Unlock()
+	config := loadUserConfigLocked()
 	exeName = strings.ToLower(strings.TrimSpace(exeName))
 	if !strings.HasSuffix(exeName, ".exe") {
 		exeName += ".exe"
@@ -187,18 +257,23 @@ func SetAppTimeLimit(exeName string, minutes int) error {
 	} else {
 		config.AppTimeLimits[exeName] = minutes
 	}
-	return SaveUserConfig()
+	return saveUserConfigLocked()
 }
 
 func RemoveAppTimeLimit(exeName string) error {
-	config := loadUserConfig()
+	configMu.Lock()
+	defer configMu.Unlock()
+	config := loadUserConfigLocked()
 	exeName = strings.ToLower(strings.TrimSpace(exeName))
 	delete(config.AppTimeLimits, exeName)
-	return SaveUserConfig()
+	return saveUserConfigLocked()
 }
 
 func GetPomodoroMinutes() int {
-	mins := loadUserConfig().PomodoroMinutes
+	ensureLoaded()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	mins := userConfig.PomodoroMinutes
 	if mins < 1 {
 		return 25
 	}
@@ -206,37 +281,55 @@ func GetPomodoroMinutes() int {
 }
 
 func SetPomodoroMinutes(minutes int) error {
-	config := loadUserConfig()
+	configMu.Lock()
+	defer configMu.Unlock()
+	config := loadUserConfigLocked()
 	config.PomodoroMinutes = minutes
-	return SaveUserConfig()
+	return saveUserConfigLocked()
 }
 
 func GetPassword() string {
-	return loadUserConfig().Password
+	ensureLoaded()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return userConfig.Password
 }
 
 func SetPassword(password string) error {
-	config := loadUserConfig()
+	configMu.Lock()
+	defer configMu.Unlock()
+	config := loadUserConfigLocked()
 	config.Password = password
-	return SaveUserConfig()
+	return saveUserConfigLocked()
 }
 
 func IsPasswordEnabled() bool {
-	return loadUserConfig().Password != ""
+	ensureLoaded()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return userConfig.Password != ""
 }
 
 func CheckPassword(input string) bool {
-	return loadUserConfig().Password == input
+	ensureLoaded()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return userConfig.Password == input
 }
 
 func ClearPassword() error {
-	config := loadUserConfig()
+	configMu.Lock()
+	defer configMu.Unlock()
+	config := loadUserConfigLocked()
 	config.Password = ""
-	return SaveUserConfig()
+	return saveUserConfigLocked()
 }
 
 func GetSnoozeDurationMinutes() int {
-	mins := loadUserConfig().SnoozeDurationMinutes
+	ensureLoaded()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	mins := userConfig.SnoozeDurationMinutes
 	if mins < 1 {
 		return 60
 	}
@@ -244,7 +337,25 @@ func GetSnoozeDurationMinutes() int {
 }
 
 func SetSnoozeDurationMinutes(minutes int) error {
-	config := loadUserConfig()
+	configMu.Lock()
+	defer configMu.Unlock()
+	config := loadUserConfigLocked()
 	config.SnoozeDurationMinutes = minutes
-	return SaveUserConfig()
+	return saveUserConfigLocked()
 }
+
+func GetSmartGroupingEnabled() bool {
+	ensureLoaded()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return userConfig.SmartGroupingEnabled
+}
+
+func SetSmartGroupingEnabled(enabled bool) error {
+	configMu.Lock()
+	defer configMu.Unlock()
+	config := loadUserConfigLocked()
+	config.SmartGroupingEnabled = enabled
+	return saveUserConfigLocked()
+}
+

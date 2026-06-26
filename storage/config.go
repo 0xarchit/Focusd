@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"strconv"
 	"time"
 )
 
@@ -11,10 +12,25 @@ const (
 	ConfigKeyAutostart        = "autostart_enabled"
 	ConfigKeyPathEnabled      = "path_enabled"
 	ConfigKeyPaused           = "tracking_paused"
+	ConfigKeyTrackingInterval = "tracking_interval_seconds"
+	ConfigKeyIdleThreshold    = "idle_threshold_seconds"
+	ConfigKeyWarningThreshold = "warning_threshold_percent"
 
 	DefaultRetentionDays = 7
 	MaxRetentionDays     = 30
 	MinRetentionDays     = 1
+
+	DefaultTrackingIntervalSeconds = 5
+	MinTrackingIntervalSeconds     = 1
+	MaxTrackingIntervalSeconds     = 60
+
+	DefaultIdleThresholdSeconds = 60
+	MinIdleThresholdSeconds     = 15
+	MaxIdleThresholdSeconds     = 600
+
+	DefaultWarningThresholdPercent = 80
+	MinWarningThresholdPercent     = 50
+	MaxWarningThresholdPercent     = 100
 )
 
 func GetConfig(key string) (string, error) {
@@ -39,23 +55,21 @@ func DeleteConfig(key string) error {
 	return err
 }
 
+func getBoolConfig(key string) bool {
+	value, err := GetConfig(key)
+	return err == nil && value == "true"
+}
+
+func setBoolConfig(key string, val bool) error {
+	return SetConfig(key, strconv.FormatBool(val))
+}
+
 func IsConsentGranted() bool {
-	value, err := GetConfig(ConfigKeyConsent)
-	if err != nil {
-		return false
-	}
-	return value == "true"
+	return true
 }
 
 func SetConsent(granted bool) error {
-	value := "false"
-	if granted {
-		value = "true"
-	}
-	if err := SetConfig(ConfigKeyConsent, value); err != nil {
-		return err
-	}
-	return SetConfig(ConfigKeyConsentTimestamp, time.Now().Format(time.RFC3339))
+	return nil
 }
 
 func GetRetentionDays() int {
@@ -63,16 +77,8 @@ func GetRetentionDays() int {
 	if err != nil {
 		return DefaultRetentionDays
 	}
-	var days int
-	if _, err := time.ParseDuration(value + "h"); err == nil {
-		return DefaultRetentionDays
-	}
-	if n, err := parseInt(value); err == nil {
-		days = n
-	} else {
-		return DefaultRetentionDays
-	}
-	if days < MinRetentionDays || days > MaxRetentionDays {
+	days, err := strconv.Atoi(value)
+	if err != nil || days < MinRetentionDays || days > MaxRetentionDays {
 		return DefaultRetentionDays
 	}
 	return days
@@ -85,44 +91,79 @@ func SetRetentionDays(days int) error {
 	if days > MaxRetentionDays {
 		days = MaxRetentionDays
 	}
-	return SetConfig(ConfigKeyRetentionDays, intToStr(days))
+	return SetConfig(ConfigKeyRetentionDays, strconv.Itoa(days))
 }
 
 func IsPaused() bool {
-	value, err := GetConfig(ConfigKeyPaused)
-	if err != nil {
-		return false
-	}
-	return value == "true"
+	return getBoolConfig(ConfigKeyPaused)
 }
 
 func SetPaused(paused bool) error {
-	value := "false"
-	if paused {
-		value = "true"
-	}
-	return SetConfig(ConfigKeyPaused, value)
+	return setBoolConfig(ConfigKeyPaused, paused)
 }
 
-func parseInt(s string) (int, error) {
-	var n int
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, nil
-		}
-		n = n*10 + int(c-'0')
+func GetTrackingIntervalSeconds() int {
+	value, err := GetConfig(ConfigKeyTrackingInterval)
+	if err != nil {
+		return DefaultTrackingIntervalSeconds
 	}
-	return n, nil
+	seconds, err := strconv.Atoi(value)
+	if err != nil || seconds < MinTrackingIntervalSeconds || seconds > MaxTrackingIntervalSeconds {
+		return DefaultTrackingIntervalSeconds
+	}
+	return seconds
 }
 
-func intToStr(n int) string {
-	if n == 0 {
-		return "0"
+func SetTrackingIntervalSeconds(seconds int) error {
+	if seconds < MinTrackingIntervalSeconds {
+		seconds = MinTrackingIntervalSeconds
 	}
-	var digits []byte
-	for n > 0 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-		n /= 10
+	if seconds > MaxTrackingIntervalSeconds {
+		seconds = MaxTrackingIntervalSeconds
 	}
-	return string(digits)
+	return SetConfig(ConfigKeyTrackingInterval, strconv.Itoa(seconds))
+}
+
+func GetIdleThresholdSeconds() int {
+	value, err := GetConfig(ConfigKeyIdleThreshold)
+	if err != nil {
+		return DefaultIdleThresholdSeconds
+	}
+	seconds, err := strconv.Atoi(value)
+	if err != nil || seconds < MinIdleThresholdSeconds || seconds > MaxIdleThresholdSeconds {
+		return DefaultIdleThresholdSeconds
+	}
+	return seconds
+}
+
+func SetIdleThresholdSeconds(seconds int) error {
+	if seconds < MinIdleThresholdSeconds {
+		seconds = MinIdleThresholdSeconds
+	}
+	if seconds > MaxIdleThresholdSeconds {
+		seconds = MaxIdleThresholdSeconds
+	}
+	return SetConfig(ConfigKeyIdleThreshold, strconv.Itoa(seconds))
+}
+
+func GetWarningThresholdPercent() int {
+	value, err := GetConfig(ConfigKeyWarningThreshold)
+	if err != nil {
+		return DefaultWarningThresholdPercent
+	}
+	pct, err := strconv.Atoi(value)
+	if err != nil || pct < MinWarningThresholdPercent || pct > MaxWarningThresholdPercent {
+		return DefaultWarningThresholdPercent
+	}
+	return pct
+}
+
+func SetWarningThresholdPercent(pct int) error {
+	if pct < MinWarningThresholdPercent {
+		pct = MinWarningThresholdPercent
+	}
+	if pct > MaxWarningThresholdPercent {
+		pct = MaxWarningThresholdPercent
+	}
+	return SetConfig(ConfigKeyWarningThreshold, strconv.Itoa(pct))
 }

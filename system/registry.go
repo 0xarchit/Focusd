@@ -47,11 +47,6 @@ func GetAutoStartEnabled() (bool, string, error) {
 }
 
 func EnableAutoStart() error {
-	launcherPath := GetLauncherPath()
-	if launcherPath == "" {
-		return fmt.Errorf("install directory not available")
-	}
-
 	if err := InstallExes(); err != nil {
 		return fmt.Errorf("failed to install: %w", err)
 	}
@@ -66,12 +61,12 @@ func EnableAutoStart() error {
 	psScript := fmt.Sprintf(`
 		$WshShell = New-Object -ComObject WScript.Shell
 		$Shortcut = $WshShell.CreateShortcut("%s")
-		$Shortcut.TargetPath = "wscript.exe"
-		$Shortcut.Arguments = """%s"""
+		$Shortcut.TargetPath = "%s"
+		$Shortcut.Arguments = "--daemon"
 		$Shortcut.IconLocation = "%s,0"
 		$Shortcut.Description = "Focus Daemon Background Process"
 		$Shortcut.Save()
-	`, linkPath, launcherPath, exePath)
+	`, linkPath, exePath, exePath)
 
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -217,10 +212,4 @@ func DisablePath() error {
 	}
 
 	return key.SetStringValue("Path", newPath)
-}
-
-func CleanupRegistry() error {
-	DisableAutoStart()
-	DisablePath()
-	return nil
 }

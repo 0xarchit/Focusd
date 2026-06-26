@@ -6,6 +6,7 @@ import (
 	"focusd/core"
 	"focusd/storage"
 	"focusd/system"
+	"focusd/tui"
 	"focusd/ui"
 	"os"
 	"os/exec"
@@ -16,125 +17,33 @@ import (
 func RunInteractiveMenu() {
 	if err := storage.Init(); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
-		fmt.Println("\nPress Enter to exit...")
-		bufio.NewReader(os.Stdin).ReadBytes('\n')
 		os.Exit(1)
 	}
 	defer storage.Close()
 
-	reader := bufio.NewReader(os.Stdin)
-
 	if system.IsPasswordEnabled() {
-		ui.ClearScreen()
-		fmt.Println()
-		fmt.Println("╔══════════════════════════════════════════════════════════╗")
-		fmt.Println("║                    Password Required                     ║")
-		fmt.Println("╚══════════════════════════════════════════════════════════╝")
-		fmt.Println()
+		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Enter password: ")
 		pwd, _ := reader.ReadString('\n')
 		pwd = strings.TrimSpace(pwd)
 		if !system.CheckPassword(pwd) {
 			ui.PrintError("Incorrect password!")
-			fmt.Println("\nPress Enter to exit...")
-			reader.ReadString('\n')
 			return
 		}
 	}
 
 	core.CheckPomodoroAndNotify()
+	
+	if !RequestDaemonFlush() {
+		ui.PrintWarn("Failed to flush daemon. Stale data may be displayed.")
+	}
 
-	for {
-		ui.ClearScreen()
-		printMenuHeader()
-		printCurrentStatus()
-		printMenuOptions()
-
-		fmt.Print("\nEnter choice (0-13): ")
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
-
-		switch input {
-		case "1":
-			handleMenuStart(reader)
-		case "2":
-			handleMenuStop(reader)
-		case "3":
-			handleMenuStatus(reader)
-		case "4":
-			handleMenuStats(reader)
-		case "5":
-			handleMenuPause(reader)
-		case "6":
-			handleMenuResume(reader)
-		case "7":
-			handleFocusTools(reader)
-		case "8":
-			handleMenuExport(reader)
-		case "9":
-			handleMenuCustomize(reader)
-		case "10":
-			handleMenuSettings(reader)
-		case "11":
-			handleMenuUninstall(reader)
-		case "12":
-			handleMenuUpdate(reader)
-		case "13":
-			handleStarOnGitHub()
-		case "0":
-			fmt.Println("\nGoodbye!")
-			return
-		default:
-			fmt.Println("\n[ERROR] Invalid choice. Press Enter to continue...")
-			reader.ReadString('\n')
-		}
+	if err := tui.StartTUI(); err != nil {
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
 }
 
-func printMenuHeader() {
-	ui.PrintMenuHeader()
-	fmt.Printf("   Version: %s%s%s\n", ui.Cyan, system.Version, ui.Reset)
-}
-
-func printCurrentStatus() {
-	ui.PrintSectionHeader("Status")
-
-	if !storage.IsConsentGranted() {
-		ui.PrintWarn("Not initialized - Go to Settings > Initialize")
-		fmt.Println()
-		return
-	}
-
-	isRunning := false
-	if system.GetProcessCount(system.DaemonProcessName) > 1 {
-		isRunning = true
-	}
-
-	if isRunning {
-		ui.PrintStatus("Daemon", "RUNNING", true)
-	} else {
-		ui.PrintStatus("Daemon", "STOPPED", false)
-	}
-
-	if storage.IsPaused() {
-		ui.PrintStatus("Tracking", "PAUSED", false)
-	} else if isRunning {
-		ui.PrintStatus("Tracking", "ACTIVE", true)
-	} else {
-		ui.PrintStatus("Tracking", "INACTIVE", false)
-	}
-
-	ui.PrintStatus("Retention", fmt.Sprintf("%d days", storage.GetRetentionDays()), true)
-
-	enabled, _, _ := system.GetAutoStartEnabled()
-	if enabled {
-		ui.PrintStatus("Auto-start", "ENABLED", true)
-	} else {
-		ui.PrintStatus("Auto-start", "DISABLED", false)
-	}
-
-	fmt.Println()
-}
 
 func printMenuOptions() {
 	ui.PrintSectionHeader("Menu")
@@ -231,31 +140,7 @@ func handleMenuSettings(reader *bufio.Reader) {
 		fmt.Println("╚══════════════════════════════════════════════════════════╝")
 		fmt.Println()
 
-		if !storage.IsConsentGranted() {
-			fmt.Println("  [!] Not initialized")
-			fmt.Println()
-			fmt.Println("  1. Initialize focusd")
-			fmt.Println()
-			fmt.Println("  0. Back")
-			fmt.Println()
-			fmt.Print("Enter choice: ")
-			input, _ := reader.ReadString('\n')
-			input = strings.TrimSpace(input)
-			if input == "1" {
-				fmt.Println()
-
-				if err := InitLogic(true, false, false); err != nil {
-					ui.PrintError(err.Error())
-				} else {
-
-				}
-				waitForEnterWithReader(reader)
-			}
-			if input == "0" || input == "" {
-				return
-			}
-			continue
-		}
+		// Removed obsolete Not Initialized check
 
 		fmt.Println("  Current Settings:")
 		fmt.Printf("    Retention: %d days\n", storage.GetRetentionDays())
@@ -910,12 +795,6 @@ func handlePasswordSettings(reader *bufio.Reader) {
 	}
 }
 
-func handleMenuUninstall(reader *bufio.Reader) {
-	fmt.Println()
-	RunUninstall()
-	waitForEnterWithReader(reader)
-}
-
 func waitForEnterWithReader(reader *bufio.Reader) {
 	fmt.Print("\nPress Enter to continue...")
 	reader.ReadString('\n')
@@ -958,7 +837,11 @@ func showStatsInMenu() {
 	ui.PrintHeader()
 
 	today := storage.Today()
-	apps, _ := storage.GetAppStatsForDate(today)
+	apps, err := storage.GetAppStatsForDate(today)
+	if err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to load stats: %v", err))
+		return
+	}
 
 	if len(apps) == 0 {
 		ui.PrintInfo("No data recorded yet. Start tracking first.")

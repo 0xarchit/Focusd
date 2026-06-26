@@ -18,13 +18,6 @@ const (
 	Cyan    = "\033[36m"
 	White   = "\033[37m"
 	Gray    = "\033[90m"
-
-	BrightRed     = "\033[91m"
-	BrightGreen   = "\033[92m"
-	BrightYellow  = "\033[93m"
-	BrightBlue    = "\033[94m"
-	BrightMagenta = "\033[95m"
-	BrightCyan    = "\033[96m"
 )
 
 const (
@@ -41,10 +34,8 @@ const (
 	BoxBottomMiddle = "┴"
 
 	Arrow        = "❯❯❯"
-	Bullet       = "•"
 	CheckMark    = "✓"
 	CrossMark    = "✗"
-	Star         = "★"
 	Circle       = "○"
 	FilledCircle = "●"
 )
@@ -83,9 +74,7 @@ func PrintSectionHeader(title string) {
 	fmt.Println()
 }
 
-func PrintSubHeader(title string) {
-	fmt.Printf("   %s%s%s\n", Dim, title, Reset)
-}
+
 
 func PrintOK(msg string) {
 	fmt.Printf("   %s%s%s %s%s%s\n", Green, CheckMark, Reset, Green, msg, Reset)
@@ -115,13 +104,7 @@ func PrintKeyValue(key, value string) {
 	fmt.Printf("   %s%-20s%s %s%s%s\n", Dim, key, Reset, White, value, Reset)
 }
 
-func PrintStatRow(name string, time string, highlight bool) {
-	color := White
-	if highlight {
-		color = Green
-	}
-	fmt.Printf("   %s%-30s%s %s%s%s\n", color, name, Reset, Cyan, time, Reset)
-}
+
 
 func FormatDuration(seconds int) string {
 	if seconds < 60 {
@@ -149,12 +132,7 @@ func FormatDurationShort(seconds int) string {
 	return fmt.Sprintf("%02dm %02ds", minutes, secs)
 }
 
-func FormatDurationStyled(seconds int) string {
-	hours := seconds / 3600
-	minutes := (seconds % 3600) / 60
-	secs := seconds % 60
-	return fmt.Sprintf("%s%02dh%s %02dm %02ds", Cyan, hours, Reset, minutes, secs)
-}
+
 
 type TableColumn struct {
 	Header string
@@ -252,9 +230,7 @@ func PrintMenuDivider() {
 	fmt.Printf("   %s%s%s\n", Gray, strings.Repeat("─", 45), Reset)
 }
 
-func ClearLine() {
-	fmt.Print("\033[2K\r")
-}
+
 
 func ClearScreen() {
 	fmt.Print("\033[2J\033[3J\033[H")

@@ -1,12 +1,12 @@
 const commands = {
     help: "Available commands: [help] [status] [features] [download] [clear] [theme] [matrix]",
-    status: "focusd v1.0.0 is ONLINE. Privacy protocols active. Zero leaks detected.",
-    features: "Features: [PRIVACY] [PERFORMANCE] [CONTROL] [INSIGHTS] [POMODORO] [LIMITS]",
+    status: "focusd is ONLINE. Privacy protocols active. Zero data exfiltration.",
+    features: "Features: [PRIVACY] [TUI DASHBOARD] [BROWSER TRACKING] [POMODORO] [APP LIMITS] [BREAK REMINDERS] [DATA CONTROL] [AUTO-START]",
     download: "Redirecting to GitHub releases...",
     clear: "CLEAR_ACTION",
     theme: "THEME_ACTION",
     matrix: "MATRIX_ACTION",
-    focusd: "Usage: focusd [command]. Try 'focusd help'."
+    focusd: "<span style='color:#0f0'>Launching focusd TUI...</span><br><span style='color:#888'>  ___  ___  ___  ___  ___  ___  ___<br> | F || O || C || U || S || D || ↑ |<br> |___||___||___||___||___||___||___|</span><br><span style='color:#0f0'>● Dashboard  ○ Stats  ○ Focus  ○ Limits  ○ Settings</span><br><span style='color:#555'>(simulation — install focusd to experience the real TUI)</span>"
 };
 
 let matrixInterval;
@@ -93,10 +93,10 @@ async function runBootSequence() {
 
     
     const logs = [
-        "Initializing core protocols...",
-        "Verifying local database integrity... [OK]",
-        "Loading UI modules...",
-        "<span style='color: #0f0'>SUCCESS: focusd initialized successfully.</span>"
+        "Initializing daemon core...",
+        "Loading local SQLite database... [OK]",
+        "Starting background tracker...",
+        "<span style='color: #0f0'>SUCCESS: focusd installed. Type 'focusd' in Terminal to launch.</span>"
     ];
 
     for (let log of logs) {
@@ -329,7 +329,10 @@ function initTerminal() {
                     matrixSpeed = (matrixSpeed === 50) ? 20 : 50;
                     addToHistory(matrixSpeed === 20 ? "Matrix intensity: HIGH" : "Matrix intensity: NORMAL");
                 } else {
-                    addToHistory(response);
+                    // Only render static allowed keys as HTML to prevent dynamic XSS sinks.
+                    const allowedHTMLKeys = ['focusd'];
+                    const isAllowedHTML = allowedHTMLKeys.includes(cmd);
+                    addToHistory(response, isAllowedHTML);
                     if (cmd === 'download') {
                         setTimeout(() => {
                             window.open('https://github.com/0xarchit/Focusd/releases', '_blank');
@@ -337,8 +340,7 @@ function initTerminal() {
                     }
                 }
             } else if (cmd.startsWith('focusd')) {
-                 addToHistory("Executing focusd daemon... (simulation)");
-                 addToHistory(commands.help);
+                addToHistory(commands.focusd, true);
             } else {
                 addToHistory(`'${cmd}' is not recognized as an internal or external command.`);
             }
@@ -429,12 +431,12 @@ function fetchLatestVersion() {
             if (data.tag_name) {
                 const ver = data.tag_name;
                 badge.textContent = `Latest: ${ver}`;
-                commands.status = `focusd ${ver} is ONLINE. Privacy protocols active. Zero leaks detected.`;
+                commands.status = `focusd ${ver} is ONLINE. Privacy protocols active. Zero data exfiltration.`;
             }
         })
         .catch(err => {
             console.error('Failed to fetch release:', err);
-            badge.textContent = 'Latest: v1.0.0 (offline)';
+            badge.textContent = 'Latest: (offline)';
         });
 }
 
@@ -477,12 +479,12 @@ function fallbackCopyText(text, successMsg) {
 }
 
 function copyCommand() {
-    const cmd = `iwr "https://github.com/0xarchit/Focusd/releases/latest/download/focusd.exe" -OutFile focusd.exe; ./focusd.exe init`;
+    const cmd = `iwr "https://github.com/0xarchit/Focusd/releases/latest/download/focusd_setup.exe" -OutFile focusd_setup.exe; ./focusd_setup.exe`;
     copyToClipboard(cmd, "PowerShell command copied");
 }
 
 function copyCurl() {
-    const cmd = `curl -L -o focusd.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd.exe" && focusd.exe init`;
+    const cmd = `curl -L -o focusd_setup.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" && focusd_setup.exe`;
     copyToClipboard(cmd, "CMD command copied");
 }
 

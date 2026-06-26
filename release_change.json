@@ -65,5 +65,17 @@
   "1.3.3": [
     "Fixed: 'Not initialized' showing after pause/resume (DB connection issue)",
     "Improved: Password Settings moved from Focus Tools to Settings menu"
+  ],
+  "2.0.0": [
+    "Feature: NSIS installer (focusd_setup.exe) with auto PATH setup",
+    "Feature: Standalone installer adds focusd to PATH automatically",
+    "Feature: Windows Add/Remove Programs support with proper uninstaller",
+    "Architecture: Go 1.24 minimum requirement",
+    "Architecture: Auto-update now downloads raw binary from releases",
+    "Security: SHA256 checksum verification for downloaded binary (focusd.exe); installer checksum published for manual verification",
+    "Security: Removed UPX compression (prevents AV false positives)",
+    "Improved: Website updated with current CLI commands and features",
+    "Improved: README badges updated to for-the-badge style",
+    "Improved: Installer version now matches release tag"
   ]
 }

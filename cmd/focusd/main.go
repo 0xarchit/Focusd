@@ -8,6 +8,8 @@ import (
 )
 
 func main() {
+	system.AttachParentConsole()
+
 	debug.SetGCPercent(10)
 
 	system.CleanupOldBinary()

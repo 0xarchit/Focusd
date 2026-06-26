@@ -2,10 +2,15 @@ package core
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
+
+// DefaultPomodoroMinutes is the fallback Pomodoro session length.
+const DefaultPomodoroMinutes = 25
 
 type PomodoroState struct {
 	Active    bool      `json:"active"`
@@ -13,6 +18,12 @@ type PomodoroState struct {
 	Duration  int       `json:"duration_minutes"`
 	Notified  bool      `json:"notified"`
 }
+
+var (
+	cachedState        *PomodoroState
+	cachedModTime      time.Time
+	pomodoroCacheMutex sync.Mutex
+)
 
 func getPomodoroPath() string {
 	appData := os.Getenv("APPDATA")
@@ -22,26 +33,47 @@ func getPomodoroPath() string {
 	return filepath.Join(appData, "focusd", "pomodoro.json")
 }
 
-func loadPomodoroStateFresh() *PomodoroState {
-	state := &PomodoroState{
-		Active:    false,
-		StartTime: time.Time{},
-		Duration:  25,
-		Notified:  false,
+func clonePomodoroState(state *PomodoroState) *PomodoroState {
+	if state == nil {
+		return nil
 	}
+	cloned := *state
+	return &cloned
+}
+
+func loadPomodoroStateFresh() *PomodoroState {
+	pomodoroCacheMutex.Lock()
+	defer pomodoroCacheMutex.Unlock()
 
 	path := getPomodoroPath()
 	if path == "" {
-		return state
+		return &PomodoroState{Duration: DefaultPomodoroMinutes}
 	}
 
-	data, err := os.ReadFile(path)
+	info, err := os.Stat(path)
 	if err != nil {
-		return state
+		cachedState = &PomodoroState{Duration: DefaultPomodoroMinutes}
+		cachedModTime = time.Time{}
+		return clonePomodoroState(cachedState)
 	}
 
-	json.Unmarshal(data, state)
-	return state
+	modTime := info.ModTime()
+	if cachedState != nil && modTime.Equal(cachedModTime) {
+		return clonePomodoroState(cachedState)
+	}
+
+	state := &PomodoroState{Duration: DefaultPomodoroMinutes}
+	data, err := os.ReadFile(path)
+	if err == nil {
+		// P3: log unmarshal errors instead of silently ignoring them.
+		if err := json.Unmarshal(data, state); err != nil {
+			log.Printf("WARN: failed to parse pomodoro state %s: %v", path, err)
+		}
+	}
+
+	cachedState = state
+	cachedModTime = modTime
+	return clonePomodoroState(state)
 }
 
 func savePomodoroState(state *PomodoroState) error {
@@ -60,12 +92,25 @@ func savePomodoroState(state *PomodoroState) error {
 		return err
 	}
 
-	return os.Rename(tempPath, path)
+	if err := os.Rename(tempPath, path); err != nil {
+		return err
+	}
+
+	pomodoroCacheMutex.Lock()
+	cachedState = state
+	if info, err := os.Stat(path); err == nil {
+		cachedModTime = info.ModTime()
+	} else {
+		cachedModTime = time.Now()
+	}
+	pomodoroCacheMutex.Unlock()
+
+	return nil
 }
 
 func StartPomodoro(minutes int) error {
 	if minutes <= 0 {
-		minutes = 25
+		minutes = DefaultPomodoroMinutes
 	}
 
 	state := &PomodoroState{
@@ -82,7 +127,7 @@ func StopPomodoro() error {
 	state := &PomodoroState{
 		Active:    false,
 		StartTime: time.Time{},
-		Duration:  25,
+		Duration:  DefaultPomodoroMinutes,
 		Notified:  false,
 	}
 	return savePomodoroState(state)
@@ -103,18 +148,6 @@ func GetPomodoroStatus() (active bool, remaining time.Duration, total int) {
 	}
 
 	return true, remaining, state.Duration
-}
-
-func IsPomodoroComplete() bool {
-	state := loadPomodoroStateFresh()
-	if !state.Active {
-		return false
-	}
-
-	elapsed := time.Since(state.StartTime)
-	totalDuration := time.Duration(state.Duration) * time.Minute
-
-	return elapsed >= totalDuration
 }
 
 func CheckPomodoroAndNotify() {
