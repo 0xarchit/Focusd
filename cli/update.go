@@ -7,6 +7,7 @@ import (
 	"focusd/system"
 	"focusd/ui"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -87,7 +88,9 @@ func restartDaemon() {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x00000008,
 	}
-	cmd.Start()
+	if err := cmd.Start(); err != nil {
+		log.Printf("WARN: failed to restart daemon after update: %v", err)
+	}
 }
 
 func fetchLatestVersion() (string, error) {

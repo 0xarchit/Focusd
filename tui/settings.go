@@ -58,22 +58,31 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			current := storage.GetTrackingIntervalSeconds()
 			next := max(storage.MinTrackingIntervalSeconds, current-1)
 			if next != current {
-				storage.SetTrackingIntervalSeconds(next)
-				m.addToast(fmt.Sprintf("Tracking interval: %ds", next), toastSuccess)
+				if err := storage.SetTrackingIntervalSeconds(next); err != nil {
+					m.addToast("Failed to save tracking interval", toastError)
+				} else {
+					m.addToast(fmt.Sprintf("Tracking interval: %ds", next), toastSuccess)
+				}
 			}
 		case 5:
 			current := storage.GetIdleThresholdSeconds()
 			next := max(storage.MinIdleThresholdSeconds, current-5)
 			if next != current {
-				storage.SetIdleThresholdSeconds(next)
-				m.addToast(fmt.Sprintf("Idle threshold: %ds", next), toastSuccess)
+				if err := storage.SetIdleThresholdSeconds(next); err != nil {
+					m.addToast("Failed to save idle threshold", toastError)
+				} else {
+					m.addToast(fmt.Sprintf("Idle threshold: %ds", next), toastSuccess)
+				}
 			}
 		case 7:
 			current := storage.GetWarningThresholdPercent()
 			next := max(storage.MinWarningThresholdPercent, current-5)
 			if next != current {
-				storage.SetWarningThresholdPercent(next)
-				m.addToast(fmt.Sprintf("Warning threshold: %d%%", next), toastSuccess)
+				if err := storage.SetWarningThresholdPercent(next); err != nil {
+					m.addToast("Failed to save warning threshold", toastError)
+				} else {
+					m.addToast(fmt.Sprintf("Warning threshold: %d%%", next), toastSuccess)
+				}
 			}
 		}
 	case "l", "right":
@@ -85,22 +94,31 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			current := storage.GetTrackingIntervalSeconds()
 			next := min(storage.MaxTrackingIntervalSeconds, current+1)
 			if next != current {
-				storage.SetTrackingIntervalSeconds(next)
-				m.addToast(fmt.Sprintf("Tracking interval: %ds", next), toastSuccess)
+				if err := storage.SetTrackingIntervalSeconds(next); err != nil {
+					m.addToast("Failed to save tracking interval", toastError)
+				} else {
+					m.addToast(fmt.Sprintf("Tracking interval: %ds", next), toastSuccess)
+				}
 			}
 		case 5:
 			current := storage.GetIdleThresholdSeconds()
 			next := min(storage.MaxIdleThresholdSeconds, current+5)
 			if next != current {
-				storage.SetIdleThresholdSeconds(next)
-				m.addToast(fmt.Sprintf("Idle threshold: %ds", next), toastSuccess)
+				if err := storage.SetIdleThresholdSeconds(next); err != nil {
+					m.addToast("Failed to save idle threshold", toastError)
+				} else {
+					m.addToast(fmt.Sprintf("Idle threshold: %ds", next), toastSuccess)
+				}
 			}
 		case 7:
 			current := storage.GetWarningThresholdPercent()
 			next := min(storage.MaxWarningThresholdPercent, current+5)
 			if next != current {
-				storage.SetWarningThresholdPercent(next)
-				m.addToast(fmt.Sprintf("Warning threshold: %d%%", next), toastSuccess)
+				if err := storage.SetWarningThresholdPercent(next); err != nil {
+					m.addToast("Failed to save warning threshold", toastError)
+				} else {
+					m.addToast(fmt.Sprintf("Warning threshold: %d%%", next), toastSuccess)
+				}
 			}
 		}
 	case "space", "enter":
@@ -115,11 +133,17 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 		case 1:
 			enabled, _, _ := system.GetAutoStartEnabled()
 			if enabled {
-				system.DisableAutoStart()
-				m.addToast("Auto-start disabled", toastSuccess)
+				if err := system.DisableAutoStart(); err != nil {
+					m.addToast("Failed to disable auto-start", toastError)
+				} else {
+					m.addToast("Auto-start disabled", toastSuccess)
+				}
 			} else {
-				system.EnableAutoStart()
-				m.addToast("Auto-start enabled", toastSuccess)
+				if err := system.EnableAutoStart(); err != nil {
+					m.addToast("Failed to enable auto-start", toastError)
+				} else {
+					m.addToast("Auto-start enabled", toastSuccess)
+				}
 			}
 		case 2:
 			paused := storage.IsPaused()
@@ -131,14 +155,20 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			current := storage.GetTrackingIntervalSeconds()
 			next := min(storage.MaxTrackingIntervalSeconds, current+1)
 			if next != current {
-				storage.SetTrackingIntervalSeconds(next)
+				if err := storage.SetTrackingIntervalSeconds(next); err != nil {
+					m.addToast("Failed to save tracking interval", toastError)
+					break
+				}
 			}
 			m.addToast(fmt.Sprintf("Tracking interval: %ds", next), toastSuccess)
 		case 5:
 			current := storage.GetIdleThresholdSeconds()
 			next := min(storage.MaxIdleThresholdSeconds, current+5)
 			if next != current {
-				storage.SetIdleThresholdSeconds(next)
+				if err := storage.SetIdleThresholdSeconds(next); err != nil {
+					m.addToast("Failed to save idle threshold", toastError)
+					break
+				}
 			}
 			m.addToast(fmt.Sprintf("Idle threshold: %ds", next), toastSuccess)
 		case 6:
@@ -153,7 +183,10 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			current := storage.GetWarningThresholdPercent()
 			next := min(storage.MaxWarningThresholdPercent, current+5)
 			if next != current {
-				storage.SetWarningThresholdPercent(next)
+				if err := storage.SetWarningThresholdPercent(next); err != nil {
+					m.addToast("Failed to save warning threshold", toastError)
+					break
+				}
 			}
 			m.addToast(fmt.Sprintf("Warning threshold: %d%%", next), toastSuccess)
 		case 8:

@@ -903,7 +903,11 @@ func showStatsInMenu() {
 	ui.PrintHeader()
 
 	today := storage.Today()
-	apps, _ := storage.GetAppStatsForDate(today)
+	apps, err := storage.GetAppStatsForDate(today)
+	if err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to load stats: %v", err))
+		return
+	}
 
 	if len(apps) == 0 {
 		ui.PrintInfo("No data recorded yet. Start tracking first.")
