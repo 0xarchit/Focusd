@@ -2,8 +2,10 @@ package tui
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 var (
@@ -224,11 +226,43 @@ func truncate(s string, width int) string {
 	if width == 1 {
 		return "…"
 	}
-	runes := []rune(s)
-	for len(runes) > 0 && lipgloss.Width(string(runes)+"…") > width {
-		runes = runes[:len(runes)-1]
+
+	var result strings.Builder
+	currentWidth := 0
+	inEscape := false
+	targetWidth := width - 1
+
+	for i := 0; i < len(s); {
+		if s[i] == '\x1b' {
+			inEscape = true
+			result.WriteByte(s[i])
+			i++
+			continue
+		}
+		if inEscape {
+			result.WriteByte(s[i])
+			if s[i] >= 0x40 && s[i] <= 0x7E {
+				inEscape = false
+			}
+			i++
+			continue
+		}
+
+		r, size := utf8.DecodeRuneInString(s[i:])
+		w := runewidth.RuneWidth(r)
+		if currentWidth+w > targetWidth {
+			break
+		}
+		result.WriteRune(r)
+		currentWidth += w
+		i += size
 	}
-	return string(runes) + "…"
+
+	if strings.Contains(s, "\x1b") {
+		result.WriteString("\x1b[0m")
+	}
+	result.WriteString("…")
+	return result.String()
 }
 
 func fill(width int, ch string) string {

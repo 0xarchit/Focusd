@@ -212,38 +212,84 @@ func (m Model) handleStatsKey(key string) (Model, tea.Cmd) {
 	case "j", "down":
 		switch m.panelFocus {
 		case 1:
-			m.statsUsageOffset = min(m.statsUsageOffset+1, max(0, len(m.sortedStatsApps())-1))
-			m.statsSelected = m.statsUsageOffset
+			appsLen := len(m.sortedStatsApps())
+			if appsLen > 0 {
+				m.statsSelected = min(m.statsSelected+1, appsLen-1)
+				visibleRows := m.statsVisibleUsageRows()
+				if m.statsSelected >= m.statsUsageOffset+visibleRows {
+					m.statsUsageOffset = clampScrollOffset(m.statsSelected-visibleRows+1, visibleRows, appsLen)
+				}
+			}
 		case 2:
-			m.statsBrowserOffset = min(m.statsBrowserOffset+1, max(0, len(m.stats.Browsers)-1))
-			m.browserSelected = m.statsBrowserOffset
+			browserLen := len(m.stats.Browsers)
+			if browserLen > 0 {
+				m.browserSelected = min(m.browserSelected+1, browserLen-1)
+				visibleRows := m.statsVisibleBrowserRows()
+				if m.browserSelected >= m.statsBrowserOffset+visibleRows {
+					m.statsBrowserOffset = clampScrollOffset(m.browserSelected-visibleRows+1, visibleRows, browserLen)
+				}
+			}
 		}
 	case "k", "up":
 		switch m.panelFocus {
 		case 1:
-			m.statsUsageOffset = max(0, m.statsUsageOffset-1)
-			m.statsSelected = m.statsUsageOffset
+			appsLen := len(m.sortedStatsApps())
+			if appsLen > 0 {
+				m.statsSelected = max(0, m.statsSelected-1)
+				if m.statsSelected < m.statsUsageOffset {
+					m.statsUsageOffset = m.statsSelected
+				}
+			}
 		case 2:
-			m.statsBrowserOffset = max(0, m.statsBrowserOffset-1)
-			m.browserSelected = m.statsBrowserOffset
+			browserLen := len(m.stats.Browsers)
+			if browserLen > 0 {
+				m.browserSelected = max(0, m.browserSelected-1)
+				if m.browserSelected < m.statsBrowserOffset {
+					m.statsBrowserOffset = m.browserSelected
+				}
+			}
 		}
 	case "pgdown":
 		switch m.panelFocus {
 		case 1:
-			m.statsUsageOffset = min(m.statsUsageOffset+5, max(0, len(m.sortedStatsApps())-1))
-			m.statsSelected = m.statsUsageOffset
+			appsLen := len(m.sortedStatsApps())
+			if appsLen > 0 {
+				visibleRows := m.statsVisibleUsageRows()
+				m.statsSelected = min(m.statsSelected+visibleRows, appsLen-1)
+				if m.statsSelected >= m.statsUsageOffset+visibleRows {
+					m.statsUsageOffset = clampScrollOffset(m.statsSelected-visibleRows+1, visibleRows, appsLen)
+				}
+			}
 		case 2:
-			m.statsBrowserOffset = min(m.statsBrowserOffset+5, max(0, len(m.stats.Browsers)-1))
-			m.browserSelected = m.statsBrowserOffset
+			browserLen := len(m.stats.Browsers)
+			if browserLen > 0 {
+				visibleRows := m.statsVisibleBrowserRows()
+				m.browserSelected = min(m.browserSelected+visibleRows, browserLen-1)
+				if m.browserSelected >= m.statsBrowserOffset+visibleRows {
+					m.statsBrowserOffset = clampScrollOffset(m.browserSelected-visibleRows+1, visibleRows, browserLen)
+				}
+			}
 		}
 	case "pgup":
 		switch m.panelFocus {
 		case 1:
-			m.statsUsageOffset = max(0, m.statsUsageOffset-5)
-			m.statsSelected = m.statsUsageOffset
+			appsLen := len(m.sortedStatsApps())
+			if appsLen > 0 {
+				visibleRows := m.statsVisibleUsageRows()
+				m.statsSelected = max(0, m.statsSelected-visibleRows)
+				if m.statsSelected < m.statsUsageOffset {
+					m.statsUsageOffset = max(0, m.statsSelected)
+				}
+			}
 		case 2:
-			m.statsBrowserOffset = max(0, m.statsBrowserOffset-5)
-			m.browserSelected = m.statsBrowserOffset
+			browserLen := len(m.stats.Browsers)
+			if browserLen > 0 {
+				visibleRows := m.statsVisibleBrowserRows()
+				m.browserSelected = max(0, m.browserSelected-visibleRows)
+				if m.browserSelected < m.statsBrowserOffset {
+					m.statsBrowserOffset = max(0, m.browserSelected)
+				}
+			}
 		}
 	}
 	return m, nil
