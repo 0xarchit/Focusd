@@ -50,45 +50,58 @@
             </section>
 
             <section class="install-block delayed-reveal">
-                <p class="prompt">C:\Users\You> Powershell (Recommended)</p>
+                <p class="prompt">C:\Users\You> Download Installer</p>
                 <div class="code-box">
-                    <code>iwr "https://github.com/0xarchit/Focusd/releases/latest/download/focusd.exe" -OutFile focusd.exe; ./focusd.exe init</code>
+                    <code>iwr "https://github.com/0xarchit/Focusd/releases/latest/download/focusd_setup.exe" -OutFile focusd_setup.exe; ./focusd_setup.exe</code>
                     <button class="copy-btn" onclick="copyCommand()">[COPY]</button>
                 </div>
 
-                <p class="prompt brs">C:\Users\You> CMD (Terminal)</p>
+                <p class="prompt brs">C:\Users\You> Or via CMD</p>
                 <div class="code-box">
-                    <code>curl -L -o focusd.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd.exe" && focusd.exe init</code>
+                    <code>curl -L -o focusd_setup.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" && focusd_setup.exe</code>
                     <button class="copy-btn" onclick="copyCurl()">[COPY]</button>
                 </div>
+                <p class="prompt" style="margin-top:1rem; font-size:0.85rem;">Run the installer. Adds focusd to PATH automatically. Open Terminal and type 'focusd' to launch.</p>
             </section>
 
             <section class="features delayed-reveal">
-                <p class="prompt">C:\Users\You> focusd stats --features</p>
+                <p class="prompt">C:\Users\You> focusd --features</p>
                 <div class="grid">
                     <div class="card">
                         <h3>[PRIVACY]</h3>
-                        <p>Zero data exfiltration. All databases stored locally in %APPDATA%.</p>
+                        <p>Zero data exfiltration. All data stored locally in %APPDATA%\focusd\. No cloud, no accounts.</p>
                     </div>
                     <div class="card">
-                        <h3>[PERFORMANCE]</h3>
-                        <p>Written in Go. ~0% CPU, ~5MB RAM. Binary size ~10MB.</p>
+                        <h3>[TUI DASHBOARD]</h3>
+                        <p>Full-screen terminal UI with dashboard, stats, focus timer, limits, and settings tabs.</p>
                     </div>
                     <div class="card">
-                        <h3>[CONTROL]</h3>
-                        <p>Auto-delete retention policies. You own your data.</p>
+                        <h3>[BROWSER TRACKING]</h3>
+                        <p>Tracks time per browser tab by page title. Smart grouping for 80+ sites (YouTube, GitHub, etc).</p>
                     </div>
                     <div class="card">
-                        <h3>[INSIGHTS]</h3>
-                        <p>Detailed CLI dashboard with breakdown by app and time.</p>
-                    </div>
-                    <div class="card">
-                        <h3>[POMODORO]</h3>
-                        <p>Integrated focus timer with system notifications.</p>
+                        <h3>[POMODORO TIMER]</h3>
+                        <p>Built-in focus sessions with system notifications. Configurable duration and break reminders.</p>
                     </div>
                     <div class="card">
                         <h3>[APP LIMITS]</h3>
-                        <p>Set daily screen time limits for distracting apps.</p>
+                        <p>Set daily time limits for distracting apps. Get notified when limits are exceeded.</p>
+                    </div>
+                    <div class="card">
+                        <h3>[PERFORMANCE]</h3>
+                        <p>Written in Go. ~0% CPU, ~5MB RAM. Single ~11MB binary. No dependencies.</p>
+                    </div>
+                    <div class="card">
+                        <h3>[BREAK REMINDERS]</h3>
+                        <p>Configurable reminders after N minutes of continuous use. Snooze or disable per session.</p>
+                    </div>
+                    <div class="card">
+                        <h3>[DATA CONTROL]</h3>
+                        <p>Configurable retention (1-30 days). Export to CSV. Wipe data anytime. Open SQLite database.</p>
+                    </div>
+                    <div class="card">
+                        <h3>[AUTO-START]</h3>
+                        <p>Optional Windows startup integration. Runs silently in background as a daemon process.</p>
                     </div>
                 </div>
             </section>
@@ -101,30 +114,42 @@
                         <span class="col-alias">ALIAS</span>
                         <span class="col-desc">DESCRIPTION</span>
                     </div>
-                    <div class="row"><span class="col-cmd">focusd init</span><span class="col-alias">i</span><span
-                            class="col-desc">Initialize / Reconfigure</span></div>
+                    <div class="row"><span class="col-cmd">focusd</span><span class="col-alias"></span><span
+                            class="col-desc">Open interactive TUI menu</span></div>
                     <div class="row"><span class="col-cmd">focusd start</span><span class="col-alias"></span><span
-                            class="col-desc">Start background daemon</span></div>
+                            class="col-desc">Start background tracking daemon</span></div>
                     <div class="row"><span class="col-cmd">focusd stop</span><span class="col-alias"></span><span
-                            class="col-desc">Stop tracking daemon</span></div>
+                            class="col-desc">Stop tracking daemon gracefully</span></div>
                     <div class="row"><span class="col-cmd">focusd status</span><span class="col-alias">s</span><span
-                            class="col-desc">Show live tracking status</span></div>
+                            class="col-desc">Show tracking status and today's summary</span></div>
                     <div class="row"><span class="col-cmd">focusd stats</span><span class="col-alias">st</span><span
-                            class="col-desc">Interactive dashboard</span></div>
+                            class="col-desc">Detailed usage breakdown</span></div>
+                    <div class="row"><span class="col-cmd">focusd focus [mins]</span><span class="col-alias"></span><span
+                            class="col-desc">Start Pomodoro focus timer</span></div>
+                    <div class="row"><span class="col-cmd">focusd limit [app] [mins]</span><span class="col-alias"></span><span
+                            class="col-desc">Set daily app time limit</span></div>
+                    <div class="row"><span class="col-cmd">focusd browser</span><span class="col-alias"></span><span
+                            class="col-desc">Add/remove custom tracked browsers</span></div>
                     <div class="row"><span class="col-cmd">focusd pause</span><span class="col-alias">p</span><span
                             class="col-desc">Pause tracking temporarily</span></div>
                     <div class="row"><span class="col-cmd">focusd resume</span><span class="col-alias">r</span><span
                             class="col-desc">Resume tracking</span></div>
                     <div class="row"><span class="col-cmd">focusd export</span><span class="col-alias">e</span><span
-                            class="col-desc">Export usage data to CSV</span></div>
-                    <div class="row"><span class="col-cmd">focusd update</span><span class="col-alias"></span><span
-                            class="col-desc">Check for updates</span></div>
-                    <div class="row"><span class="col-cmd">focusd retention</span><span
-                            class="col-alias">ret</span><span class="col-desc">Set data retention policy</span></div>
-                    <div class="row"><span class="col-cmd">focusd autostart</span><span
-                            class="col-alias">auto</span><span class="col-desc">Toggle Windows auto-start</span></div>
+                            class="col-desc">Export data to CSV</span></div>
+                    <div class="row"><span class="col-cmd">focusd retention</span><span class="col-alias">ret</span><span
+                            class="col-desc">Manage data retention (status/set/reset)</span></div>
+                    <div class="row"><span class="col-cmd">focusd autostart</span><span class="col-alias">auto</span><span
+                            class="col-desc">Manage auto-start (status/enable/disable)</span></div>
                     <div class="row"><span class="col-cmd">focusd path</span><span class="col-alias"></span><span
-                            class="col-desc">Add/Remove from PATH</span></div>
+                            class="col-desc">Manage PATH (status/enable/disable)</span></div>
+                    <div class="row"><span class="col-cmd">focusd stop-timer</span><span class="col-alias"></span><span
+                            class="col-desc">Stop running Pomodoro timer</span></div>
+                    <div class="row"><span class="col-cmd">focusd version</span><span class="col-alias">-v</span><span
+                            class="col-desc">Show version</span></div>
+                    <div class="row"><span class="col-cmd">focusd update</span><span class="col-alias"></span><span
+                            class="col-desc">Check for updates from GitHub</span></div>
+                    <div class="row"><span class="col-cmd">focusd reset-password</span><span class="col-alias"></span><span
+                            class="col-desc">Reset password protection</span></div>
                 </div>
             </section>
 
@@ -133,11 +158,11 @@
                 <div class="grid">
                     <div class="card planned">
                         <h3>[PLANNED] WEB UI</h3>
-                        <p>Localhost web interface for beautiful charts.</p>
+                        <p>Localhost web interface with charts and visualizations.</p>
                     </div>
                     <div class="card planned">
-                        <h3>[PLANNED] ADVANCED LIMITS</h3>
-                        <p>Severity levels: 'High' (Block) vs 'Low' (Popup).</p>
+                        <h3>[PLANNED] EXPORT JSON</h3>
+                        <p>Export tracking data as structured JSON for analysis.</p>
                     </div>
                     <div class="card planned">
                         <h3>[PLANNED] GAMIFICATION</h3>
@@ -155,7 +180,7 @@
     </main>
 
     <footer>
-        <p>MIT License. Copyright © 2025 oxarchit.</p>
+        <p>MIT License. Copyright © 2026 oxarchit.</p>
         <p class="status">STATUS: ONLINE | LATENCY: 12ms</p>
     </footer>
     </div>
