@@ -31,7 +31,11 @@ func GetDBPath() (string, error) {
 
 func Init() error {
 	if db != nil {
-		return nil
+		if err := db.Ping(); err == nil {
+			return nil
+		}
+		db.Close()
+		db = nil
 	}
 
 	dataDir, err := GetDataDir()
@@ -63,6 +67,7 @@ func Init() error {
 		time.Sleep(time.Duration(100*(attempt+1)) * time.Millisecond)
 	}
 	if lastErr != nil {
+		db = nil
 		return fmt.Errorf("failed to open database after retries: %w", lastErr)
 	}
 
@@ -89,7 +94,12 @@ func Init() error {
 		}
 	}
 
-	return createSchema()
+	if err := createSchema(); err != nil {
+		db.Close()
+		db = nil
+		return err
+	}
+	return nil
 }
 
 func createSchema() error {
@@ -156,7 +166,9 @@ func GetDB() *sql.DB {
 
 func Close() error {
 	if db != nil {
-		return db.Close()
+		err := db.Close()
+		db = nil
+		return err
 	}
 	return nil
 }
