@@ -6,6 +6,7 @@ import (
 	"focusd/storage"
 	"focusd/system"
 	"focusd/ui"
+	"net"
 	"os"
 	"time"
 )
@@ -51,11 +52,37 @@ func RunStop() {
 		return
 	}
 
+	if sendIPCCmd("stop") {
+		ui.PrintOK("focusd stopped gracefully")
+		return
+	}
+
 	if err := system.KillProcess(system.DaemonProcessName); err != nil {
 		ui.PrintWarn("Could not stop focusd. It may still be running.")
 	} else {
-		ui.PrintOK("focusd stopped")
+		ui.PrintOK("focusd stopped (forced)")
 	}
+}
+
+func RequestDaemonFlush() {
+	sendIPCCmd("flush")
+}
+
+func sendIPCCmd(cmd string) bool {
+	conn, err := net.DialTimeout("tcp", "127.0.0.1:48321", 1*time.Second)
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+
+	_, err = conn.Write([]byte(cmd))
+	if err != nil {
+		return false
+	}
+
+	buf := make([]byte, 16)
+	n, err := conn.Read(buf)
+	return err == nil && string(buf[:n]) == "ok"
 }
 
 func RunDaemon() {

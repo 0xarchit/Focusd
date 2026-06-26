@@ -26,13 +26,6 @@ func GetInstalledExePath() string {
 	return filepath.Join(installDir, "focusd.exe")
 }
 
-func GetLauncherPath() string {
-	installDir := GetInstallDir()
-	if installDir == "" {
-		return ""
-	}
-	return filepath.Join(installDir, "FocusDaemon.vbs")
-}
 
 func InstallExes() error {
 
@@ -59,15 +52,6 @@ func InstallExes() error {
 
 	if err := installFile(src, dest); err != nil {
 		return fmt.Errorf("failed to install focusd.exe: %w", err)
-	}
-
-	vbsContent := fmt.Sprintf(`Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """%s"" --daemon", 0, False
-`, dest)
-
-	vbsPath := filepath.Join(installDir, "FocusDaemon.vbs")
-	if err := os.WriteFile(vbsPath, []byte(vbsContent), 0644); err != nil {
-		return fmt.Errorf("failed to create VBS launcher: %w", err)
 	}
 
 	return nil
@@ -116,25 +100,5 @@ func IsInstalled() bool {
 		return false
 	}
 	_, err := os.Stat(exePath)
-	if err != nil {
-		return false
-	}
-	launcherPath := GetLauncherPath()
-	if launcherPath == "" {
-		return false
-	}
-	_, err = os.Stat(launcherPath)
 	return err == nil
-}
-
-func UninstallExe() error {
-	exePath := GetInstalledExePath()
-	if exePath != "" {
-		os.Remove(exePath)
-	}
-	launcherPath := GetLauncherPath()
-	if launcherPath != "" {
-		os.Remove(launcherPath)
-	}
-	return nil
 }

@@ -23,6 +23,8 @@ func RunExport() {
 		os.Exit(1)
 	}
 
+	RequestDaemonFlush()
+
 	userProfile := os.Getenv("USERPROFILE")
 	exportDir := filepath.Join(userProfile, "Downloads")
 	if userProfile == "" {

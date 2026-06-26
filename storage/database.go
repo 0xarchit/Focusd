@@ -70,9 +70,9 @@ func Init() error {
 	db.Exec("PRAGMA synchronous=NORMAL")
 	db.Exec("PRAGMA auto_vacuum=INCREMENTAL")
 
-	db.Exec("PRAGMA cache_size = -2000")
-	db.Exec("PRAGMA mmap_size = 0")
-	db.Exec("PRAGMA temp_store = FILE")
+	db.Exec("PRAGMA cache_size = -10000") // 10MB cache size
+	db.Exec("PRAGMA mmap_size = 268435456") // 256MB mmap size for fast reads
+	db.Exec("PRAGMA temp_store = MEMORY")
 
 	return createSchema()
 }

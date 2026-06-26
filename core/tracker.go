@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"focusd/storage"
 	"focusd/system"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -36,7 +37,7 @@ func NewTracker() *Tracker {
 	pollSeconds := storage.GetTrackingIntervalSeconds()
 	return &Tracker{
 		pollInterval:  time.Duration(pollSeconds) * time.Second,
-		batchInterval: 10 * time.Second,
+		batchInterval: 5 * time.Minute,
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -53,9 +54,11 @@ func (t *Tracker) Start() {
 
 	t.recoverOrphanedSession()
 
+	go t.startIPCOnport()
+
 	pollTicker := time.NewTicker(t.pollInterval)
 	batchTicker := time.NewTicker(t.batchInterval)
-	persistTicker := time.NewTicker(30 * time.Second)
+	persistTicker := time.NewTicker(5 * time.Minute)
 	retentionTicker := time.NewTicker(1 * time.Hour)
 	focusTicker := time.NewTicker(5 * time.Second)
 	defer pollTicker.Stop()
@@ -330,3 +333,51 @@ func getAppName(exeName string) string {
 
 	return name
 }
+
+func (t *Tracker) startIPCOnport() {
+	listener, err := net.Listen("tcp", "127.0.0.1:48321")
+	if err != nil {
+		return
+	}
+	defer listener.Close()
+
+	go func() {
+		<-t.ctx.Done()
+		listener.Close()
+	}()
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			select {
+			case <-t.ctx.Done():
+				return
+			default:
+				continue
+			}
+		}
+		go t.handleIPCConnection(conn)
+	}
+}
+
+func (t *Tracker) handleIPCConnection(conn net.Conn) {
+	defer conn.Close()
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return
+	}
+
+	cmd := string(buf[:n])
+	switch cmd {
+	case "stop":
+		conn.Write([]byte("ok"))
+		t.Stop()
+	case "flush":
+		t.flushCurrentSession()
+		t.flushPendingSessions()
+		t.persistActiveSession()
+		conn.Write([]byte("ok"))
+	}
+}
+

@@ -22,6 +22,8 @@ func RunStats() {
 		os.Exit(1)
 	}
 
+	RequestDaemonFlush()
+
 	today := storage.Today()
 	summary, err := core.GetDailySummary(today)
 	if err != nil || summary.AppCount == 0 {

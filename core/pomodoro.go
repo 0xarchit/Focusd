@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,12 @@ type PomodoroState struct {
 	Notified  bool      `json:"notified"`
 }
 
+var (
+	cachedState        *PomodoroState
+	cachedModTime      time.Time
+	pomodoroCacheMutex sync.Mutex
+)
+
 func getPomodoroPath() string {
 	appData := os.Getenv("APPDATA")
 	if appData == "" {
@@ -23,24 +30,34 @@ func getPomodoroPath() string {
 }
 
 func loadPomodoroStateFresh() *PomodoroState {
-	state := &PomodoroState{
-		Active:    false,
-		StartTime: time.Time{},
-		Duration:  25,
-		Notified:  false,
-	}
+	pomodoroCacheMutex.Lock()
+	defer pomodoroCacheMutex.Unlock()
 
 	path := getPomodoroPath()
 	if path == "" {
-		return state
+		return &PomodoroState{Duration: 25}
 	}
 
-	data, err := os.ReadFile(path)
+	info, err := os.Stat(path)
 	if err != nil {
-		return state
+		cachedState = &PomodoroState{Duration: 25}
+		cachedModTime = time.Time{}
+		return cachedState
 	}
 
-	json.Unmarshal(data, state)
+	modTime := info.ModTime()
+	if cachedState != nil && modTime.Equal(cachedModTime) {
+		return cachedState
+	}
+
+	state := &PomodoroState{Duration: 25}
+	data, err := os.ReadFile(path)
+	if err == nil {
+		json.Unmarshal(data, state)
+	}
+
+	cachedState = state
+	cachedModTime = modTime
 	return state
 }
 
@@ -60,7 +77,20 @@ func savePomodoroState(state *PomodoroState) error {
 		return err
 	}
 
-	return os.Rename(tempPath, path)
+	if err := os.Rename(tempPath, path); err != nil {
+		return err
+	}
+
+	pomodoroCacheMutex.Lock()
+	cachedState = state
+	if info, err := os.Stat(path); err == nil {
+		cachedModTime = info.ModTime()
+	} else {
+		cachedModTime = time.Now()
+	}
+	pomodoroCacheMutex.Unlock()
+
+	return nil
 }
 
 func StartPomodoro(minutes int) error {

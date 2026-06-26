@@ -19,7 +19,7 @@ func RunInit() {
 		ui.PrintInfo("focusd is already initialized.")
 		fmt.Println()
 		fmt.Println("To view your data: focusd stats")
-		fmt.Println("To reconfigure:    focusd uninstall && focusd init")
+		fmt.Println("To reconfigure:    run the setup installer again")
 		return
 	}
 

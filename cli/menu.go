@@ -34,6 +34,8 @@ func RunInteractiveMenu() {
 
 	core.CheckPomodoroAndNotify()
 
+	RequestDaemonFlush()
+
 	if err := tui.StartTUI(); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
@@ -857,12 +859,6 @@ func handlePasswordSettings(reader *bufio.Reader) {
 			return
 		}
 	}
-}
-
-func handleMenuUninstall(reader *bufio.Reader) {
-	fmt.Println()
-	RunUninstall()
-	waitForEnterWithReader(reader)
 }
 
 func waitForEnterWithReader(reader *bufio.Reader) {

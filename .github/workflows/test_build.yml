@@ -24,12 +24,16 @@ jobs:
 
     - name: Build and Compress
       run: |
-        go build -ldflags="-s -w" -trimpath -o focusd.exe ./cmd/focusd
+        go build -ldflags="-s -w -H=windowsgui" -trimpath -o focusd.exe ./cmd/focusd
         upx --best --lzma focusd.exe
+
+    - name: Build NSIS Installer
+      run: |
+        makensis installer.nsi
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: focusd-test-build
-        path: focusd.exe
+        path: focusd_setup.exe
         retention-days: 5

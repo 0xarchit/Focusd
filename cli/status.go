@@ -22,6 +22,8 @@ func RunStatus() {
 		os.Exit(1)
 	}
 
+	RequestDaemonFlush()
+
 	ui.PrintHeader()
 
 	isRunning := false
