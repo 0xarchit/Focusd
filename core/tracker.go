@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"focusd/storage"
 	"focusd/system"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -275,49 +276,55 @@ func (t *Tracker) flushPendingSessions() {
 	t.mu.Unlock()
 
 	for _, s := range sessions {
-		storage.InsertSession(s)
-		storage.UpdateAppDaily(s.Date, s.AppName, s.ExeName, s.DurationSecs)
+		if err := storage.InsertSession(s); err != nil {
+			log.Printf("ERROR: failed to insert session: %v", err)
+		}
+		if err := storage.UpdateAppDaily(s.Date, s.AppName, s.ExeName, s.DurationSecs); err != nil {
+			log.Printf("ERROR: failed to update app daily stats: %v", err)
+		}
 
 		if IsBrowser(s.ExeName) {
 			cleanTitle := CleanWindowTitle(s.WindowTitle, s.ExeName)
-			storage.UpdateBrowserDaily(s.Date, cleanTitle, s.DurationSecs)
+			if err := storage.UpdateBrowserDaily(s.Date, cleanTitle, s.DurationSecs); err != nil {
+				log.Printf("ERROR: failed to update browser daily stats: %v", err)
+			}
 		}
 	}
+}
+
+var nameMap = map[string]string{
+	"code":            "VS Code",
+	"Code":            "VS Code",
+	"devenv":          "Visual Studio",
+	"idea64":          "IntelliJ IDEA",
+	"pycharm64":       "PyCharm",
+	"webstorm64":      "WebStorm",
+	"goland64":        "GoLand",
+	"rider64":         "Rider",
+	"notepad++":       "Notepad++",
+	"sublime_text":    "Sublime Text",
+	"atom":            "Atom",
+	"explorer":        "File Explorer",
+	"Discord":         "Discord",
+	"Spotify":         "Spotify",
+	"slack":           "Slack",
+	"Teams":           "Microsoft Teams",
+	"Zoom":            "Zoom",
+	"WINWORD":         "Microsoft Word",
+	"EXCEL":           "Microsoft Excel",
+	"POWERPNT":        "PowerPoint",
+	"OUTLOOK":         "Outlook",
+	"Terminal":        "Windows Terminal",
+	"WindowsTerminal": "Windows Terminal",
+	"cmd":             "Command Prompt",
+	"powershell":      "PowerShell",
+	"pwsh":            "PowerShell",
+	"wt":              "Windows Terminal",
 }
 
 func getAppName(exeName string) string {
 	name := strings.TrimSuffix(exeName, ".exe")
 	name = strings.TrimSuffix(name, ".EXE")
-
-	nameMap := map[string]string{
-		"code":            "VS Code",
-		"Code":            "VS Code",
-		"devenv":          "Visual Studio",
-		"idea64":          "IntelliJ IDEA",
-		"pycharm64":       "PyCharm",
-		"webstorm64":      "WebStorm",
-		"goland64":        "GoLand",
-		"rider64":         "Rider",
-		"notepad++":       "Notepad++",
-		"sublime_text":    "Sublime Text",
-		"atom":            "Atom",
-		"explorer":        "File Explorer",
-		"Discord":         "Discord",
-		"Spotify":         "Spotify",
-		"slack":           "Slack",
-		"Teams":           "Microsoft Teams",
-		"Zoom":            "Zoom",
-		"WINWORD":         "Microsoft Word",
-		"EXCEL":           "Microsoft Excel",
-		"POWERPNT":        "PowerPoint",
-		"OUTLOOK":         "Outlook",
-		"Terminal":        "Windows Terminal",
-		"WindowsTerminal": "Windows Terminal",
-		"cmd":             "Command Prompt",
-		"powershell":      "PowerShell",
-		"pwsh":            "PowerShell",
-		"wt":              "Windows Terminal",
-	}
 
 	if mapped, ok := nameMap[name]; ok {
 		return mapped
@@ -362,9 +369,11 @@ func (t *Tracker) startIPCOnport() {
 
 func (t *Tracker) handleIPCConnection(conn net.Conn) {
 	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
 	if err != nil {
+		log.Printf("WARN: IPC connection read failed: %v", err)
 		return
 	}
 
@@ -378,6 +387,8 @@ func (t *Tracker) handleIPCConnection(conn net.Conn) {
 		t.flushPendingSessions()
 		t.persistActiveSession()
 		conn.Write([]byte("ok"))
+	default:
+		log.Printf("WARN: Unknown IPC command received: %q", cmd)
 	}
 }
 

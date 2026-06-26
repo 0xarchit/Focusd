@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -29,6 +30,10 @@ func GetDBPath() (string, error) {
 }
 
 func Init() error {
+	if db != nil {
+		return nil
+	}
+
 	dataDir, err := GetDataDir()
 	if err != nil {
 		return err
@@ -65,14 +70,24 @@ func Init() error {
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
-	db.Exec("PRAGMA synchronous=NORMAL")
-	db.Exec("PRAGMA auto_vacuum=INCREMENTAL")
+	pragmas := []struct {
+		name  string
+		query string
+	}{
+		{"journal_mode=WAL", "PRAGMA journal_mode=WAL"},
+		{"busy_timeout=5000", "PRAGMA busy_timeout=5000"},
+		{"synchronous=NORMAL", "PRAGMA synchronous=NORMAL"},
+		{"auto_vacuum=INCREMENTAL", "PRAGMA auto_vacuum=INCREMENTAL"},
+		{"cache_size = -10000", "PRAGMA cache_size = -10000"},
+		{"mmap_size = 268435456", "PRAGMA mmap_size = 268435456"},
+		{"temp_store = MEMORY", "PRAGMA temp_store = MEMORY"},
+	}
 
-	db.Exec("PRAGMA cache_size = -10000") // 10MB cache size
-	db.Exec("PRAGMA mmap_size = 268435456") // 256MB mmap size for fast reads
-	db.Exec("PRAGMA temp_store = MEMORY")
+	for _, p := range pragmas {
+		if _, err := db.Exec(p.query); err != nil {
+			log.Printf("WARN: PRAGMA %s failed: %v", p.name, err)
+		}
+	}
 
 	return createSchema()
 }
