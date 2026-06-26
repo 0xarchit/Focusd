@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"focusd/core"
 	"focusd/storage"
 	"focusd/system"
 	"os"
@@ -84,6 +85,8 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 					m.addToast(fmt.Sprintf("Warning threshold: %d%%", next), toastSuccess)
 				}
 			}
+		case 10:
+			m.settingsExportSelected = 0
 		}
 	case "l", "right":
 		switch m.settingsSelected {
@@ -120,13 +123,18 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 					m.addToast(fmt.Sprintf("Warning threshold: %d%%", next), toastSuccess)
 				}
 			}
+		case 10:
+			m.settingsExportSelected = 1
 		}
 	case "space", "enter":
 		switch m.settingsSelected {
 		case 0:
 			if m.daemonActive {
-				exec.Command("cmd", "/c", "taskkill", "/IM", system.DaemonProcessName, "/F").Start()
-				m.addToast("Daemon stop requested", toastWarning)
+				if core.SendIPCCmd("stop") {
+					m.addToast("Daemon stopped gracefully", toastSuccess)
+				} else {
+					m.addToast("Failed to stop daemon gracefully", toastError)
+				}
 			} else {
 				m.addToast("Run focusd start to launch daemon", toastInfo)
 			}
@@ -198,7 +206,8 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 		case 9:
 			openDBFolder()
 		case 10:
-			path, err := exportData(false)
+			jsonOut := m.settingsExportSelected == 1
+			path, err := exportData(jsonOut)
 			if err != nil {
 				m.addToast("Export failed", toastError)
 			} else {
@@ -266,7 +275,7 @@ func (m Model) renderSettings(width, height int) string {
 		"",
 		"DATA",
 		settingRow(9, m.settingsSelected, "Database path", mutedStyle.Render(truncate(dbPath, max(10, inner-45)))+"   "+buttonText("Open Folder"), inner),
-		settingRow(10, m.settingsSelected, "Export data", buttonText("Export CSV")+"   "+buttonText("Export JSON"), inner),
+		settingRow(10, m.settingsSelected, "Export data", renderExportButtons(m.settingsSelected == 10, m.settingsExportSelected), inner),
 		settingRow(11, m.settingsSelected, "Update app", buttonText("Update from GitHub"), inner),
 		settingRow(12, m.settingsSelected, "Danger zone", redStyle.Bold(true).Render("[ Uninstall / Wipe All Data ]"), inner),
 	}
@@ -376,10 +385,31 @@ func exportData(jsonOut bool) (string, error) {
 	}
 	defer f.Close()
 	w := csv.NewWriter(f)
-	defer w.Flush()
-	w.Write([]string{"Date", "App Name", "Executable", "Duration (seconds)", "Open Count"})
+	if err := w.Write([]string{"Date", "App Name", "Executable", "Duration (seconds)", "Open Count"}); err != nil {
+		return "", err
+	}
 	for _, app := range apps {
-		w.Write([]string{app.Date, app.AppName, app.ExeName, strconv.Itoa(app.TotalDurationSecs), strconv.Itoa(app.OpenCount)})
+		if err := w.Write([]string{app.Date, app.AppName, app.ExeName, strconv.Itoa(app.TotalDurationSecs), strconv.Itoa(app.OpenCount)}); err != nil {
+			return "", err
+		}
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return "", err
 	}
 	return path, nil
 }
+
+func renderExportButtons(active bool, selectedButton int) string {
+	csvLabel := "Export CSV"
+	jsonLabel := "Export JSON"
+	if active {
+		if selectedButton == 0 {
+			return greenStyle.Render("[ " + csvLabel + " ]") + "   " + cyanStyle.Render("[ " + jsonLabel + " ]")
+		} else {
+			return cyanStyle.Render("[ " + csvLabel + " ]") + "   " + greenStyle.Render("[ " + jsonLabel + " ]")
+		}
+	}
+	return cyanStyle.Render("[ " + csvLabel + " ]") + "   " + cyanStyle.Render("[ " + jsonLabel + " ]")
+}
+

@@ -534,19 +534,19 @@ func (m Model) renderCustomRangeModal() string {
 func (m Model) sortedStatsApps() []appUsage {
 	apps := append([]appUsage(nil), m.stats.Apps...)
 	sort.Slice(apps, func(i, j int) bool {
-		less := false
+		a, b := i, j
+		if !m.statsAsc {
+			a, b = j, i
+		}
 		switch m.statsSort {
 		case 0:
-			less = apps[i].Duration < apps[j].Duration
+			return apps[a].Duration < apps[b].Duration
 		case 1:
-			less = apps[i].Name < apps[j].Name
+			return apps[a].Name < apps[b].Name
 		case 2:
-			less = apps[i].Duration < apps[j].Duration
+			return apps[a].Opens < apps[b].Opens
 		}
-		if m.statsAsc {
-			return less
-		}
-		return !less
+		return false
 	})
 	return apps
 }

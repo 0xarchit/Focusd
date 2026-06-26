@@ -6,7 +6,6 @@ import (
 	"focusd/storage"
 	"focusd/system"
 	"focusd/ui"
-	"net"
 	"os"
 	"time"
 )
@@ -52,7 +51,7 @@ func RunStop() {
 		return
 	}
 
-	if sendIPCCmd("stop") {
+	if core.SendIPCCmd("stop") {
 		ui.PrintOK("focusd stopped gracefully")
 		return
 	}
@@ -65,24 +64,7 @@ func RunStop() {
 }
 
 func RequestDaemonFlush() {
-	sendIPCCmd("flush")
-}
-
-func sendIPCCmd(cmd string) bool {
-	conn, err := net.DialTimeout("tcp", core.IPCAddress, 1*time.Second)
-	if err != nil {
-		return false
-	}
-	defer conn.Close()
-
-	_, err = conn.Write([]byte(cmd))
-	if err != nil {
-		return false
-	}
-
-	buf := make([]byte, 16)
-	n, err := conn.Read(buf)
-	return err == nil && string(buf[:n]) == "ok"
+	core.SendIPCCmd("flush")
 }
 
 func RunDaemon() {

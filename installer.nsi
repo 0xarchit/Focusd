@@ -1,3 +1,7 @@
+!ifndef VERSION
+  !define VERSION "0.0.0"
+!endif
+
 !include "MUI2.nsh"
 !include "WinMessages.nsh"
 

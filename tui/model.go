@@ -122,6 +122,7 @@ type Model struct {
 	limitsSelected          int
 	settingsSelected        int
 	settingsBrowserSelected int
+	settingsExportSelected  int
 	focusButton             int
 	focusDuration           int
 	focusBreak              int
@@ -145,7 +146,8 @@ func NewModel() Model {
 		statsSort:        0,
 		statsCustomFrom:  time.Now().Format("2006-01-02"),
 		statsCustomTo:    time.Now().Format("2006-01-02"),
-		settingsSelected: 0,
+		settingsSelected:       0,
+		settingsExportSelected: 0,
 	}
 }
 

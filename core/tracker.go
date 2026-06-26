@@ -18,6 +18,28 @@ import (
 // IPCAddress is the single source of truth for the tracker's IPC endpoint.
 const IPCAddress = "127.0.0.1:48321"
 
+// SendIPCCmd sends a command to the running daemon via the IPC socket and returns if it succeeded.
+func SendIPCCmd(cmd string) bool {
+	conn, err := net.DialTimeout("tcp", IPCAddress, 1*time.Second)
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+
+	if err := conn.SetDeadline(time.Now().Add(1 * time.Second)); err != nil {
+		return false
+	}
+
+	_, err = conn.Write([]byte(cmd))
+	if err != nil {
+		return false
+	}
+
+	buf := make([]byte, 16)
+	n, err := conn.Read(buf)
+	return err == nil && string(buf[:n]) == "ok"
+}
+
 type ActiveSession struct {
 	AppName     string
 	ExeName     string
