@@ -79,8 +79,7 @@ jobs:
         shell: powershell
         run: |
           $hashSetup = (Get-FileHash -Path focusd_setup.exe -Algorithm SHA256).Hash.ToLower()
-          $hashExe = (Get-FileHash -Path focusd.exe -Algorithm SHA256).Hash.ToLower()
-          "$hashSetup  focusd_setup.exe`n$hashExe  focusd.exe" | Out-File -FilePath checksums.txt -Encoding ASCII
+          "$hashSetup  focusd_setup.exe" | Out-File -FilePath checksums.txt -Encoding ASCII
 
       - name: Create Release
         uses: softprops/action-gh-release@v3
@@ -88,7 +87,6 @@ jobs:
           name: focusd v${{ env.VERSION }}
           body: ${{ env.RELEASE_NOTES }}
           files: |
-            focusd.exe
             focusd_setup.exe
             checksums.txt
           token: ${{ secrets.GIT_TOKEN }}
