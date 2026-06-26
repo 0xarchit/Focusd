@@ -131,12 +131,14 @@ func fetchChecksum(version string) (string, error) {
 		return "", err
 	}
 
-	line := strings.TrimSpace(string(body))
-	parts := strings.Fields(line)
-	if len(parts) >= 1 {
-		return strings.ToLower(parts[0]), nil
+	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+	for _, line := range lines {
+		parts := strings.Fields(strings.TrimSpace(line))
+		if len(parts) >= 2 && parts[1] == "focusd.exe" {
+			return strings.ToLower(parts[0]), nil
+		}
 	}
-	return "", fmt.Errorf("invalid checksum format")
+	return "", fmt.Errorf("focusd.exe checksum not found in checksums.txt")
 }
 
 func calculateFileHash(filePath string) (string, error) {
