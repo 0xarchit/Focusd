@@ -14,7 +14,7 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set Version
       id: set_version
@@ -46,12 +46,7 @@ jobs:
     - name: Setup Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.21'
-
-    - name: Install UPX
-      uses: crazy-max/ghaction-upx@v3
-      with:
-        install-only: true
+        go-version: '1.24'
 
     - name: Install NSIS
       run: choco install nsis -y
@@ -62,19 +57,16 @@ jobs:
       run: |
         go build -ldflags="-s -w -H=windowsgui -X 'focusd/system.Version=${{ env.VERSION }}'" -trimpath -o focusd.exe ./cmd/focusd
 
-    - name: Compress
-      run: |
-        upx --best --lzma focusd.exe
-
     - name: Build NSIS Installer
       run: |
-        makensis installer.nsi
+        makensis /DVERSION=${{ env.VERSION }} installer.nsi
 
     - name: Generate Checksum
       shell: powershell
       run: |
-        $hash = (Get-FileHash -Path focusd_setup.exe -Algorithm SHA256).Hash.ToLower()
-        "$hash  focusd_setup.exe" | Out-File -FilePath checksums.txt -Encoding ASCII
+        $hashSetup = (Get-FileHash -Path focusd_setup.exe -Algorithm SHA256).Hash.ToLower()
+        $hashExe = (Get-FileHash -Path focusd.exe -Algorithm SHA256).Hash.ToLower()
+        "$hashSetup  focusd_setup.exe`n$hashExe  focusd.exe" | Out-File -FilePath checksums.txt -Encoding ASCII
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
@@ -82,6 +74,7 @@ jobs:
         name: focusd v${{ env.VERSION }}
         body: ${{ env.RELEASE_NOTES }}
         files: |
+          focusd.exe
           focusd_setup.exe
           checksums.txt
         token: ${{ secrets.GIT_TOKEN }}
