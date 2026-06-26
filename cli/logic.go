@@ -21,6 +21,10 @@ func SetRetentionLogic(days int) error {
 		}
 	}
 
+	if err := storage.SetRetentionDays(days); err != nil {
+		return fmt.Errorf("failed to save retention days: %w", err)
+	}
+
 	ui.PrintOK(fmt.Sprintf("Retention set to %d days.", days))
 	return nil
 }

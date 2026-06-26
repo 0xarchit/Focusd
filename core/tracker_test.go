@@ -141,3 +141,22 @@ func TestFlushPendingSessions(t *testing.T) {
 		t.Errorf("expected AppName to be 'App1', got %q", sessions[0].AppName)
 	}
 }
+
+func TestRetentionDays(t *testing.T) {
+	setupTestDB(t)
+
+	// Check default
+	if got := storage.GetRetentionDays(); got != storage.DefaultRetentionDays {
+		t.Errorf("expected default retention days to be %d, got %d", storage.DefaultRetentionDays, got)
+	}
+
+	// Set and get custom value
+	customDays := 15
+	if err := storage.SetRetentionDays(customDays); err != nil {
+		t.Fatalf("failed to set retention days: %v", err)
+	}
+
+	if got := storage.GetRetentionDays(); got != customDays {
+		t.Errorf("expected custom retention days to be %d, got %d", customDays, got)
+	}
+}
