@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"focusd/core"
 	"focusd/system"
 	"strings"
 
@@ -48,15 +47,9 @@ func (m Model) renderDashboard(width, height int) string {
 }
 
 func (m Model) renderTodayPanel(width int) string {
-	active, _, _ := core.GetPomodoroStatus()
-	focusText := "0 / 5 goal"
-	if active {
-		focusText = amberStyle.Render("1 / 5 goal")
-	}
 	rows := []string{
 		rowKV("Screen Time", formatDuration(m.dashboard.Total), width-4),
 		rowKV("Active Apps", fmt.Sprintf("%d", m.dashboard.ActiveApps), width-4),
-		rowKV("Focus Sessions", focusText, width-4),
 		rowKV("Limits Hit", fmt.Sprintf("%d", m.dashboard.LimitsHit), width-4),
 	}
 	return panel("TODAY", "", width, "\n"+strings.Join(rows, "\n")+"\n", m.panelFocus == 0)

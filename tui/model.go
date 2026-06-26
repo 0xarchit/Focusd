@@ -233,6 +233,7 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	apps, err := aggregateAppStats(startDate, endDate)
 	if err != nil {
 		data.Err = err
+		return data
 	}
 	for _, s := range apps {
 		name := s.ExeName
@@ -244,7 +245,11 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	}
 	data.ActiveApps = len(data.Apps)
 
-	browsers, _ := aggregateBrowserStats(startDate, endDate)
+	browsers, err := aggregateBrowserStats(startDate, endDate)
+	if err != nil {
+		data.Err = err
+		return data
+	}
 	for _, s := range browsers {
 		data.Browsers = append(data.Browsers, appUsage{Name: s.AppName, Duration: s.TotalDurationSecs, Opens: s.OpenCount})
 	}
@@ -257,7 +262,11 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	}
 
 	if includeHourly {
-		sessions, _, _ := storage.GetSessionsPaginated(500, 0, today, today)
+		sessions, _, err := storage.GetSessionsPaginated(500, 0, today, today)
+		if err != nil {
+			data.Err = err
+			return data
+		}
 		for _, s := range sessions {
 			h := s.StartTime.Hour()
 			if h >= 0 && h < 24 {
@@ -273,7 +282,11 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	for i := historyDays - 1; i >= 0; i-- {
 		d := historyEnd.AddDate(0, 0, -i)
 		date := d.Format("2006-01-02")
-		dayApps, _ := storage.GetAppStatsForDate(date)
+		dayApps, err := storage.GetAppStatsForDate(date)
+		if err != nil {
+			data.Err = err
+			return data
+		}
 		total := 0
 		for _, s := range dayApps {
 			total += s.TotalDurationSecs
@@ -485,7 +498,7 @@ func (m Model) handleModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 					m.addToast("Tracking data wiped", toastSuccess)
 				}
 				m.modal = modal{}
-				return m, loadDashboard()
+				return m, tea.Batch(loadDashboard(), loadStats(m.statsRange))
 			}
 			m.modal = modal{}
 		}
