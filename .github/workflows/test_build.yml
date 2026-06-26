@@ -22,6 +22,9 @@ jobs:
       with:
         install-only: true
 
+    - name: Install NSIS
+      run: choco install nsis -y
+
     - name: Build and Compress
       run: |
         go build -ldflags="-s -w -H=windowsgui" -trimpath -o focusd.exe ./cmd/focusd
