@@ -147,8 +147,11 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			}
 		case 2:
 			paused := storage.IsPaused()
-			storage.SetPaused(!paused)
-			m.addToast("Browser tracking toggled", toastSuccess)
+			if err := storage.SetPaused(!paused); err != nil {
+				m.addToast("Failed to toggle browser tracking", toastError)
+			} else {
+				m.addToast("Browser tracking toggled", toastSuccess)
+			}
 		case 3:
 			m.addToast("Smart grouping toggled", toastInfo)
 		case 4:
