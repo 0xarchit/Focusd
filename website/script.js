@@ -329,8 +329,10 @@ function initTerminal() {
                     matrixSpeed = (matrixSpeed === 50) ? 20 : 50;
                     addToHistory(matrixSpeed === 20 ? "Matrix intensity: HIGH" : "Matrix intensity: NORMAL");
                 } else {
-                    // Render as HTML if the response contains tags.
-                    addToHistory(response, response.includes('<'));
+                    // Only render static allowed keys as HTML to prevent dynamic XSS sinks.
+                    const allowedHTMLKeys = ['focusd'];
+                    const isAllowedHTML = allowedHTMLKeys.includes(cmd);
+                    addToHistory(response, isAllowedHTML);
                     if (cmd === 'download') {
                         setTimeout(() => {
                             window.open('https://github.com/0xarchit/Focusd/releases', '_blank');

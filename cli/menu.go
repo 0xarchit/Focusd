@@ -33,8 +33,10 @@ func RunInteractiveMenu() {
 	}
 
 	core.CheckPomodoroAndNotify()
-
-	RequestDaemonFlush()
+	
+	if !RequestDaemonFlush() {
+		ui.PrintWarn("Failed to flush daemon. Stale data may be displayed.")
+	}
 
 	if err := tui.StartTUI(); err != nil {
 		fmt.Printf("Error: %v\n", err)

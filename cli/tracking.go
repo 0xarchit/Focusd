@@ -63,8 +63,8 @@ func RunStop() {
 	}
 }
 
-func RequestDaemonFlush() {
-	core.SendIPCCmd("flush")
+func RequestDaemonFlush() bool {
+	return core.SendIPCCmd("flush")
 }
 
 func RunDaemon() {
