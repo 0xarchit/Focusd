@@ -17,14 +17,27 @@ var (
 func AttachParentConsole() {
 	ret, _, _ := procAttachConsole.Call(uintptr(0xFFFFFFFF)) // ATTACH_PARENT_PROCESS
 	if ret != 0 {
-		if f, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
-			os.Stdout = f
+		// Re-initialize Go's internal standard handles using the attached console's handles
+		const (
+			stdInputHandle  = 0xFFFFFFF6 // -10
+			stdOutputHandle = 0xFFFFFFF5 // -11
+			stdErrorHandle  = 0xFFFFFFF4 // -12
+		)
+		modkernel32 := syscall.NewLazyDLL("kernel32.dll")
+		procGetStdHandle := modkernel32.NewProc("GetStdHandle")
+
+		hIn, _, _ := procGetStdHandle.Call(uintptr(stdInputHandle))
+		hOut, _, _ := procGetStdHandle.Call(uintptr(stdOutputHandle))
+		hErr, _, _ := procGetStdHandle.Call(uintptr(stdErrorHandle))
+
+		if hIn != 0 && hIn != ^uintptr(0) {
+			os.Stdin = os.NewFile(hIn, "/dev/stdin")
 		}
-		if f, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
-			os.Stderr = f
+		if hOut != 0 && hOut != ^uintptr(0) {
+			os.Stdout = os.NewFile(hOut, "/dev/stdout")
 		}
-		if f, err := os.OpenFile("CONIN$", os.O_RDWR, 0); err == nil {
-			os.Stdin = f
+		if hErr != 0 && hErr != ^uintptr(0) {
+			os.Stderr = os.NewFile(hErr, "/dev/stderr")
 		}
 	}
 }

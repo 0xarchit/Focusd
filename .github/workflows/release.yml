@@ -69,7 +69,7 @@ jobs:
         env:
           CGO_ENABLED: 0
         run: |
-          go build -ldflags="-s -w -H=windowsgui -X 'focusd/system.Version=${{ env.VERSION }}'" -trimpath -o focusd.exe ./cmd/focusd
+          go build -ldflags="-s -w -X 'focusd/system.Version=${{ env.VERSION }}'" -trimpath -o focusd.exe ./cmd/focusd
 
       - name: Build NSIS Installer
         run: |
