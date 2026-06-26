@@ -47,7 +47,16 @@ func (m Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 			if m.limitForm.Field == 3 {
 				mins := m.limitForm.Hours*60 + m.limitForm.Minutes
 				if m.limitForm.App != "" && mins > 0 {
-					system.SetAppTimeLimit(m.limitForm.App, mins)
+					if m.limitForm.Editing && m.limitForm.OriginalApp != "" && !strings.EqualFold(m.limitForm.App, m.limitForm.OriginalApp) {
+						if err := system.RemoveAppTimeLimit(m.limitForm.OriginalApp); err != nil {
+							m.addToast("Failed to rename limit: "+err.Error(), toastError)
+							return m, nil
+						}
+					}
+					if err := system.SetAppTimeLimit(m.limitForm.App, mins); err != nil {
+						m.addToast("Failed to save limit: "+err.Error(), toastError)
+						return m, nil
+					}
 					m.addToast("Limit saved for "+m.limitForm.App, toastSuccess)
 					m.limitForm = limitForm{}
 					return m, loadDashboard()
@@ -84,13 +93,17 @@ func (m Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 		rows := m.limitRows()
 		if len(rows) > 0 {
 			row := rows[m.limitsSelected]
-			m.limitForm = limitForm{Visible: true, Editing: true, App: row.Name, Hours: row.Opens / 60, Minutes: row.Opens % 60}
+			m.limitForm = limitForm{Visible: true, Editing: true, App: row.Name, OriginalApp: row.Name, Hours: row.Opens / 60, Minutes: row.Opens % 60}
 		}
 	case "d":
 		rows := m.limitRows()
 		if len(rows) > 0 {
-			system.RemoveAppTimeLimit(rows[m.limitsSelected].Name)
-			m.addToast("Limit deleted for "+rows[m.limitsSelected].Name, toastWarning)
+			appName := rows[m.limitsSelected].Name
+			if err := system.RemoveAppTimeLimit(appName); err != nil {
+				m.addToast("Failed to delete limit: "+err.Error(), toastError)
+				return m, nil
+			}
+			m.addToast("Limit deleted for "+appName, toastWarning)
 			return m, loadDashboard()
 		}
 	}

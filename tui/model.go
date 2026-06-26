@@ -71,12 +71,13 @@ type toast struct {
 }
 
 type limitForm struct {
-	Visible bool
-	Editing bool
-	App     string
-	Hours   int
-	Minutes int
-	Field   int
+	Visible     bool
+	Editing     bool
+	App         string
+	OriginalApp string
+	Hours       int
+	Minutes     int
+	Field       int
 }
 
 type modal struct {

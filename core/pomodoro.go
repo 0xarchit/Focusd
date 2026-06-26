@@ -33,6 +33,14 @@ func getPomodoroPath() string {
 	return filepath.Join(appData, "focusd", "pomodoro.json")
 }
 
+func clonePomodoroState(state *PomodoroState) *PomodoroState {
+	if state == nil {
+		return nil
+	}
+	cloned := *state
+	return &cloned
+}
+
 func loadPomodoroStateFresh() *PomodoroState {
 	pomodoroCacheMutex.Lock()
 	defer pomodoroCacheMutex.Unlock()
@@ -46,12 +54,12 @@ func loadPomodoroStateFresh() *PomodoroState {
 	if err != nil {
 		cachedState = &PomodoroState{Duration: DefaultPomodoroMinutes}
 		cachedModTime = time.Time{}
-		return cachedState
+		return clonePomodoroState(cachedState)
 	}
 
 	modTime := info.ModTime()
 	if cachedState != nil && modTime.Equal(cachedModTime) {
-		return cachedState
+		return clonePomodoroState(cachedState)
 	}
 
 	state := &PomodoroState{Duration: DefaultPomodoroMinutes}
@@ -65,7 +73,7 @@ func loadPomodoroStateFresh() *PomodoroState {
 
 	cachedState = state
 	cachedModTime = modTime
-	return state
+	return clonePomodoroState(state)
 }
 
 func savePomodoroState(state *PomodoroState) error {

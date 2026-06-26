@@ -161,7 +161,12 @@ func (m Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 				m.addToast("Browser tracking toggled", toastSuccess)
 			}
 		case 3:
-			m.addToast("Smart grouping toggled", toastInfo)
+			enabled := system.GetSmartGroupingEnabled()
+			if err := system.SetSmartGroupingEnabled(!enabled); err != nil {
+				m.addToast("Failed to toggle smart grouping", toastError)
+			} else {
+				m.addToast(fmt.Sprintf("Smart grouping: %s", ifThen(!enabled, "Enabled", "Disabled")), toastSuccess)
+			}
 		case 4:
 			current := storage.GetTrackingIntervalSeconds()
 			next := min(storage.MaxTrackingIntervalSeconds, current+1)
@@ -262,7 +267,7 @@ func (m Model) renderSettings(width, height int) string {
 		"",
 		"TRACKING",
 		settingRow(2, m.settingsSelected, "Browser tracking", toggleText(!paused), inner),
-		settingRow(3, m.settingsSelected, "Smart app grouping", toggleText(true)+"  "+mutedStyle.Render("(experimental)"), inner),
+		settingRow(3, m.settingsSelected, "Smart app grouping", toggleText(system.GetSmartGroupingEnabled())+"  "+mutedStyle.Render("(experimental)"), inner),
 		settingRow(4, m.settingsSelected, "Tracking interval", fmt.Sprintf("[ %d ] seconds", trackingInterval), inner),
 		settingRow(5, m.settingsSelected, "Idle threshold", fmt.Sprintf("[ %d ] seconds", idleThreshold), inner),
 		"",
