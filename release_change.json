@@ -72,7 +72,7 @@
     "Feature: Windows Add/Remove Programs support with proper uninstaller",
     "Architecture: Go 1.24 minimum requirement",
     "Architecture: Auto-update now downloads raw binary from releases",
-    "Architecture: Checksum verification for both installer and binary",
+    "Security: SHA256 checksum verification for downloaded binary (focusd.exe); installer checksum published for manual verification",
     "Security: Removed UPX compression (prevents AV false positives)",
     "Improved: Website updated with current CLI commands and features",
     "Improved: README badges updated to for-the-badge style",

@@ -318,12 +318,13 @@ func (t *Tracker) flushPendingSessions() {
 	for _, s := range sessions {
 		if err := storage.InsertSession(s); err != nil {
 			log.Printf("ERROR: failed to insert session: %v", err)
+			continue // skip aggregate update to avoid inconsistent state
 		}
 		if err := storage.UpdateAppDaily(s.Date, s.AppName, s.ExeName, s.DurationSecs); err != nil {
 			log.Printf("ERROR: failed to update app daily stats: %v", err)
 		}
 
-		if IsBrowser(s.ExeName) {
+		if storage.IsBrowser(s.ExeName) {
 			cleanTitle := CleanWindowTitle(s.WindowTitle, s.ExeName)
 			if err := storage.UpdateBrowserDaily(s.Date, cleanTitle, s.DurationSecs); err != nil {
 				log.Printf("ERROR: failed to update browser daily stats: %v", err)
@@ -384,6 +385,7 @@ func getAppName(exeName string) string {
 func (t *Tracker) startIPCOnport() {
 	listener, err := net.Listen("tcp", IPCAddress)
 	if err != nil {
+		log.Printf("ERROR: IPC listener failed to bind on %s: %v", IPCAddress, err)
 		return
 	}
 	defer listener.Close()

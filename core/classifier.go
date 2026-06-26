@@ -1,7 +1,6 @@
 package core
 
 import (
-	"focusd/storage"
 	"strings"
 	"unicode"
 )
@@ -12,9 +11,6 @@ var browserSuffixes = []string{
 	"zen browser", "arc", "internet explorer", "personal", "work",
 }
 
-func IsBrowser(exeName string) bool {
-	return storage.IsBrowser(exeName)
-}
 
 func isBrowserSuffix(suffix string) bool {
 	for _, b := range browserSuffixes {

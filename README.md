@@ -110,6 +110,7 @@ Silent background process with minimal resource usage (~5MB RAM, ~0% CPU).
 | `focusd autostart` | Manage auto-start (enable/disable) |
 | `focusd path` | Manage PATH (enable/disable) |
 | `focusd update` | Check for updates |
+| `focusd version` | Print the installed version |
 | `focusd reset-password` | Reset password protection |
 
 ---

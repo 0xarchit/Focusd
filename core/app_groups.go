@@ -17,7 +17,7 @@ var appPatterns = []appPattern{
 	{Name: "GitHub", Patterns: []string{"github.com", "· github", "- github", "| github", "/github"}},
 	{Name: "GitLab", Patterns: []string{"gitlab.com", "- gitlab", "| gitlab"}},
 	{Name: "Instagram", Patterns: []string{"instagram.com", "- instagram", "| instagram"}},
-	{Name: "Twitter/X", Patterns: []string{"twitter.com", "x.com/", "/ x", "| x", "- x"}},
+	{Name: "Twitter/X", Patterns: []string{"twitter.com", "/ x", "| x", "- x"}},
 	{Name: "Facebook", Patterns: []string{"facebook.com", "- facebook", "| facebook"}},
 	{Name: "Reddit", Patterns: []string{"reddit.com", "- reddit", "| reddit"}},
 	{Name: "LinkedIn", Patterns: []string{"linkedin.com", "- linkedin", "| linkedin"}},
@@ -114,6 +114,14 @@ func ExtractAppCategory(title string) string {
 
 	if defaultBrowserTitles[titleLower] {
 		return "Browser (Idle)"
+	}
+
+	// x.com exact-host check before first-match loop to avoid catching
+	// unrelated domains that happen to contain the substring "x.com/".
+	if titleLower == "x.com" ||
+		strings.HasPrefix(titleLower, "x.com/") ||
+		strings.Contains(titleLower, "://x.com/") {
+		return "Twitter/X"
 	}
 
 	for i := range appPatterns {

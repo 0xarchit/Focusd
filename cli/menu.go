@@ -17,7 +17,7 @@ import (
 func RunInteractiveMenu() {
 	if err := storage.Init(); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
-		return
+		os.Exit(1)
 	}
 	defer storage.Close()
 
@@ -42,50 +42,6 @@ func RunInteractiveMenu() {
 	}
 }
 
-func printMenuHeader() {
-	ui.PrintMenuHeader()
-	fmt.Printf("   Version: %s%s%s\n", ui.Cyan, system.Version, ui.Reset)
-}
-
-func printCurrentStatus() {
-	ui.PrintSectionHeader("Status")
-
-	if !storage.IsConsentGranted() {
-		ui.PrintWarn("Not initialized - Go to Settings > Initialize")
-		fmt.Println()
-		return
-	}
-
-	isRunning := false
-	if system.GetProcessCount(system.DaemonProcessName) > 1 {
-		isRunning = true
-	}
-
-	if isRunning {
-		ui.PrintStatus("Daemon", "RUNNING", true)
-	} else {
-		ui.PrintStatus("Daemon", "STOPPED", false)
-	}
-
-	if storage.IsPaused() {
-		ui.PrintStatus("Tracking", "PAUSED", false)
-	} else if isRunning {
-		ui.PrintStatus("Tracking", "ACTIVE", true)
-	} else {
-		ui.PrintStatus("Tracking", "INACTIVE", false)
-	}
-
-	ui.PrintStatus("Retention", fmt.Sprintf("%d days", storage.GetRetentionDays()), true)
-
-	enabled, _, _ := system.GetAutoStartEnabled()
-	if enabled {
-		ui.PrintStatus("Auto-start", "ENABLED", true)
-	} else {
-		ui.PrintStatus("Auto-start", "DISABLED", false)
-	}
-
-	fmt.Println()
-}
 
 func printMenuOptions() {
 	ui.PrintSectionHeader("Menu")

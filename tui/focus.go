@@ -21,9 +21,11 @@ func (m Model) handleFocusKey(key string) (Model, tea.Cmd) {
 		return m.startFocus()
 	case "x":
 		core.StopPomodoro()
+		m.focusPaused = false
 		m.addToast("Focus timer stopped", toastWarning)
 	case "r":
 		core.StopPomodoro()
+		m.focusPaused = false
 		m.addToast("Focus timer reset", toastInfo)
 	case "enter":
 		switch m.focusButton {
@@ -31,9 +33,11 @@ func (m Model) handleFocusKey(key string) (Model, tea.Cmd) {
 			return m.startFocus()
 		case 1:
 			core.StopPomodoro()
+			m.focusPaused = false
 			m.addToast("Focus timer stopped", toastWarning)
 		case 2:
 			core.StopPomodoro()
+			m.focusPaused = false
 			m.addToast("Focus timer reset", toastInfo)
 		}
 	case "up":
@@ -103,7 +107,7 @@ func (m Model) renderFocus(width, height int) string {
 	history := strings.Join([]string{
 		boldStyle.Render("#   Started     Duration   Status"),
 		mutedStyle.Render("────────────────────────────────────────────"),
-		mutedStyle.Render("   (Focus history tracking coming soon)"),
+		mutedStyle.Render("   No focus sessions recorded today."),
 	}, "\n")
 	if height < 24 {
 		if m.panelFocus == 1 {

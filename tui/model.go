@@ -127,6 +127,7 @@ type Model struct {
 	focusButton             int
 	focusDuration           int
 	focusBreak              int
+	focusPaused             bool
 	settingsAddingBrowser   bool
 	settingsBrowserInput    string
 

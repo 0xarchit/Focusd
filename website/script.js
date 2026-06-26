@@ -6,7 +6,7 @@ const commands = {
     clear: "CLEAR_ACTION",
     theme: "THEME_ACTION",
     matrix: "MATRIX_ACTION",
-    focusd: "Usage: focusd [command]. Try 'help' for available commands."
+    focusd: "<span style='color:#0f0'>Launching focusd TUI...</span><br><span style='color:#888'>  ___  ___  ___  ___  ___  ___  ___<br> | F || O || C || U || S || D || ↑ |<br> |___||___||___||___||___||___||___|</span><br><span style='color:#0f0'>● Dashboard  ○ Stats  ○ Focus  ○ Limits  ○ Settings</span><br><span style='color:#555'>(simulation — install focusd to experience the real TUI)</span>"
 };
 
 let matrixInterval;
@@ -329,7 +329,8 @@ function initTerminal() {
                     matrixSpeed = (matrixSpeed === 50) ? 20 : 50;
                     addToHistory(matrixSpeed === 20 ? "Matrix intensity: HIGH" : "Matrix intensity: NORMAL");
                 } else {
-                    addToHistory(response);
+                    // Render as HTML if the response contains tags.
+                    addToHistory(response, response.includes('<'));
                     if (cmd === 'download') {
                         setTimeout(() => {
                             window.open('https://github.com/0xarchit/Focusd/releases', '_blank');
@@ -337,8 +338,7 @@ function initTerminal() {
                     }
                 }
             } else if (cmd.startsWith('focusd')) {
-                 addToHistory("Executing focusd daemon... (simulation)");
-                 addToHistory(commands.help);
+                addToHistory(commands.focusd, true);
             } else {
                 addToHistory(`'${cmd}' is not recognized as an internal or external command.`);
             }
