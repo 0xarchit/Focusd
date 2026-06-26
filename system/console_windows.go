@@ -23,7 +23,7 @@ func AttachParentConsole() {
 		if f, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
 			os.Stderr = f
 		}
-		if f, err := os.OpenFile("CONIN$", os.O_RDONLY, 0); err == nil {
+		if f, err := os.OpenFile("CONIN$", os.O_RDWR, 0); err == nil {
 			os.Stdin = f
 		}
 	}
