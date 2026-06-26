@@ -105,18 +105,6 @@ func GetPomodoroStatus() (active bool, remaining time.Duration, total int) {
 	return true, remaining, state.Duration
 }
 
-func IsPomodoroComplete() bool {
-	state := loadPomodoroStateFresh()
-	if !state.Active {
-		return false
-	}
-
-	elapsed := time.Since(state.StartTime)
-	totalDuration := time.Duration(state.Duration) * time.Minute
-
-	return elapsed >= totalDuration
-}
-
 func CheckPomodoroAndNotify() {
 	state := loadPomodoroStateFresh()
 	if !state.Active {

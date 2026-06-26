@@ -29,39 +29,6 @@ func InsertSession(s *Session) error {
 	return err
 }
 
-func InsertSessionsBatch(sessions []*Session) error {
-	if len(sessions) == 0 {
-		return nil
-	}
-
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	stmt, err := tx.Prepare(`
-		INSERT INTO sessions (app_name, exe_name, window_title, start_time, end_time, duration_secs, date)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, s := range sessions {
-		var endTime *int64
-		if !s.EndTime.IsZero() {
-			t := s.EndTime.Unix()
-			endTime = &t
-		}
-		if _, err := stmt.Exec(s.AppName, s.ExeName, s.WindowTitle, s.StartTime.Unix(), endTime, s.DurationSecs, s.Date); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
-}
 
 func UpdateAppDaily(date, appName, exeName string, durationSecs int) error {
 	_, err := db.Exec(`
@@ -74,13 +41,6 @@ func UpdateAppDaily(date, appName, exeName string, durationSecs int) error {
 	return err
 }
 
-func IncrementAppOpenCount(date, exeName string) error {
-	_, err := db.Exec(`
-		UPDATE apps_daily SET open_count = open_count + 1
-		WHERE date = ? AND exe_name = ?
-	`, date, exeName)
-	return err
-}
 
 type AppDailyStat struct {
 	Date              string
@@ -139,33 +99,6 @@ func GetAppUsageTodayMinutes(exeName string) int {
 	return secs / 60
 }
 
-func GetAllSessions() ([]Session, error) {
-	rows, err := db.Query(`
-		SELECT id, app_name, exe_name, window_title, start_time, end_time, duration_secs, date
-		FROM sessions
-		ORDER BY start_time DESC
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var sessions []Session
-	for rows.Next() {
-		var s Session
-		var startTime int64
-		var endTime *int64
-		if err := rows.Scan(&s.ID, &s.AppName, &s.ExeName, &s.WindowTitle, &startTime, &endTime, &s.DurationSecs, &s.Date); err != nil {
-			return nil, err
-		}
-		s.StartTime = time.Unix(startTime, 0)
-		if endTime != nil {
-			s.EndTime = time.Unix(*endTime, 0)
-		}
-		sessions = append(sessions, s)
-	}
-	return sessions, rows.Err()
-}
 
 func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Session, int, error) {
 	countQuery := `SELECT COUNT(*) FROM sessions`
@@ -219,6 +152,35 @@ func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Sessi
 	}
 	return sessions, total, rows.Err()
 }
+
+func GetAllSessions() ([]Session, error) {
+	rows, err := db.Query(`
+		SELECT id, app_name, exe_name, window_title, start_time, end_time, duration_secs, date
+		FROM sessions
+		ORDER BY start_time DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []Session
+	for rows.Next() {
+		var s Session
+		var startTime int64
+		var endTime *int64
+		if err := rows.Scan(&s.ID, &s.AppName, &s.ExeName, &s.WindowTitle, &startTime, &endTime, &s.DurationSecs, &s.Date); err != nil {
+			return nil, err
+		}
+		s.StartTime = time.Unix(startTime, 0)
+		if endTime != nil {
+			s.EndTime = time.Unix(*endTime, 0)
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, rows.Err()
+}
+
 
 func GetAllAppStats() ([]AppDailyStat, error) {
 	rows, err := db.Query(`

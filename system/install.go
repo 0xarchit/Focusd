@@ -74,21 +74,14 @@ WshShell.Run """%s"" --daemon", 0, False
 }
 
 func installFile(src, dst string) error {
-
 	if _, err := os.Stat(dst); err == nil {
 		oldPath := dst + ".old"
-
 		os.Remove(oldPath)
-
 		if err := os.Rename(dst, oldPath); err != nil {
-
 			return fmt.Errorf("failed to move existing file %s to %s (is it locked?): %w", dst, oldPath, err)
 		}
 	}
-	return copyFile(src, dst)
-}
 
-func copyFile(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -101,10 +94,8 @@ func copyFile(src, dst string) error {
 	}
 	defer dstFile.Close()
 
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return err
-	}
-	return nil
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }
 
 func CleanupOldBinary() {

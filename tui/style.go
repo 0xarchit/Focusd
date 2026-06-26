@@ -257,17 +257,3 @@ func bar(value, maxValue, width int, fillChar string) string {
 	}
 	return strings.Repeat(fillChar, filled) + strings.Repeat("░", width-filled)
 }
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

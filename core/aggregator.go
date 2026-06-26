@@ -29,7 +29,7 @@ func GetDailySummary(date string) (*DailySummary, error) {
 
 	summary := createSummary(date, apps)
 	summary.TopSites = limitStats(sites, 10)
-	summary.GroupedSites = groupSitesFromStats(sites)
+	summary.GroupedSites = GroupBrowserStats(sites)
 
 	return summary, nil
 }
@@ -93,7 +93,7 @@ func GetPeriodSummary(days int) (*DailySummary, error) {
 
 	summary := createSummary(label, apps)
 	summary.TopSites = limitStats(sites, 10)
-	summary.GroupedSites = groupSitesFromStats(sites)
+	summary.GroupedSites = GroupBrowserStats(sites)
 	summary.RangeStart = minDate
 	summary.RangeEnd = maxDate
 
@@ -137,21 +137,4 @@ func createSummary(label string, apps []storage.AppDailyStat) *DailySummary {
 	summary.TopApps = limitStats(apps, 10)
 
 	return summary
-}
-
-func groupSitesFromStats(sites []storage.AppDailyStat) []GroupedBrowserStat {
-	var input []struct {
-		Title    string
-		Duration int
-	}
-	for _, s := range sites {
-		input = append(input, struct {
-			Title    string
-			Duration int
-		}{
-			Title:    s.AppName,
-			Duration: s.TotalDurationSecs,
-		})
-	}
-	return GroupBrowserStats(input)
 }
