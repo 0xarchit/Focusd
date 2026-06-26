@@ -7,11 +7,6 @@ import (
 )
 
 func RunPause() {
-	if !storage.IsConsentGranted() {
-		ui.PrintError("focusd is not initialized. Run 'focusd init' first.")
-		return
-	}
-
 	if storage.IsPaused() {
 		ui.PrintInfo("Tracking is already paused.")
 		return
@@ -27,11 +22,6 @@ func RunPause() {
 }
 
 func RunResume() {
-	if !storage.IsConsentGranted() {
-		ui.PrintError("focusd is not initialized. Run 'focusd init' first.")
-		return
-	}
-
 	if !storage.IsPaused() {
 		ui.PrintInfo("Tracking is already active.")
 		return

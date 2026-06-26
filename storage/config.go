@@ -65,14 +65,11 @@ func setBoolConfig(key string, val bool) error {
 }
 
 func IsConsentGranted() bool {
-	return getBoolConfig(ConfigKeyConsent)
+	return true
 }
 
 func SetConsent(granted bool) error {
-	if err := setBoolConfig(ConfigKeyConsent, granted); err != nil {
-		return err
-	}
-	return SetConfig(ConfigKeyConsentTimestamp, time.Now().Format(time.RFC3339))
+	return nil
 }
 
 func GetRetentionDays() int {

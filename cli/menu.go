@@ -140,31 +140,7 @@ func handleMenuSettings(reader *bufio.Reader) {
 		fmt.Println("╚══════════════════════════════════════════════════════════╝")
 		fmt.Println()
 
-		if !storage.IsConsentGranted() {
-			fmt.Println("  [!] Not initialized")
-			fmt.Println()
-			fmt.Println("  1. Initialize focusd")
-			fmt.Println()
-			fmt.Println("  0. Back")
-			fmt.Println()
-			fmt.Print("Enter choice: ")
-			input, _ := reader.ReadString('\n')
-			input = strings.TrimSpace(input)
-			if input == "1" {
-				fmt.Println()
-
-				if err := InitLogic(true, false, false); err != nil {
-					ui.PrintError(err.Error())
-				} else {
-
-				}
-				waitForEnterWithReader(reader)
-			}
-			if input == "0" || input == "" {
-				return
-			}
-			continue
-		}
+		// Removed obsolete Not Initialized check
 
 		fmt.Println("  Current Settings:")
 		fmt.Printf("    Retention: %d days\n", storage.GetRetentionDays())

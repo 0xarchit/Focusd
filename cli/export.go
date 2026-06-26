@@ -18,11 +18,6 @@ func RunExport() {
 	}
 	defer storage.Close()
 
-	if !storage.IsConsentGranted() {
-		ui.PrintError("focusd is not initialized. Run 'focusd init' first.")
-		os.Exit(1)
-	}
-
 	RequestDaemonFlush()
 
 	userProfile := os.Getenv("USERPROFILE")

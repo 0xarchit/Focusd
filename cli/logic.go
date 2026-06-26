@@ -7,14 +7,9 @@ import (
 	"focusd/ui"
 	"log"
 	"os"
-	"strings"
 )
 
 func SetRetentionLogic(days int) error {
-	if !storage.IsConsentGranted() {
-		return fmt.Errorf("not initialized")
-	}
-
 	if currentExe, err := os.Executable(); err == nil {
 		installedExe := system.GetInstalledExePath()
 		if currentExe != installedExe {
@@ -31,10 +26,6 @@ func SetRetentionLogic(days int) error {
 }
 
 func EnablePathLogic() error {
-	if !storage.IsConsentGranted() {
-		return fmt.Errorf("not initialized")
-	}
-
 	if currentExe, err := os.Executable(); err == nil {
 		installedExe := system.GetInstalledExePath()
 		if currentExe != installedExe {
@@ -68,10 +59,6 @@ func DisablePathLogic() error {
 }
 
 func EnableAutostartLogic() error {
-	if !storage.IsConsentGranted() {
-		return fmt.Errorf("not initialized")
-	}
-
 	if currentExe, err := os.Executable(); err == nil {
 		installedExe := system.GetInstalledExePath()
 		if currentExe != installedExe {
@@ -92,56 +79,7 @@ func EnableAutostartLogic() error {
 	return nil
 }
 
-func InitLogic(consent bool, autoStart bool, path bool) error {
 
-	if consent {
-		if err := storage.SetConsent(true); err != nil {
-			return fmt.Errorf("failed to grant consent: %w", err)
-		}
-
-		if err := system.InstallExes(); err != nil {
-			return fmt.Errorf("failed to install binaries: %w", err)
-		}
-		ui.PrintOK("Consent granted.")
-
-		currentExe, _ := os.Executable()
-		installedExe := system.GetInstalledExePath()
-
-		if currentExe != "" && installedExe != "" && !strings.EqualFold(currentExe, installedExe) {
-			ui.PrintInfo("focusd installed to: " + installedExe)
-			ui.PrintWarn(fmt.Sprintf("You can now delete this setup file: %s", currentExe))
-		}
-
-	} else {
-		if err := storage.SetConsent(false); err != nil {
-			return fmt.Errorf("failed to revoke consent: %w", err)
-		}
-		ui.PrintOK("Consent revoked.")
-	}
-
-	if autoStart {
-		if err := EnableAutostartLogic(); err != nil {
-			return fmt.Errorf("failed to enable auto-start during init: %w", err)
-		}
-	} else {
-		if err := DisableAutostartLogic(); err != nil {
-			return fmt.Errorf("failed to disable auto-start during init: %w", err)
-		}
-	}
-
-	if path {
-		if err := EnablePathLogic(); err != nil {
-			return fmt.Errorf("failed to enable path during init: %w", err)
-		}
-	} else {
-		if err := DisablePathLogic(); err != nil {
-			return fmt.Errorf("failed to disable path during init: %w", err)
-		}
-	}
-
-	ui.PrintOK("Initialization complete.")
-	return nil
-}
 
 func DisableAutostartLogic() error {
 	if err := system.DisableAutoStart(); err != nil {

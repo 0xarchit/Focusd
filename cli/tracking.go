@@ -21,11 +21,6 @@ func RunStart() {
 }
 
 func StartDaemonProcess() {
-	if !storage.IsConsentGranted() {
-		ui.PrintError("focusd is not initialized. Run 'focusd init' first.")
-		return
-	}
-
 	if system.GetProcessCount(system.DaemonProcessName) > 1 {
 		ui.PrintInfo("focusd is already running.")
 		return

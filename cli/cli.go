@@ -16,7 +16,6 @@ func PrintHelp() {
 	fmt.Println("  focusd stop               Stop tracking")
 	fmt.Println()
 	fmt.Println("Setup:")
-	fmt.Println("  focusd init      (i)      Initialize and grant consent")
 	fmt.Println("  focusd update             Check for updates")
 	fmt.Println()
 	fmt.Println("Viewing Data:")
@@ -56,8 +55,6 @@ func Run(args []string) {
 	command := args[1]
 
 	switch command {
-	case "init", "i":
-		RunInit()
 	case "update":
 		RunUpdate()
 	case "focus":
