@@ -1,16 +1,11 @@
 # Focusd
 
-[![License](https://img.shields.io/github/license/0xarchit/focusd?style=flat-square)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/0xarchit/focusd?style=flat-square&color=22d3ee)](https://github.com/0xarchit/focusd/releases/latest)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/0xarchit/focusd/release.yml?style=flat-square&label=Build%20Status)](https://github.com/0xarchit/focusd/actions/workflows/release.yml)
-[![Website](https://img.shields.io/website?url=https%3A%2F%2Fdab.0xarchit.is-a.dev&style=flat-square)](https://dab.0xarchit.is-a.dev/)
-[![Dependencies](https://img.shields.io/badge/dependencies-up--to--date-brightgreen?style=flat-square)](#)  
-[![Stars](https://img.shields.io/github/stars/0xarchit/focusd?style=flat-square&color=yellow)](https://github.com/0xarchit/focusd/stargazers)
-[![Downloads](https://img.shields.io/github/downloads/0xarchit/focusd/total?style=flat-square&color=orange)](https://github.com/0xarchit/focusd/releases)
-[![Repo Size](https://img.shields.io/github/repo-size/0xarchit/focusd?style=flat-square&color=blue)](https://github.com/0xarchit/focusd)
-[![Issues](https://img.shields.io/github/issues/0xarchit/focusd?style=flat-square&color=red)](https://github.com/0xarchit/focusd/issues)
-[![Last Commit](https://img.shields.io/github/last-commit/0xarchit/focusd?style=flat-square&color=green)](https://github.com/0xarchit/focusd/commits/main)
-![Platform](https://img.shields.io/badge/platform-Windows_x64-blue?style=flat-square)
+[![Version](https://img.shields.io/github/v/release/0xarchit/focusd?style=for-the-badge&logo=github&logoColor=white&labelColor=000000&color=000000)](https://github.com/0xarchit/focusd/releases)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/0xarchit/focusd/release.yml?style=for-the-badge&logo=githubactions&logoColor=white&labelColor=000000&color=000000)](https://github.com/0xarchit/focusd/actions)
+[![Downloads](https://img.shields.io/github/downloads/0xarchit/focusd/total?style=for-the-badge&logo=rolldown&logoColor=white&labelColor=000000&color=000000)](https://github.com/0xarchit/focusd/releases)
+[![License](https://img.shields.io/badge/License-MIT-000000.svg?style=for-the-badge&logo=apache&logoColor=white&labelColor=000000&color=000000)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.24+-000000.svg?style=for-the-badge&logo=go&logoColor=white&labelColor=000000&color=000000)](https://go.dev)
+![Platform](https://img.shields.io/badge/Platform-Windows_x64-000000.svg?style=for-the-badge&logo=nsis&logoColor=white&labelColor=000000&color=000000)
 <center>
   <pre>
    __                           _ 
@@ -47,15 +42,15 @@ Every productivity tracker on the market uploads your data to their servers. **F
 
 **PowerShell** (Recommended):
 ```powershell
-iwr "https://github.com/0xarchit/focusd/releases/latest/download/focusd.exe" -OutFile focusd.exe; ./focusd.exe init
+iwr "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" -OutFile focusd_setup.exe; ./focusd_setup.exe
 ```
 
 **Command Prompt**:
 ```cmd
-curl -L -o focusd.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd.exe" && focusd.exe init
+curl -L -o focusd_setup.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" && focusd_setup.exe
 ```
 
-> After running `init`, the `focusd` command is available globally from any terminal.
+> Run the installer. It adds `focusd` to your PATH automatically. Open a new terminal and type `focusd` to launch.
 
 ---
 
@@ -99,14 +94,23 @@ Silent background process with minimal resource usage (~5MB RAM, ~0% CPU).
 
 | Command | Description |
 |---------|-------------|
-| `focusd` | Interactive menu |
-| `focusd stats` | Open usage dashboard |
-| `focusd focus <mins>` | Start focus timer |
-| `focusd limit` | Configure app limits |
-| `focusd browser` | Add/remove custom browsers |
-| `focusd start/stop` | Control background service |
+| `focusd` | Interactive TUI menu |
+| `focusd start` | Start background tracking daemon |
+| `focusd stop` | Stop tracking daemon |
+| `focusd status` | Show tracking status |
+| `focusd stats` | Detailed usage breakdown |
+| `focusd focus [mins]` | Start Pomodoro timer (default 25 min) |
+| `focusd stop-timer` | Stop running timer |
+| `focusd limit [app] [mins]` | Set daily app time limit |
+| `focusd pause` | Pause tracking |
+| `focusd resume` | Resume tracking |
+| `focusd browser` | Manage custom browsers (add/remove) |
+| `focusd export` | Export data to CSV |
+| `focusd retention` | Manage data retention (set/reset) |
+| `focusd autostart` | Manage auto-start (enable/disable) |
+| `focusd path` | Manage PATH (enable/disable) |
 | `focusd update` | Check for updates |
-| `focusd uninstall` | Remove all data |
+| `focusd reset-password` | Reset password protection |
 
 ---
 
@@ -127,13 +131,13 @@ cd Focusd
 go build -ldflags="-s -w" -trimpath -o focusd.exe ./cmd/focusd
 ```
 
-**Requirements:** Go 1.21+
+**Requirements:** Go 1.24+
 
 ---
 
 ## Contributing
 
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions welcome. See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines.
 
 ## License
 
