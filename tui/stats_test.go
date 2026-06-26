@@ -1,14 +1,13 @@
 package tui
 
 import (
-	"focusd/storage"
 	"testing"
 	"time"
 )
 
 func TestStatsRangeDates(t *testing.T) {
-	today := storage.Today()
-	now := time.Now()
+	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
+	today := now.Format("2006-01-02")
 
 	tests := []struct {
 		name          string
@@ -80,7 +79,7 @@ func TestStatsRangeDates(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			start, end, days := statsRangeDates(tc.rangeIndex, tc.customFrom, tc.customTo)
+			start, end, days := statsRangeDatesTime(tc.rangeIndex, tc.customFrom, tc.customTo, now)
 			if start != tc.expectedStart {
 				t.Errorf("start = %q; want %q", start, tc.expectedStart)
 			}

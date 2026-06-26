@@ -197,8 +197,11 @@ func loadCustomStats(from, to string) tea.Cmd {
 }
 
 func statsRangeDates(rangeIndex int, customFrom, customTo string) (string, string, int) {
-	today := storage.Today()
-	now := time.Now()
+	return statsRangeDatesTime(rangeIndex, customFrom, customTo, time.Now())
+}
+
+func statsRangeDatesTime(rangeIndex int, customFrom, customTo string, now time.Time) (string, string, int) {
+	today := now.Format("2006-01-02")
 	switch rangeIndex {
 	case 1:
 		return now.AddDate(0, 0, -6).Format("2006-01-02"), today, 7
