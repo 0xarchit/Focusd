@@ -206,7 +206,5 @@ func performUpdate(version string) error {
 	}
 
 	ui.PrintOK("Installer started silently. focusd will now close to complete the update.")
-	time.Sleep(1 * time.Second)
-	os.Exit(0)
 	return nil
 }

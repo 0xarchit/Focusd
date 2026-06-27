@@ -51,7 +51,9 @@ func EnableAutoStart() error {
 
 	linkPath := GetStartupLinkPath()
 	if linkPath != "" {
-		os.Remove(linkPath)
+		if err := os.Remove(linkPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove legacy startup shortcut: %w", err)
+		}
 	}
 
 	daemonPath := GetInstalledDaemonPath()
@@ -72,7 +74,9 @@ func EnableAutoStart() error {
 func DisableAutoStart() error {
 	linkPath := GetStartupLinkPath()
 	if linkPath != "" {
-		os.Remove(linkPath)
+		if err := os.Remove(linkPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove legacy startup shortcut: %w", err)
+		}
 	}
 	return DisableRegistryAutoStart()
 }

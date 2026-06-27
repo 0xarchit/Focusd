@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"database/sql"
+	"fmt"
 	"time"
 )
 
@@ -41,26 +43,32 @@ func GetTotalSessionCount() (int, error) {
 	return count, err
 }
 
+func execOrRollback(tx *sql.Tx, query string) error {
+	if _, err := tx.Exec(query); err != nil {
+		if rbErr := tx.Rollback(); rbErr != nil {
+			return fmt.Errorf("query %q failed: %v (rollback also failed: %v)", query, err, rbErr)
+		}
+		return err
+	}
+	return nil
+}
+
 func ClearAllTrackingData() error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 
-	if _, err := tx.Exec("DELETE FROM sessions"); err != nil {
-		tx.Rollback()
+	if err := execOrRollback(tx, "DELETE FROM sessions"); err != nil {
 		return err
 	}
-	if _, err := tx.Exec("DELETE FROM apps_daily"); err != nil {
-		tx.Rollback()
+	if err := execOrRollback(tx, "DELETE FROM apps_daily"); err != nil {
 		return err
 	}
-	if _, err := tx.Exec("DELETE FROM browsing_daily"); err != nil {
-		tx.Rollback()
+	if err := execOrRollback(tx, "DELETE FROM browsing_daily"); err != nil {
 		return err
 	}
-	if _, err := tx.Exec("DELETE FROM active_session"); err != nil {
-		tx.Rollback()
+	if err := execOrRollback(tx, "DELETE FROM active_session"); err != nil {
 		return err
 	}
 

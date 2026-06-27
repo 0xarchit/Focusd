@@ -22,11 +22,14 @@ func (m Model) handleDashboardKey(key string) (Model, tea.Cmd) {
 		return m, nil
 	case "p":
 		paused := storage.IsPaused()
-		_ = storage.SetPaused(!paused)
-		if !paused {
-			m.addToast("Tracking paused", toastWarning)
+		if err := storage.SetPaused(!paused); err != nil {
+			m.addToast("Failed to toggle tracking: "+err.Error(), toastError)
 		} else {
-			m.addToast("Tracking resumed", toastSuccess)
+			if !paused {
+				m.addToast("Tracking paused", toastWarning)
+			} else {
+				m.addToast("Tracking resumed", toastSuccess)
+			}
 		}
 		return m, nil
 	}
