@@ -24,33 +24,28 @@ func (m Model) handleDashboardKey(key string) (Model, tea.Cmd) {
 func (m *Model) renderDashboard(width, height int) string {
 	inner := width - 2
 
-	// Calculate vertical bands
 	topHeight := (height * 55) / 100
 	bottomHeight := height - topHeight
 
-	// Top Band: 3 panels (Today: 25%, Top Apps: 45%, Heatmap: 30%)
 	leftW := (inner * 25) / 100
 	midW := (inner * 45) / 100
-	rightW := inner - leftW - midW - 2 // -2 for gaps
+	rightW := inner - leftW - midW - 2
 
-	// Bottom Band: 2 panels (Weekly: 70%, Quick: 30%). Stacks vertically if width < 100 cols.
 	var bottomPart string
 	if width < 100 {
 		weeklyH := (bottomHeight * 70) / 100
-		quickH := bottomHeight - weeklyH - 1 // -1 spacer
+		quickH := bottomHeight - weeklyH - 1
 		weeklyPanel := m.renderWeeklyPanel(inner, weeklyH)
 		quickPanel := m.renderQuickActionsPanel(inner, quickH)
 		bottomPart = lipgloss.JoinVertical(lipgloss.Left, weeklyPanel, "", quickPanel)
 	} else {
 		weeklyW := (inner * 70) / 100
-		quickW := inner - weeklyW - 1 // -1 gap
+		quickW := inner - weeklyW - 1
 		weeklyPanel := m.renderWeeklyPanel(weeklyW, bottomHeight)
 		quickPanel := m.renderQuickActionsPanel(quickW, bottomHeight)
 		bottomPart = lipgloss.JoinHorizontal(lipgloss.Top, weeklyPanel, " ", quickPanel)
 	}
 
-	// Register Panel bounding boxes for click and hover tracking
-	// Reset/register regions on-the-fly (Y coordinate offsets based on header and tabs: ~6 rows)
 	topY := 5
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: topY, X2: leftW, Y2: topY + topHeight, ID: "panel-0", Kind: "panel"})
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: leftW + 2, Y1: topY, X2: leftW + 2 + midW, Y2: topY + topHeight, ID: "panel-1", Kind: "panel"})
@@ -71,8 +66,24 @@ func (m *Model) renderTodayPanel(width, height int) string {
 		rowKV("Active Apps", fmt.Sprintf("%d", m.dashboard.ActiveApps), width-4),
 		rowKV("Limits Hit", fmt.Sprintf("%d", m.dashboard.LimitsHit), width-4),
 	}
-	// Add trend indicator
-	trendText := greenStyle.Render("▼ 8% (decreased)")
+	var trendText string
+	if m.dashboard.YesterdayTotal == 0 {
+		if m.dashboard.Total > 0 {
+			trendText = greenStyle.Render("▲ 100% (increased)")
+		} else {
+			trendText = mutedStyle.Render("0% (no change)")
+		}
+	} else {
+		diff := m.dashboard.Total - m.dashboard.YesterdayTotal
+		pct := int(float64(diff) / float64(m.dashboard.YesterdayTotal) * 100)
+		if pct > 0 {
+			trendText = redStyle.Render(fmt.Sprintf("▲ %d%% (increased)", pct))
+		} else if pct < 0 {
+			trendText = greenStyle.Render(fmt.Sprintf("▼ %d%% (decreased)", -pct))
+		} else {
+			trendText = mutedStyle.Render("0% (no change)")
+		}
+	}
 	rows = append(rows, rowKV("Vs Yesterday", trendText, width-4))
 
 	paddingLines := max(0, height-2-len(rows)-2)
@@ -87,7 +98,7 @@ func (m *Model) renderTopAppsPanel(width, height int) string {
 	}
 	limits := system.GetAppTimeLimits()
 	var lines []string
-	
+
 	maxRows := max(1, height-4)
 	if len(m.dashboard.Apps) == 0 {
 		lines = append(lines, mutedStyle.Render("No app data yet. Start tracking."))
@@ -103,7 +114,7 @@ func (m *Model) renderTopAppsPanel(width, height int) string {
 				padRight(truncate(a.Name, nameW), nameW) +
 				padLeft(formatDuration(a.Duration), 8) + "  " +
 				cyanStyle.Render(bar(a.Duration, maxDuration, 3, "█"))
-			
+
 			if i == m.dashSelected && m.panelFocus == 1 {
 				line = selectedRowStyle.Render(padRight(line, width-2))
 			} else if m.hoveredPanel == 1 && m.dashSelected == i {
@@ -159,8 +170,7 @@ func (m *Model) renderHourlyPanel(width, height int) string {
 		hoursText = truncate(hoursText, width-6)
 	}
 	lines = append(lines, "   "+mutedStyle.Render(hoursText))
-	
-	// Add padding based on panel height
+
 	extraLines := max(0, height-2-len(lines)-2)
 	for i := 0; i < extraLines; i++ {
 		lines = append(lines, "")
@@ -170,7 +180,6 @@ func (m *Model) renderHourlyPanel(width, height int) string {
 
 func (m *Model) renderWeeklyPanel(width, height int) string {
 	var lines []string
-	// Calculate weekly maximum duration
 	maxVal := 1
 	for _, day := range m.dashboard.Days {
 		if day.Duration > maxVal {

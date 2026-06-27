@@ -34,7 +34,7 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			if err := storage.AddCustomBrowser(m.settingsBrowserInput); err != nil {
 				m.addToast(err.Error(), toastError)
 			} else {
-				m.addToast("Added " + m.settingsBrowserInput, toastSuccess)
+				m.addToast("Added "+m.settingsBrowserInput, toastSuccess)
 			}
 			m.settingsAddingBrowser = false
 			m.settingsBrowserInput = ""
@@ -260,8 +260,7 @@ func (m *Model) renderSettings(width, height int) string {
 	if m.settingsAddingBrowser {
 		browserValue = "New browser: [ " + cyanStyle.Render(padRight(m.settingsBrowserInput, 18)) + " ]"
 	}
-	
-	// Enforce 1-line spacer gap and distinct color treatment for danger zone
+
 	lines := []string{
 		"DAEMON",
 		m.settingRow(0, m.settingsSelected, "Background service", statusPill(m.daemonActive)+"  "+buttonText(ifThen(m.daemonActive, "Stop", "Start")), inner),
@@ -318,7 +317,6 @@ func (m *Model) renderSettings(width, height int) string {
 		bodyLines = window
 	}
 
-	// Register settings panel coordinates
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
 		X1: 1, Y1: 5, X2: width - 1, Y2: height - 1,
 		ID: "panel-0", Kind: "panel",
@@ -423,11 +421,10 @@ func renderExportButtons(active bool, selectedButton int) string {
 	jsonLabel := "Export JSON"
 	if active {
 		if selectedButton == 0 {
-			return greenStyle.Render("[ " + csvLabel + " ]") + "   " + cyanStyle.Render("[ " + jsonLabel + " ]")
+			return greenStyle.Render("[ "+csvLabel+" ]") + "   " + cyanStyle.Render("[ "+jsonLabel+" ]")
 		} else {
-			return cyanStyle.Render("[ " + csvLabel + " ]") + "   " + greenStyle.Render("[ " + jsonLabel + " ]")
+			return cyanStyle.Render("[ "+csvLabel+" ]") + "   " + greenStyle.Render("[ "+jsonLabel+" ]")
 		}
 	}
-	return cyanStyle.Render("[ " + csvLabel + " ]") + "   " + cyanStyle.Render("[ " + jsonLabel + " ]")
+	return cyanStyle.Render("[ "+csvLabel+" ]") + "   " + cyanStyle.Render("[ "+jsonLabel+" ]")
 }
-

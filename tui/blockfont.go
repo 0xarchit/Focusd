@@ -2,8 +2,6 @@ package tui
 
 import "strings"
 
-// RenderBlockTimer converts minutes and seconds into large block digit characters (3 lines height).
-// Digits are built using full block '█', upper half block '▀', and lower half block '▄' to look modern.
 func RenderBlockTimer(mins, secs int) string {
 	m1, m2 := mins/10, mins%10
 	s1, s2 := secs/10, secs%10
@@ -13,7 +11,6 @@ func RenderBlockTimer(mins, secs int) string {
 	d3 := getDigitLines(s1)
 	d4 := getDigitLines(s2)
 
-	// Colon representation (3 lines)
 	colon := [3]string{
 		" ▄ ",
 		"   ",
@@ -29,8 +26,6 @@ func RenderBlockTimer(mins, secs int) string {
 	return strings.Join(result, "\n")
 }
 
-// 7-segment design spanning exactly 3 rows.
-// Digit width: 5 chars.
 func getDigitLines(d int) [3]string {
 	switch d {
 	case 0:

@@ -81,7 +81,6 @@ func borderColorWithHover(focused bool, hovered bool) lipgloss.Color {
 		return cCyan
 	}
 	if hovered {
-		// Hover highlight: desaturated/reduced intensity cyan or grey highlight
 		return lipgloss.Color("#008FAD")
 	}
 	return cMuted

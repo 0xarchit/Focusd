@@ -37,7 +37,6 @@ func EnableAutoStart() error {
 	}
 	defer key.Close()
 
-	// Write daemon executable path
 	val := fmt.Sprintf(`"%s"`, daemonPath)
 	if err := key.SetStringValue(appName, val); err != nil {
 		return fmt.Errorf("failed to write registry run value: %w", err)

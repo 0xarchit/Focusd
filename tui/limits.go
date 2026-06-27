@@ -116,8 +116,6 @@ func (m *Model) renderLimits(width, height int) string {
 	maxW := width - 2
 	var lines []string
 
-	// Align to spec column widths:
-	// App name — 30%, Limit — 15%, Used — 15%, Remaining — 15%, Status — 25%
 	col1W := (maxW * 30) / 100
 	col2W := (maxW * 15) / 100
 	col3W := (maxW * 15) / 100
@@ -171,7 +169,6 @@ func (m *Model) renderLimits(width, height int) string {
 		lines = append(lines, "", mutedStyle.Render("No limits set. Press n to add one."))
 	}
 
-	// Register limits panel coordinates
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
 		X1: 1, Y1: 5, X2: width - 1, Y2: 5 + height - 2,
 		ID: "panel-0", Kind: "panel",
@@ -196,8 +193,7 @@ func (m *Model) renderLimits(width, height int) string {
 			fields[i] = cyanStyle.Bold(true).Render(fields[i])
 		}
 	}
-	
-	// Register form panel coordinates (as panel-1)
+
 	formY := 5 + height - 8
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
 		X1: 1, Y1: formY, X2: width - 1, Y2: height - 1,

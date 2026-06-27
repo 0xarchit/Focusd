@@ -17,7 +17,6 @@ func setupTestDB(t *testing.T) string {
 	originalAppData := os.Getenv("APPDATA")
 	os.Setenv("APPDATA", tempDir)
 
-	// Clean up after test
 	t.Cleanup(func() {
 		if originalAppData != "" {
 			os.Setenv("APPDATA", originalAppData)

@@ -95,8 +95,6 @@ func (m *Model) statsPanelAt(x, y int) int {
 	return 3
 }
 
-
-
 func (m Model) loadStatsCmd() tea.Cmd {
 	if m.statsRange == 3 {
 		return loadCustomStats(m.statsCustomFrom, m.statsCustomTo)
@@ -344,7 +342,6 @@ func (m *Model) renderStats(width, height int) string {
 		contentHeight = 6
 	}
 
-	// Register Time Range Selector bounds
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
 		X1: 1, Y1: 5, X2: inner + 1, Y2: 5 + topH,
 		ID: "panel-0", Kind: "panel",
@@ -358,8 +355,7 @@ func (m *Model) renderStats(width, height int) string {
 		leftW := (inner - 2) / 2
 		rightW := inner - 2 - leftW
 		middleHeight = (contentHeight * 60) / 100
-		
-		// Register breakdown columns
+
 		m.clickableRegions = append(m.clickableRegions, ClickableRegion{
 			X1: 1, Y1: topY, X2: leftW + 1, Y2: topY + middleHeight,
 			ID: "panel-1", Kind: "panel",
@@ -375,8 +371,7 @@ func (m *Model) renderStats(width, height int) string {
 		browsersPanel := panelWithHover("BROWSER USAGE", "", rightW, "\n"+m.renderBrowserUsage(rightW, browserRows)+"\n", m.panelFocus == 2, m.hoveredPanel == 2)
 		middleRow = lipgloss.JoinHorizontal(lipgloss.Top, appsPanel, " ", browsersPanel)
 	} else {
-		// Stack breakdown panels vertically if width < 100/120 cols
-		middleHeight = contentHeight - 6 // leave room for history timeline
+		middleHeight = contentHeight - 6
 		if m.panelFocus == 0 || m.panelFocus == 1 {
 			m.clickableRegions = append(m.clickableRegions, ClickableRegion{
 				X1: 1, Y1: topY, X2: inner + 1, Y2: topY + middleHeight,
@@ -412,18 +407,15 @@ func (m *Model) renderStats(width, height int) string {
 func (m *Model) renderRangeSelector(width int) string {
 	ranges := []string{"TODAY", "LAST 7 DAYS", "LAST 30 DAYS", "CUSTOM RANGE"}
 	var parts []string
-	
-	// Register range selections as clickable buttons
-	// Range selector sits at Y=6. Each option is roughly width/4.
+
 	btnW := width / 4
 	for i, r := range ranges {
-		// Register clickable coordinates for individual buttons
 		startX := 2 + i*btnW + (i * 3)
 		m.clickableRegions = append(m.clickableRegions, ClickableRegion{
 			X1: startX, Y1: 6, X2: startX + btnW, Y2: 7,
 			ID: fmt.Sprintf("range-%d", i), Kind: "button",
 		})
-		
+
 		if i == m.statsRange {
 			parts = append(parts, cyanStyle.Bold(true).Render("[ "+r+" ]"))
 		} else {
@@ -466,8 +458,7 @@ func (m *Model) renderUsageBreakdown(width, visibleRows int) string {
 				padLeft(formatDuration(a.Duration), 8) +
 				padLeft(strconv.Itoa(a.Opens), 8) + " " +
 				color.Render(bar(a.Duration, maxDuration, 3, "█"))
-			
-			// Highlight row if focused or hovered
+
 			if i == m.statsSelected && m.panelFocus == 1 {
 				line = selectedRowStyle.Render(padRight(line, width-4))
 			} else if m.hoveredPanel == 1 && m.statsSelected == i {
@@ -483,7 +474,6 @@ func (m *Model) renderUsageBreakdown(width, visibleRows int) string {
 
 func (m *Model) renderBrowserUsage(width, visibleRows int) string {
 	var lines []string
-	// Browser title uses standard width, saving exactly 10 cols for time value on the right
 	titleW := max(8, width-16)
 	lines = append(lines, boldStyle.Render(fitLine(padRight("Tab Title", titleW)+padLeft("Time", 10), width-4)), mutedStyle.Render(fill(max(1, width-4), "─")))
 

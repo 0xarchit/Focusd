@@ -12,16 +12,13 @@ var (
 	procAttachConsole = modkernel32.NewProc("AttachConsole")
 )
 
-// AttachParentConsole attaches the process to the parent console (CMD/PowerShell)
-// and re-routes standard file descriptors.
 func AttachParentConsole() {
-	ret, _, _ := procAttachConsole.Call(uintptr(0xFFFFFFFF)) // ATTACH_PARENT_PROCESS
+	ret, _, _ := procAttachConsole.Call(uintptr(0xFFFFFFFF))
 	if ret != 0 {
-		// Re-initialize Go's internal standard handles using the attached console's handles
 		const (
-			stdInputHandle  = 0xFFFFFFF6 // -10
-			stdOutputHandle = 0xFFFFFFF5 // -11
-			stdErrorHandle  = 0xFFFFFFF4 // -12
+			stdInputHandle  = 0xFFFFFFF6
+			stdOutputHandle = 0xFFFFFFF5
+			stdErrorHandle  = 0xFFFFFFF4
 		)
 		modkernel32 := syscall.NewLazyDLL("kernel32.dll")
 		procGetStdHandle := modkernel32.NewProc("GetStdHandle")
@@ -41,5 +38,3 @@ func AttachParentConsole() {
 		}
 	}
 }
-
-

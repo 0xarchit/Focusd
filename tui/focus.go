@@ -99,15 +99,13 @@ func (m *Model) renderFocus(width, height int) string {
 
 	inner := width - 2
 
-	// Render timer digits using block font
 	mins := int(remaining.Minutes())
 	secs := int(remaining.Seconds()) % 60
 	timerDigits := RenderBlockTimer(mins, secs)
 
-	// Action buttons
 	buttons := []string{"▶ START", "■ STOP", "⟳ RESET"}
 	var renderedBtns []string
-	btnRowY := 5 + 4 // roughly Y offset for buttons in layout
+	btnRowY := 5 + 4
 	btnStartX := 4
 	for i, b := range buttons {
 		label := "[ " + b + " ]"
@@ -125,8 +123,6 @@ func (m *Model) renderFocus(width, height int) string {
 		}
 	}
 	buttonsLine := strings.Join(renderedBtns, "  ")
-
-	// Render Timer Panel
 	timerLeftW := (inner * 65) / 100
 	progressBar := cyanStyle.Render(bar(elapsed, total*60, max(10, timerLeftW-8), "▓"))
 	timerBody := lipgloss.JoinVertical(lipgloss.Left,
@@ -138,8 +134,6 @@ func (m *Model) renderFocus(width, height int) string {
 		"",
 		fmt.Sprintf("Duration: [ %02d ] min      Break: [ %02d ] min", m.focusDuration, m.focusBreak),
 	)
-
-	// Register Timer Panel coordinates
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
 		X1: 1, Y1: 5, X2: timerLeftW + 1, Y2: 5 + topH,
 		ID: "panel-0", Kind: "panel",
@@ -147,7 +141,6 @@ func (m *Model) renderFocus(width, height int) string {
 
 	timerPanel := panelWithHover("FOCUS TIMER", status, timerLeftW, "\n"+timerBody+"\n", m.panelFocus == 0, m.hoveredPanel == 0)
 
-	// Stats Panel (Right 35%)
 	statsRightW := inner - timerLeftW
 	statsBody := lipgloss.JoinVertical(lipgloss.Left,
 		rowKV("Sessions Completed", "0", statsRightW),
@@ -159,7 +152,6 @@ func (m *Model) renderFocus(width, height int) string {
 
 	topRow := lipgloss.JoinHorizontal(lipgloss.Top, timerPanel, statsPanel)
 
-	// Session History Panel (Bottom 55%)
 	historyY := 5 + topH + 1
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
 		X1: 1, Y1: historyY, X2: width - 1, Y2: height - 1,

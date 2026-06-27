@@ -40,15 +40,16 @@ type dailyUsage struct {
 }
 
 type tuiData struct {
-	Apps       []appUsage
-	Browsers   []appUsage
-	Days       []dailyUsage
-	Hourly     [24]int
-	Total      int
-	ActiveApps int
-	LimitsHit  int
-	DBPath     string
-	Err        error
+	Apps           []appUsage
+	Browsers       []appUsage
+	Days           []dailyUsage
+	Hourly         [24]int
+	Total          int
+	YesterdayTotal int
+	ActiveApps     int
+	LimitsHit      int
+	DBPath         string
+	Err            error
 }
 
 type dashboardLoadedMsg tuiData
@@ -136,9 +137,8 @@ type Model struct {
 	modal     modal
 	toasts    []toast
 
-	// Clickable regions coordinate map & mouse hover state
 	hoveredElement   string
-	hoveredPanel     int // panel index hovered (e.g. 0, 1, 2)
+	hoveredPanel     int
 	clickableRegions []ClickableRegion
 }
 
@@ -150,15 +150,15 @@ type ClickableRegion struct {
 
 func NewModel() Model {
 	return Model{
-		activeTab:        tabDashboard,
-		splash:           true,
-		clock:            time.Now(),
-		focusDuration:    system.GetPomodoroMinutes(),
-		focusBreak:       5,
-		statsRange:       0,
-		statsSort:        0,
-		statsCustomFrom:  time.Now().Format("2006-01-02"),
-		statsCustomTo:    time.Now().Format("2006-01-02"),
+		activeTab:              tabDashboard,
+		splash:                 true,
+		clock:                  time.Now(),
+		focusDuration:          system.GetPomodoroMinutes(),
+		focusBreak:             5,
+		statsRange:             0,
+		statsSort:              0,
+		statsCustomFrom:        time.Now().Format("2006-01-02"),
+		statsCustomTo:          time.Now().Format("2006-01-02"),
 		settingsSelected:       0,
 		settingsExportSelected: 0,
 		hoveredPanel:           -1,
@@ -295,6 +295,16 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	historyEnd, err := time.Parse("2006-01-02", endDate)
 	if err != nil {
 		historyEnd = time.Now()
+	}
+
+	if includeHourly {
+		yesterday := historyEnd.AddDate(0, 0, -1).Format("2006-01-02")
+		yesterdayApps, err := aggregateAppStats(yesterday, yesterday)
+		if err == nil {
+			for _, s := range yesterdayApps {
+				data.YesterdayTotal += s.TotalDurationSecs
+			}
+		}
 	}
 	for i := historyDays - 1; i >= 0; i-- {
 		d := historyEnd.AddDate(0, 0, -i)
@@ -475,7 +485,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 	case "r":
 		m.refreshing = true
-		// Request daemon flush to DB first so statistics are 100% current
 		core.SendIPCCmd("flush")
 		return m, tea.Batch(m.loadStatsCmd(), loadDashboard())
 	}
@@ -515,7 +524,6 @@ func (m Model) handleModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 					m.addToast("Failed to wipe data", toastError)
 				} else {
 					m.addToast("Tracking data wiped", toastSuccess)
-					// Immediately clear data cache structures
 					m.dashboard = tuiData{}
 					m.stats = tuiData{}
 					m.dashSelected = 0
@@ -590,13 +598,12 @@ func (m *Model) View() string {
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderSplash())
 	}
 
-	m.clickableRegions = nil // Reset clickable regions map every render frame
+	m.clickableRegions = nil
 
 	header := m.renderHeader()
 	nav := m.renderTabs()
 	footer := m.renderFooter()
-	
-	// Total chrome height: header + nav + footer
+
 	chromeHeight := lipgloss.Height(header) + lipgloss.Height(nav) + lipgloss.Height(footer)
 	contentHeight := m.height - chromeHeight
 	if contentHeight < 1 {
@@ -605,7 +612,6 @@ func (m *Model) View() string {
 
 	body := m.renderActiveTab(m.width, contentHeight)
 	screen := lipgloss.JoinVertical(lipgloss.Left, header, nav, body, footer)
-	// Ensure the screen is strictly clipped to the terminal height to prevent terminal scroll overflow
 	screen = clipLines(screen, m.height, m.width)
 	if m.showHelp {
 		screen = m.overlay(screen, m.renderHelp())
@@ -656,8 +662,7 @@ func (m *Model) renderHeader() string {
 func (m *Model) renderTabs() string {
 	var labels []string
 	var underlines []string
-	
-	// Collapse tab labels to numbers-only if window width is below 80 columns
+
 	collapseNames := m.width < 80
 
 	var barWidth int
@@ -689,8 +694,6 @@ func (m *Model) renderTabs() string {
 	contentWidth := min(max(lipgloss.Width(labelLine), lipgloss.Width(underlineLine)), max(1, m.width-8))
 	bar := center(labelLine, contentWidth) + "\n" + center(underlineLine, contentWidth)
 
-	// Register clickable coordinates for tabs (tab bar sits at row Y=2, Y=3)
-	// We offset by left padding: (m.width - 2 - contentWidth)/2 + 2
 	leftMargin := (m.width - 2 - contentWidth) / 2
 	if leftMargin < 0 {
 		leftMargin = 0
@@ -699,11 +702,11 @@ func (m *Model) renderTabs() string {
 	for i := range tabNames {
 		w := tabWidths[i]
 		m.clickableRegions = append(m.clickableRegions, ClickableRegion{
-			X1: startX,
-			Y1: 2,
-			X2: startX + w,
-			Y2: 4,
-			ID: fmt.Sprintf("tab-%d", i),
+			X1:   startX,
+			Y1:   2,
+			X2:   startX + w,
+			Y2:   4,
+			ID:   fmt.Sprintf("tab-%d", i),
 			Kind: "tab",
 		})
 		startX += w + sepWidth
@@ -927,11 +930,9 @@ func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 
-	// Update transient hover state based on coordinate hit-testing
 	m.hoveredElement = ""
 	m.hoveredPanel = -1
 
-	// Determine if mouse is inside any registered region
 	var hoveredRegion *ClickableRegion
 	for _, region := range m.clickableRegions {
 		if msg.X >= region.X1 && msg.X < region.X2 && msg.Y >= region.Y1 && msg.Y < region.Y2 {
@@ -944,7 +945,6 @@ func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
 		if hoveredRegion.Kind == "tab" {
 			m.hoveredElement = fmt.Sprintf("Click to switch to %s", strings.ToUpper(strings.TrimPrefix(hoveredRegion.ID, "tab-")))
 		} else if hoveredRegion.Kind == "panel" {
-			// Extract numerical index of panel from ID (e.g. "panel-0" -> 0)
 			var idx int
 			if _, err := fmt.Sscanf(hoveredRegion.ID, "panel-%d", &idx); err == nil {
 				m.hoveredPanel = idx
@@ -956,7 +956,6 @@ func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
 		}
 	}
 
-	// Process Click events
 	if msg.Type == tea.MouseRelease || msg.Action == tea.MouseActionRelease {
 		if hoveredRegion != nil {
 			if hoveredRegion.Kind == "tab" {
@@ -964,7 +963,6 @@ func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
 				if _, err := fmt.Sscanf(hoveredRegion.ID, "tab-%d", &idx); err == nil {
 					m.activeTab = idx
 					m.panelFocus = 0
-					// Reset hover immediately after switching
 					m.hoveredElement = ""
 					m.hoveredPanel = -1
 					if idx == tabStats {
@@ -978,7 +976,6 @@ func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
 					m.panelFocus = idx
 				}
 			} else if hoveredRegion.Kind == "button" {
-				// Translate click on range button or focus button to key action simulations
 				if strings.HasPrefix(hoveredRegion.ID, "range-") {
 					var idx int
 					if _, err := fmt.Sscanf(hoveredRegion.ID, "range-%d", &idx); err == nil {
@@ -990,7 +987,6 @@ func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
 					var idx int
 					if _, err := fmt.Sscanf(hoveredRegion.ID, "focus-btn-%d", &idx); err == nil {
 						m.focusButton = idx
-						// Simulate Enter key press on the focus button
 						var focusCmd tea.Cmd
 						if idx == 0 {
 							m, focusCmd = m.handleFocusKey("s")
@@ -1004,12 +1000,10 @@ func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
 				}
 			}
 		} else {
-			// Clicked empty space outside any panels -> clear panel focus
 			m.panelFocus = 0
 		}
 	}
 
-	// Handle Scroll wheel delta dispatching
 	delta := 0
 	if msg.Button == tea.MouseButtonWheelUp {
 		delta = -1

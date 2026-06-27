@@ -57,8 +57,6 @@ func InstallExes() error {
 			return fmt.Errorf("failed to install focusd.exe: %w", err)
 		}
 	}
-
-	// Copy focusd_daemon.exe next to it
 	srcDir := filepath.Dir(src)
 	daemonSrc := filepath.Join(srcDir, "focusd_daemon.exe")
 	daemonDest := filepath.Join(installDir, "focusd_daemon.exe")
