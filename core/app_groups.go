@@ -116,8 +116,6 @@ func ExtractAppCategory(title string) string {
 		return "Browser (Idle)"
 	}
 
-	// x.com exact-host check before first-match loop to avoid catching
-	// unrelated domains that happen to contain the substring "x.com/".
 	if titleLower == "x.com" ||
 		strings.HasPrefix(titleLower, "x.com/") ||
 		strings.Contains(titleLower, "://x.com/") {

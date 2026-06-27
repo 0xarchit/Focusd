@@ -22,7 +22,7 @@ func RunStatus() {
 	ui.PrintHeader()
 
 	isRunning := false
-	if system.GetProcessCount(system.DaemonProcessName) > 1 {
+	if system.GetProcessCount(system.DaemonProcessName) >= 1 {
 		isRunning = true
 	}
 

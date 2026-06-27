@@ -185,7 +185,7 @@ func splashDone() tea.Cmd {
 
 func checkDaemon() tea.Cmd {
 	return func() tea.Msg {
-		return statusMsg(system.GetProcessCount(system.DaemonProcessName) > 1)
+		return statusMsg(system.GetProcessCount(system.DaemonProcessName) >= 1)
 	}
 }
 

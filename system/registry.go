@@ -2,9 +2,6 @@ package system
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"golang.org/x/sys/windows/registry"
@@ -16,33 +13,15 @@ const (
 	appName    = "focusd"
 )
 
-const startupShortcutName = "Focus Daemon.lnk"
-
-func GetStartupLinkPath() string {
-	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		return ""
-	}
-	return filepath.Join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", startupShortcutName)
-}
-
 func GetAutoStartEnabled() (bool, string, error) {
-	linkPath := GetStartupLinkPath()
-	if linkPath == "" {
-		return false, "", nil
-	}
-	if _, err := os.Stat(linkPath); err == nil {
-		return true, linkPath, nil
-	}
-
 	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.QUERY_VALUE)
 	if err == nil {
 		defer key.Close()
-		if _, _, err := key.GetStringValue(appName); err == nil {
-
-			return true, "Registry Key (Legacy)", nil
+		if val, _, err := key.GetStringValue(appName); err == nil {
+			return true, val, nil
 		}
 	}
+
 	return false, "", nil
 }
 
@@ -51,40 +30,23 @@ func EnableAutoStart() error {
 		return fmt.Errorf("failed to install: %w", err)
 	}
 
-	linkPath := GetStartupLinkPath()
-	if linkPath == "" {
-		return fmt.Errorf("startup directory not found")
+	daemonPath := GetInstalledDaemonPath()
+	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
+	if err != nil {
+		return fmt.Errorf("failed to open registry run key: %w", err)
 	}
+	defer key.Close()
 
-	exePath := GetInstalledExePath()
-
-	psScript := fmt.Sprintf(`
-		$WshShell = New-Object -ComObject WScript.Shell
-		$Shortcut = $WshShell.CreateShortcut("%s")
-		$Shortcut.TargetPath = "%s"
-		$Shortcut.Arguments = "--daemon"
-		$Shortcut.IconLocation = "%s,0"
-		$Shortcut.Description = "Focus Daemon Background Process"
-		$Shortcut.Save()
-	`, linkPath, exePath, exePath)
-
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to create shortcut: %v, output: %s", err, string(output))
+	// Write daemon executable path
+	val := fmt.Sprintf(`"%s"`, daemonPath)
+	if err := key.SetStringValue(appName, val); err != nil {
+		return fmt.Errorf("failed to write registry run value: %w", err)
 	}
-
-	DisableRegistryAutoStart()
 
 	return nil
 }
 
 func DisableAutoStart() error {
-
-	linkPath := GetStartupLinkPath()
-	if linkPath != "" {
-		os.Remove(linkPath)
-	}
-
 	return DisableRegistryAutoStart()
 }
 

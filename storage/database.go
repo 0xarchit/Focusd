@@ -83,8 +83,8 @@ func Init() error {
 		{"busy_timeout=5000", "PRAGMA busy_timeout=5000"},
 		{"synchronous=NORMAL", "PRAGMA synchronous=NORMAL"},
 		{"auto_vacuum=INCREMENTAL", "PRAGMA auto_vacuum=INCREMENTAL"},
-		{"cache_size = -10000", "PRAGMA cache_size = -10000"},
-		{"mmap_size = 268435456", "PRAGMA mmap_size = 268435456"},
+		{"cache_size = -1000", "PRAGMA cache_size = -1000"},
+		{"mmap_size = 0", "PRAGMA mmap_size = 0"},
 		{"temp_store = MEMORY", "PRAGMA temp_store = MEMORY"},
 	}
 

@@ -33,7 +33,7 @@ func RunInteractiveMenu() {
 	}
 
 	core.CheckPomodoroAndNotify()
-	
+
 	if !RequestDaemonFlush() {
 		ui.PrintWarn("Failed to flush daemon. Stale data may be displayed.")
 	}
@@ -43,7 +43,6 @@ func RunInteractiveMenu() {
 		os.Exit(1)
 	}
 }
-
 
 func printMenuOptions() {
 	ui.PrintSectionHeader("Menu")
@@ -73,7 +72,7 @@ func handleMenuStart(reader *bufio.Reader) {
 		return
 	}
 
-	if system.GetProcessCount(system.DaemonProcessName) > 1 {
+	if system.GetProcessCount(system.DaemonProcessName) >= 1 {
 		ui.PrintInfo("Tracker is already running!")
 	} else {
 		StartDaemonProcess()
@@ -139,8 +138,6 @@ func handleMenuSettings(reader *bufio.Reader) {
 		fmt.Println("║                       Settings                           ║")
 		fmt.Println("╚══════════════════════════════════════════════════════════╝")
 		fmt.Println()
-
-		// Removed obsolete Not Initialized check
 
 		fmt.Println("  Current Settings:")
 		fmt.Printf("    Retention: %d days\n", storage.GetRetentionDays())
@@ -804,7 +801,7 @@ func showStatusInMenu() {
 	ui.PrintHeader()
 
 	isRunning := false
-	if system.GetProcessCount(system.DaemonProcessName) > 1 {
+	if system.GetProcessCount(system.DaemonProcessName) >= 1 {
 		isRunning = true
 	}
 

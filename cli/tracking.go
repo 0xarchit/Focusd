@@ -21,7 +21,7 @@ func RunStart() {
 }
 
 func StartDaemonProcess() {
-	if system.GetProcessCount(system.DaemonProcessName) > 1 {
+	if system.GetProcessCount(system.DaemonProcessName) >= 1 {
 		ui.PrintInfo("focusd is already running.")
 		return
 	}
@@ -41,7 +41,7 @@ func StartDaemonProcess() {
 }
 
 func RunStop() {
-	if system.GetProcessCount(system.DaemonProcessName) <= 1 {
+	if system.GetProcessCount(system.DaemonProcessName) < 1 {
 		ui.PrintInfo("focusd is not running.")
 		return
 	}

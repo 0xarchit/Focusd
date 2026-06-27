@@ -48,7 +48,7 @@ func RunUpdate() {
 		return
 	}
 
-	daemonWasRunning := system.GetProcessCount(system.DaemonProcessName) > 1
+	daemonWasRunning := system.GetProcessCount(system.DaemonProcessName) >= 1
 	if daemonWasRunning {
 		ui.PrintStatus("Stopping focusd daemon...", "", false)
 		system.KillOtherInstances(system.DaemonProcessName)
@@ -124,7 +124,6 @@ func fetchChecksum(version string) (string, error) {
 	for _, line := range lines {
 		parts := strings.Fields(strings.TrimSpace(line))
 		if len(parts) >= 2 {
-			// Normalize: strip leading `*` or `./` as some tools emit them.
 			filename := strings.TrimPrefix(strings.TrimPrefix(parts[1], "*"), "./")
 			if strings.EqualFold(filename, "focusd.exe") {
 				return strings.ToLower(parts[0]), nil

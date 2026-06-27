@@ -14,7 +14,6 @@ func setupTestDB(t *testing.T) string {
 		t.Fatalf("failed to create temp appdata: %v", err)
 	}
 
-	// Override APPDATA so storage.Init uses this temp folder
 	originalAppData := os.Getenv("APPDATA")
 	os.Setenv("APPDATA", tempDir)
 
@@ -61,13 +60,11 @@ func TestCloseCurrentSession(t *testing.T) {
 		pollInterval: time.Second,
 	}
 
-	// Test case 1: No active session
 	tracker.closeCurrentSession()
 	if len(tracker.pendingSessions) != 0 {
 		t.Errorf("expected 0 pending sessions, got %d", len(tracker.pendingSessions))
 	}
 
-	// Test case 2: Session shorter than 1 second (boundary)
 	tracker.currentSession = &ActiveSession{
 		AppName:   "TestApp",
 		ExeName:   "test.exe",
@@ -82,7 +79,6 @@ func TestCloseCurrentSession(t *testing.T) {
 		t.Error("expected currentSession to be nil after close")
 	}
 
-	// Test case 3: Session equal or longer than 1 second
 	tracker.currentSession = &ActiveSession{
 		AppName:   "TestApp",
 		ExeName:   "test.exe",
@@ -128,7 +124,6 @@ func TestFlushPendingSessions(t *testing.T) {
 		t.Errorf("pending sessions should be cleared, got %d", len(tracker.pendingSessions))
 	}
 
-	// Check if it was written to DB
 	sessions, _, err := storage.GetSessionsPaginated(10, 0, storage.Today(), storage.Today())
 	if err != nil {
 		t.Fatalf("failed to retrieve sessions: %v", err)
@@ -145,12 +140,10 @@ func TestFlushPendingSessions(t *testing.T) {
 func TestRetentionDays(t *testing.T) {
 	setupTestDB(t)
 
-	// Check default
 	if got := storage.GetRetentionDays(); got != storage.DefaultRetentionDays {
 		t.Errorf("expected default retention days to be %d, got %d", storage.DefaultRetentionDays, got)
 	}
 
-	// Set and get custom value
 	customDays := 15
 	if err := storage.SetRetentionDays(customDays); err != nil {
 		t.Fatalf("failed to set retention days: %v", err)

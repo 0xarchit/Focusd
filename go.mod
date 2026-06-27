@@ -1,11 +1,11 @@
 module focusd
 
-go 1.24.2
+go 1.25.0
 
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	golang.org/x/sys v0.38.0
+	golang.org/x/sys v0.46.0
 	modernc.org/sqlite v1.29.5
 )
 

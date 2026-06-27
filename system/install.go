@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-const DaemonProcessName = "focusd.exe"
+const DaemonProcessName = "focusd_daemon.exe"
 
 func GetInstallDir() string {
 	appData := os.Getenv("APPDATA")
@@ -26,9 +26,15 @@ func GetInstalledExePath() string {
 	return filepath.Join(installDir, "focusd.exe")
 }
 
+func GetInstalledDaemonPath() string {
+	installDir := GetInstallDir()
+	if installDir == "" {
+		return ""
+	}
+	return filepath.Join(installDir, "focusd_daemon.exe")
+}
 
 func InstallExes() error {
-
 	src, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get current executable: %w", err)
@@ -42,16 +48,24 @@ func InstallExes() error {
 	if err := os.MkdirAll(installDir, 0755); err != nil {
 		return fmt.Errorf("failed to create install dir: %w", err)
 	}
+
 	dest := filepath.Join(installDir, "focusd.exe")
 	dest, _ = filepath.Abs(dest)
 
-	if strings.EqualFold(src, dest) {
-
-		return nil
+	if !strings.EqualFold(src, dest) {
+		if err := installFile(src, dest); err != nil {
+			return fmt.Errorf("failed to install focusd.exe: %w", err)
+		}
 	}
 
-	if err := installFile(src, dest); err != nil {
-		return fmt.Errorf("failed to install focusd.exe: %w", err)
+	// Copy focusd_daemon.exe next to it
+	srcDir := filepath.Dir(src)
+	daemonSrc := filepath.Join(srcDir, "focusd_daemon.exe")
+	daemonDest := filepath.Join(installDir, "focusd_daemon.exe")
+	if _, err := os.Stat(daemonSrc); err == nil {
+		if err := installFile(daemonSrc, daemonDest); err != nil {
+			return fmt.Errorf("failed to install focusd_daemon.exe: %w", err)
+		}
 	}
 
 	return nil
@@ -96,9 +110,11 @@ func CleanupOldBinary() {
 
 func IsInstalled() bool {
 	exePath := GetInstalledExePath()
-	if exePath == "" {
+	daemonPath := GetInstalledDaemonPath()
+	if exePath == "" || daemonPath == "" {
 		return false
 	}
-	_, err := os.Stat(exePath)
-	return err == nil
+	_, err1 := os.Stat(exePath)
+	_, err2 := os.Stat(daemonPath)
+	return err1 == nil && err2 == nil
 }
