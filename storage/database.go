@@ -3,7 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
-	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -52,9 +52,24 @@ func Init() error {
 		return err
 	}
 
+	u := &url.URL{
+		Scheme: "file",
+		Path:   filepath.ToSlash(dbPath),
+	}
+	q := u.Query()
+	q.Add("_pragma", "journal_mode(WAL)")
+	q.Add("_pragma", "busy_timeout(5000)")
+	q.Add("_pragma", "synchronous(NORMAL)")
+	q.Add("_pragma", "auto_vacuum(INCREMENTAL)")
+	q.Add("_pragma", "cache_size(-1000)")
+	q.Add("_pragma", "mmap_size(0)")
+	q.Add("_pragma", "temp_store(MEMORY)")
+	u.RawQuery = q.Encode()
+	dsn := u.String()
+
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		db, lastErr = sql.Open("sqlite", dbPath)
+		db, lastErr = sql.Open("sqlite", dsn)
 		if lastErr == nil {
 			if pingErr := db.Ping(); pingErr == nil {
 				break
@@ -74,25 +89,6 @@ func Init() error {
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
-
-	pragmas := []struct {
-		name  string
-		query string
-	}{
-		{"journal_mode=WAL", "PRAGMA journal_mode=WAL"},
-		{"busy_timeout=5000", "PRAGMA busy_timeout=5000"},
-		{"synchronous=NORMAL", "PRAGMA synchronous=NORMAL"},
-		{"auto_vacuum=INCREMENTAL", "PRAGMA auto_vacuum=INCREMENTAL"},
-		{"cache_size = -1000", "PRAGMA cache_size = -1000"},
-		{"mmap_size = 0", "PRAGMA mmap_size = 0"},
-		{"temp_store = MEMORY", "PRAGMA temp_store = MEMORY"},
-	}
-
-	for _, p := range pragmas {
-		if _, err := db.Exec(p.query); err != nil {
-			log.Printf("WARN: PRAGMA %s failed: %v", p.name, err)
-		}
-	}
 
 	if err := createSchema(); err != nil {
 		db.Close()
