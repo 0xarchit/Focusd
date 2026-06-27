@@ -42,19 +42,33 @@ func GetTotalSessionCount() (int, error) {
 }
 
 func ClearAllTrackingData() error {
-	if _, err := db.Exec("DELETE FROM sessions"); err != nil {
+	tx, err := db.Begin()
+	if err != nil {
 		return err
 	}
-	if _, err := db.Exec("DELETE FROM apps_daily"); err != nil {
+
+	if _, err := tx.Exec("DELETE FROM sessions"); err != nil {
+		tx.Rollback()
 		return err
 	}
-	if _, err := db.Exec("DELETE FROM browsing_daily"); err != nil {
+	if _, err := tx.Exec("DELETE FROM apps_daily"); err != nil {
+		tx.Rollback()
 		return err
 	}
-	if _, err := db.Exec("DELETE FROM active_session"); err != nil {
+	if _, err := tx.Exec("DELETE FROM browsing_daily"); err != nil {
+		tx.Rollback()
 		return err
 	}
-	_, err := db.Exec("VACUUM")
+	if _, err := tx.Exec("DELETE FROM active_session"); err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	_, err = db.Exec("VACUUM")
 	return err
 }
 

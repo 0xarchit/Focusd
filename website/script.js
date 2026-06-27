@@ -492,7 +492,7 @@ function copyCommand() {
 }
 
 function copyCurl() {
-  const cmd = `curl -L -o focusd_setup.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" && focusd_setup.exe`;
+  const cmd = `curl -L -o focusd_setup.exe "https://github.com/0xarchit/Focusd/releases/latest/download/focusd_setup.exe" && focusd_setup.exe`;
   copyToClipboard(cmd, "CMD command copied");
 }
 

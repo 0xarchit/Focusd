@@ -17,7 +17,7 @@ func StartDaemon() (uint32, error) {
 		return 0, err
 	}
 	dir := filepath.Dir(exePath)
-	daemonPath := filepath.Join(dir, "focusd_daemon.exe")
+	daemonPath := filepath.Join(dir, DaemonProcessName)
 
 	cmd := exec.Command(daemonPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{

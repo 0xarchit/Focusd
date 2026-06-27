@@ -92,10 +92,6 @@ func (m *Model) renderFocus(width, height int) string {
 	if topH < 8 {
 		topH = 8
 	}
-	bottomH := height - topH - 1
-	if bottomH < 4 {
-		bottomH = 4
-	}
 
 	inner := width - 2
 
@@ -105,7 +101,7 @@ func (m *Model) renderFocus(width, height int) string {
 
 	buttons := []string{"▶ START", "■ STOP", "⟳ RESET"}
 	var renderedBtns []string
-	btnRowY := 5 + 4
+	btnRowY := 5 + 3 + 5 + 2 // Panel title and margins offset
 	btnStartX := 4
 	for i, b := range buttons {
 		label := "[ " + b + " ]"

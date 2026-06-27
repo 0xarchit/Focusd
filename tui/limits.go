@@ -47,13 +47,23 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 			if m.limitForm.Field == 3 {
 				mins := m.limitForm.Hours*60 + m.limitForm.Minutes
 				if m.limitForm.App != "" && mins > 0 {
+					var originalMins int
+					var hasOriginal bool
 					if m.limitForm.Editing && m.limitForm.OriginalApp != "" && !strings.EqualFold(m.limitForm.App, m.limitForm.OriginalApp) {
+						limits := system.GetAppTimeLimits()
+						if val, ok := limits[m.limitForm.OriginalApp]; ok {
+							originalMins = val
+							hasOriginal = true
+						}
 						if err := system.RemoveAppTimeLimit(m.limitForm.OriginalApp); err != nil {
 							m.addToast("Failed to rename limit: "+err.Error(), toastError)
 							return *m, nil
 						}
 					}
 					if err := system.SetAppTimeLimit(m.limitForm.App, mins); err != nil {
+						if hasOriginal {
+							_ = system.SetAppTimeLimit(m.limitForm.OriginalApp, originalMins)
+						}
 						m.addToast("Failed to save limit: "+err.Error(), toastError)
 						return *m, nil
 					}
@@ -169,8 +179,12 @@ func (m *Model) renderLimits(width, height int) string {
 		lines = append(lines, "", mutedStyle.Render("No limits set. Press n to add one."))
 	}
 
+	tableY2 := 5 + height - 2
+	if m.limitForm.Visible {
+		tableY2 = 5 + height - 9
+	}
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
-		X1: 1, Y1: 5, X2: width - 1, Y2: 5 + height - 2,
+		X1: 1, Y1: 5, X2: width - 1, Y2: tableY2,
 		ID: "panel-0", Kind: "panel",
 	})
 

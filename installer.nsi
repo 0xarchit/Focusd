@@ -40,6 +40,9 @@ Section "Install"
   File "focusd.exe"
   File "focusd_daemon.exe"
 
+  ; Delete legacy Startup shortcut if it exists
+  Delete "$SMSTARTUP\Focus Daemon.lnk"
+
   ; Add to user Autostart registry run key
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "focusd" '"$INSTDIR\focusd_daemon.exe"'
 
@@ -82,8 +85,8 @@ Section "Uninstall"
     Sleep 1000
 
   ; Force kill if still running to release file locks
-  ExecShell "open" "taskkill.exe" "/F /IM focusd_daemon.exe" SW_HIDE
-  Sleep 1000
+  ExecWait 'taskkill.exe /F /IM focusd_daemon.exe'
+  Sleep 500
 
   Delete "$INSTDIR\focusd.exe"
   Delete "$INSTDIR\focusd_daemon.exe"

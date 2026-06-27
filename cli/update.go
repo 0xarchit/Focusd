@@ -10,7 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -125,12 +125,12 @@ func fetchChecksum(version string) (string, error) {
 		parts := strings.Fields(strings.TrimSpace(line))
 		if len(parts) >= 2 {
 			filename := strings.TrimPrefix(strings.TrimPrefix(parts[1], "*"), "./")
-			if strings.EqualFold(filename, "focusd.exe") {
+			if strings.EqualFold(filename, "focusd_setup.exe") {
 				return strings.ToLower(parts[0]), nil
 			}
 		}
 	}
-	return "", fmt.Errorf("focusd.exe checksum not found in checksums.txt")
+	return "", fmt.Errorf("focusd_setup.exe checksum not found in checksums.txt")
 }
 
 func calculateFileHash(filePath string) (string, error) {
@@ -150,30 +150,32 @@ func calculateFileHash(filePath string) (string, error) {
 func performUpdate(version string) error {
 	ui.PrintStatus("Downloading update...", "0%", false)
 
-	downloadURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s/focusd.exe",
+	downloadURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s/focusd_setup.exe",
 		system.RepoOwner, system.RepoName, version)
 
-	tmpFile, err := os.CreateTemp("", "focusd-update-*.exe")
+	tmpFile, err := os.CreateTemp("", "focusd-setup-*.exe")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
-	defer os.Remove(tmpPath)
 
 	resp, err := httpClient.Get(downloadURL)
 	if err != nil {
 		tmpFile.Close()
+		os.Remove(tmpPath)
 		return fmt.Errorf("download failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		tmpFile.Close()
+		os.Remove(tmpPath)
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
 	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
 		tmpFile.Close()
+		os.Remove(tmpPath)
 		return fmt.Errorf("write failed: %w", err)
 	}
 	tmpFile.Close()
@@ -185,62 +187,26 @@ func performUpdate(version string) error {
 	} else {
 		actualHash, err := calculateFileHash(tmpPath)
 		if err != nil {
+			os.Remove(tmpPath)
 			return fmt.Errorf("failed to calculate hash: %w", err)
 		}
 		if actualHash != expectedHash {
+			os.Remove(tmpPath)
 			return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actualHash)
 		}
 		ui.PrintOK("Checksum verified")
 	}
 
-	ui.PrintStatus("Installing...", "   ", false)
+	ui.PrintStatus("Installing...", "", false)
 
-	exePath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to locate current executable: %w", err)
+	cmd := exec.Command(tmpPath, "/S")
+	if err := cmd.Start(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("failed to start installer: %w", err)
 	}
 
-	exePath, err = filepath.Abs(exePath)
-	if err != nil {
-		return err
-	}
-
-	oldPath := exePath + ".old"
-	os.Remove(oldPath)
-
-	if err := os.Rename(exePath, oldPath); err != nil {
-		return fmt.Errorf("failed to move current executable to .old: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, exePath); err != nil {
-		if err := copyFile(tmpPath, exePath); err != nil {
-			os.Rename(oldPath, exePath)
-			return fmt.Errorf("failed to install new binary: %w", err)
-		}
-	}
-
-	if system.IsInstalled() {
-		if err := system.InstallExes(); err != nil {
-			ui.PrintWarn(fmt.Sprintf("Failed to sync installed binary: %v", err))
-		}
-	}
-
+	ui.PrintOK("Installer started silently. focusd will now close to complete the update.")
+	time.Sleep(1 * time.Second)
+	os.Exit(0)
 	return nil
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	return err
 }

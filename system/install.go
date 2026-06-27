@@ -61,8 +61,10 @@ func InstallExes() error {
 	daemonSrc := filepath.Join(srcDir, "focusd_daemon.exe")
 	daemonDest := filepath.Join(installDir, "focusd_daemon.exe")
 	if _, err := os.Stat(daemonSrc); err == nil {
-		if err := installFile(daemonSrc, daemonDest); err != nil {
-			return fmt.Errorf("failed to install focusd_daemon.exe: %w", err)
+		if !strings.EqualFold(daemonSrc, daemonDest) {
+			if err := installFile(daemonSrc, daemonDest); err != nil {
+				return fmt.Errorf("failed to install focusd_daemon.exe: %w", err)
+			}
 		}
 	}
 

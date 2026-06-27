@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"focusd/storage"
 	"focusd/system"
 	"strings"
 
@@ -10,6 +11,26 @@ import (
 )
 
 func (m Model) handleDashboardKey(key string) (Model, tea.Cmd) {
+	switch key {
+	case "s":
+		m.activeTab = tabFocus
+		return m, nil
+	case "n":
+		m.activeTab = tabLimits
+		m.limitForm = limitForm{Visible: true}
+		m.panelFocus = 1 // Focus form panel
+		return m, nil
+	case "p":
+		paused := storage.IsPaused()
+		_ = storage.SetPaused(!paused)
+		if !paused {
+			m.addToast("Tracking paused", toastWarning)
+		} else {
+			m.addToast("Tracking resumed", toastSuccess)
+		}
+		return m, nil
+	}
+
 	if m.panelFocus == 1 {
 		switch key {
 		case "j", "down":
@@ -51,6 +72,18 @@ func (m *Model) renderDashboard(width, height int) string {
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: leftW + 2, Y1: topY, X2: leftW + 2 + midW, Y2: topY + topHeight, ID: "panel-1", Kind: "panel"})
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: leftW + midW + 4, Y1: topY, X2: width - 1, Y2: topY + topHeight, ID: "panel-2", Kind: "panel"})
 
+	bottomY := topY + topHeight + 1
+	if width < 100 {
+		weeklyH := (bottomHeight * 70) / 100
+		quickH := bottomHeight - weeklyH - 1
+		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY, X2: width - 1, Y2: bottomY + weeklyH, ID: "panel-3", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY + weeklyH + 1, X2: width - 1, Y2: bottomY + weeklyH + 1 + quickH, ID: "panel-4", Kind: "panel"})
+	} else {
+		weeklyW := (inner * 70) / 100
+		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY, X2: weeklyW, Y2: bottomY + bottomHeight, ID: "panel-3", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: weeklyW + 2, Y1: bottomY, X2: width - 1, Y2: bottomY + bottomHeight, ID: "panel-4", Kind: "panel"})
+	}
+
 	todayPanel := m.renderTodayPanel(leftW, topHeight)
 	topAppsPanel := m.renderTopAppsPanel(midW, topHeight)
 	hourlyPanel := m.renderHourlyPanel(rightW, topHeight)
@@ -69,7 +102,7 @@ func (m *Model) renderTodayPanel(width, height int) string {
 	var trendText string
 	if m.dashboard.YesterdayTotal == 0 {
 		if m.dashboard.Total > 0 {
-			trendText = greenStyle.Render("▲ 100% (increased)")
+			trendText = mutedStyle.Render("N/A (first day)")
 		} else {
 			trendText = mutedStyle.Render("0% (no change)")
 		}
@@ -103,21 +136,30 @@ func (m *Model) renderTopAppsPanel(width, height int) string {
 	if len(m.dashboard.Apps) == 0 {
 		lines = append(lines, mutedStyle.Render("No app data yet. Start tracking."))
 	} else {
-		visibleCount := min(maxRows, len(m.dashboard.Apps))
-		for i, a := range m.dashboard.Apps[:visibleCount] {
+		start := 0
+		if m.dashSelected >= maxRows {
+			start = m.dashSelected - maxRows + 1
+		}
+		end := min(start+maxRows, len(m.dashboard.Apps))
+		if end-start < maxRows {
+			start = max(0, end-maxRows)
+		}
+
+		for idx := start; idx < end; idx++ {
+			a := m.dashboard.Apps[idx]
 			warn := "  "
 			if _, ok := limits[a.Name]; ok {
 				warn = amberStyle.Render("⚠ ")
 			}
 			nameW := max(10, width-24)
-			line := mutedStyle.Render(fmt.Sprintf("%2d. ", i+1)) + warn +
+			line := mutedStyle.Render(fmt.Sprintf("%2d. ", idx+1)) + warn +
 				padRight(truncate(a.Name, nameW), nameW) +
 				padLeft(formatDuration(a.Duration), 8) + "  " +
 				cyanStyle.Render(bar(a.Duration, maxDuration, 3, "█"))
 
-			if i == m.dashSelected && m.panelFocus == 1 {
+			if idx == m.dashSelected && m.panelFocus == 1 {
 				line = selectedRowStyle.Render(padRight(line, width-2))
-			} else if m.hoveredPanel == 1 && m.dashSelected == i {
+			} else if m.hoveredPanel == 1 && m.dashSelected == idx {
 				line = hoverRowStyle.Render(padRight(line, width-2))
 			}
 			lines = append(lines, line)
@@ -217,10 +259,14 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 }
 
 func (m *Model) renderQuickActionsPanel(width, height int) string {
+	pauseLabel := "[p] Pause Tracking"
+	if storage.IsPaused() {
+		pauseLabel = "[p] Resume Tracking"
+	}
 	actions := []string{
 		"[s] Start Focus Session",
 		"[n] Add App Limit",
-		"[p] Pause Tracking",
+		pauseLabel,
 		"[q] Quit Application",
 	}
 	var lines []string

@@ -408,11 +408,21 @@ func (m *Model) renderRangeSelector(width int) string {
 	ranges := []string{"TODAY", "LAST 7 DAYS", "LAST 30 DAYS", "CUSTOM RANGE"}
 	var parts []string
 
-	btnW := width / 4
+	selectorText := "[ TODAY ]   [ LAST 7 DAYS ]   [ LAST 30 DAYS ]   [ CUSTOM RANGE ]"
+	if m.statsRange == 3 {
+		customInfo := fmt.Sprintf("   Range: %s to %s", m.statsCustomFrom, m.statsCustomTo)
+		selectorText += customInfo
+	}
+	selectorLen := len(selectorText)
+	startOffset := 3 + max(0, (width-selectorLen)/2)
+
+	btnWidths := []int{11, 17, 18, 18}
+	offsets := []int{0, 14, 34, 55}
+
 	for i, r := range ranges {
-		startX := 2 + i*btnW + (i * 3)
+		startX := startOffset + offsets[i]
 		m.clickableRegions = append(m.clickableRegions, ClickableRegion{
-			X1: startX, Y1: 6, X2: startX + btnW, Y2: 7,
+			X1: startX, Y1: 8, X2: startX + btnWidths[i], Y2: 9,
 			ID: fmt.Sprintf("range-%d", i), Kind: "button",
 		})
 
@@ -555,7 +565,7 @@ func (m *Model) renderDailyHistory(width int) string {
 	} else if m.statsRange == 3 {
 		title = "DAILY HISTORY (CUSTOM RANGE)"
 	}
-	return panel(title, "", width, "\n"+strings.Join(lines, "\n")+"\n", m.panelFocus == 3)
+	return panelWithHover(title, "", width, "\n"+strings.Join(lines, "\n")+"\n", m.panelFocus == 3, m.hoveredPanel == 3)
 }
 
 func (m *Model) renderCustomRangeModal() string {

@@ -2,6 +2,8 @@ package system
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/sys/windows/registry"
@@ -13,6 +15,16 @@ const (
 	appName    = "focusd"
 )
 
+const startupShortcutName = "Focus Daemon.lnk"
+
+func GetStartupLinkPath() string {
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		return ""
+	}
+	return filepath.Join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", startupShortcutName)
+}
+
 func GetAutoStartEnabled() (bool, string, error) {
 	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.QUERY_VALUE)
 	if err == nil {
@@ -22,12 +34,24 @@ func GetAutoStartEnabled() (bool, string, error) {
 		}
 	}
 
+	linkPath := GetStartupLinkPath()
+	if linkPath != "" {
+		if _, err := os.Stat(linkPath); err == nil {
+			return true, "Startup Folder: " + linkPath, nil
+		}
+	}
+
 	return false, "", nil
 }
 
 func EnableAutoStart() error {
 	if err := InstallExes(); err != nil {
 		return fmt.Errorf("failed to install: %w", err)
+	}
+
+	linkPath := GetStartupLinkPath()
+	if linkPath != "" {
+		os.Remove(linkPath)
 	}
 
 	daemonPath := GetInstalledDaemonPath()
@@ -46,6 +70,10 @@ func EnableAutoStart() error {
 }
 
 func DisableAutoStart() error {
+	linkPath := GetStartupLinkPath()
+	if linkPath != "" {
+		os.Remove(linkPath)
+	}
 	return DisableRegistryAutoStart()
 }
 

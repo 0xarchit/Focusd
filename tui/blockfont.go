@@ -3,11 +3,25 @@ package tui
 import "strings"
 
 func RenderBlockTimer(mins, secs int) string {
-	m1, m2 := mins/10, mins%10
+	var minDigits []int
+	if mins == 0 {
+		minDigits = []int{0, 0}
+	} else if mins < 10 {
+		minDigits = []int{0, mins}
+	} else {
+		temp := mins
+		for temp > 0 {
+			minDigits = append([]int{temp % 10}, minDigits...)
+			temp /= 10
+		}
+	}
+
 	s1, s2 := secs/10, secs%10
 
-	d1 := getDigitLines(m1)
-	d2 := getDigitLines(m2)
+	var digitLines [][3]string
+	for _, d := range minDigits {
+		digitLines = append(digitLines, getDigitLines(d))
+	}
 	d3 := getDigitLines(s1)
 	d4 := getDigitLines(s2)
 
@@ -19,7 +33,11 @@ func RenderBlockTimer(mins, secs int) string {
 
 	var result []string
 	for i := 0; i < 3; i++ {
-		row := d1[i] + " " + d2[i] + colon[i] + d3[i] + " " + d4[i]
+		var rowParts []string
+		for _, dl := range digitLines {
+			rowParts = append(rowParts, dl[i])
+		}
+		row := strings.Join(rowParts, " ") + colon[i] + d3[i] + " " + d4[i]
 		result = append(result, row)
 	}
 
@@ -38,7 +56,7 @@ func getDigitLines(d int) [3]string {
 		return [3]string{
 			"  ▄█ ",
 			"   █ ",
-			"  ▀▀▀ ",
+			"  ▀▀▀",
 		}
 	case 2:
 		return [3]string{

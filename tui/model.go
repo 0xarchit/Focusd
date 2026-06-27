@@ -56,6 +56,7 @@ type dashboardLoadedMsg tuiData
 type statsLoadedMsg tuiData
 type secondTickMsg time.Time
 type splashDoneMsg struct{}
+type flushDoneMsg struct{}
 type statusMsg bool
 type toastKind int
 
@@ -181,6 +182,13 @@ func secondTick() tea.Cmd {
 
 func splashDone() tea.Cmd {
 	return tea.Tick(1500*time.Millisecond, func(time.Time) tea.Msg { return splashDoneMsg{} })
+}
+
+func flushCmd() tea.Cmd {
+	return func() tea.Msg {
+		core.SendIPCCmd("flush")
+		return flushDoneMsg{}
+	}
 }
 
 func checkDaemon() tea.Cmd {
@@ -400,6 +408,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	case splashDoneMsg:
 		m.splash = false
+	case flushDoneMsg:
+		cmds = append(cmds, m.loadStatsCmd(), loadDashboard())
 	case secondTickMsg:
 		m.clock = time.Time(msg)
 		m.splashFrame++
@@ -485,8 +495,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 	case "r":
 		m.refreshing = true
-		core.SendIPCCmd("flush")
-		return m, tea.Batch(m.loadStatsCmd(), loadDashboard())
+		return m, flushCmd()
 	}
 
 	switch m.activeTab {
@@ -943,7 +952,12 @@ func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
 
 	if hoveredRegion != nil {
 		if hoveredRegion.Kind == "tab" {
-			m.hoveredElement = fmt.Sprintf("Click to switch to %s", strings.ToUpper(strings.TrimPrefix(hoveredRegion.ID, "tab-")))
+			var idx int
+			if _, err := fmt.Sscanf(hoveredRegion.ID, "tab-%d", &idx); err == nil && idx >= 0 && idx < len(tabNames) {
+				m.hoveredElement = fmt.Sprintf("Click to switch to %s", tabNames[idx])
+			} else {
+				m.hoveredElement = fmt.Sprintf("Click to switch to %s", strings.ToUpper(strings.TrimPrefix(hoveredRegion.ID, "tab-")))
+			}
 		} else if hoveredRegion.Kind == "panel" {
 			var idx int
 			if _, err := fmt.Sscanf(hoveredRegion.ID, "panel-%d", &idx); err == nil {
