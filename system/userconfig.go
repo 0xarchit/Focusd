@@ -358,4 +358,3 @@ func SetSmartGroupingEnabled(enabled bool) error {
 	config.SmartGroupingEnabled = enabled
 	return saveUserConfigLocked()
 }
-

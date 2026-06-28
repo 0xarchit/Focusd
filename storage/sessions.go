@@ -30,7 +30,6 @@ func InsertSession(s *Session) error {
 	return err
 }
 
-
 func UpdateAppDaily(date, appName, exeName string, durationSecs int) error {
 	_, err := db.Exec(`
 		INSERT INTO apps_daily (date, app_name, exe_name, total_duration_secs, open_count)
@@ -41,7 +40,6 @@ func UpdateAppDaily(date, appName, exeName string, durationSecs int) error {
 	`, date, appName, exeName, durationSecs)
 	return err
 }
-
 
 type AppDailyStat struct {
 	Date              string
@@ -103,7 +101,6 @@ func GetAppUsageTodayMinutes(exeName string) int {
 	}
 	return secs / 60
 }
-
 
 func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Session, int, error) {
 	countQuery := `SELECT COUNT(*) FROM sessions`
@@ -185,7 +182,6 @@ func GetAllSessions() ([]Session, error) {
 	}
 	return sessions, rows.Err()
 }
-
 
 func GetAllAppStats() ([]AppDailyStat, error) {
 	rows, err := db.Query(`
