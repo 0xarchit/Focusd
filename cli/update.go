@@ -3,6 +3,7 @@ package cli
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"focusd/system"
 	"focusd/ui"
@@ -18,11 +19,6 @@ import (
 )
 
 var httpClient = &http.Client{Timeout: 15 * time.Second}
-
-func getVersionURL() string {
-	return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/main/version",
-		system.RepoOwner, system.RepoName)
-}
 
 func RunUpdate() {
 	ui.PrintHeader()
@@ -85,7 +81,12 @@ func restartDaemon() {
 }
 
 func fetchLatestVersion() (string, error) {
-	resp, err := httpClient.Get(getVersionURL())
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", system.RepoOwner, system.RepoName), nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "focusd-updater")
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -95,12 +96,14 @@ func fetchLatestVersion() (string, error) {
 		return "", fmt.Errorf("server returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		return "", err
 	}
 
-	return strings.TrimSpace(string(body)), nil
+	return strings.TrimPrefix(release.TagName, "v"), nil
 }
 
 func fetchChecksum(version string) (string, error) {
