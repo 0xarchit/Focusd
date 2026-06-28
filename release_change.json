@@ -77,5 +77,14 @@
     "Improved: Website updated with current CLI commands and features",
     "Improved: README badges updated to for-the-badge style",
     "Improved: Installer version now matches release tag"
+  ],
+  "2.0.1": [
+    "Feature: New Interactive UI (added mouse hover, mouse click navigation, and fixed key controls)",
+    "Architecture: Dual-binary structure (focusd.exe for CLI/TUI, focusd_daemon.exe for windowless background tracking)",
+    "Performance: Extreme RAM optimization (daemon footprint reduced to 4-6MB via custom SQLite pragmas)",
+    "Autostart: Switched to native Windows Registry Run key autostart for silent background execution",
+    "Fixed: Removed terminal popups/ghost window flashes on system boot",
+    "Fixed: Robust uninstaller force-terminates running daemon during cleanup",
+    "Feature: Dynamic 'Vs Yesterday' screen time trend calculation on Dashboard"
   ]
 }

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"focusd/storage"
 	"focusd/system"
 	"strings"
 
@@ -10,6 +11,29 @@ import (
 )
 
 func (m Model) handleDashboardKey(key string) (Model, tea.Cmd) {
+	switch key {
+	case "s":
+		m.activeTab = tabFocus
+		return m, nil
+	case "n":
+		m.activeTab = tabLimits
+		m.limitForm = limitForm{Visible: true}
+		m.panelFocus = 1 // Focus form panel
+		return m, nil
+	case "p":
+		paused := storage.IsPaused()
+		if err := storage.SetPaused(!paused); err != nil {
+			m.addToast("Failed to toggle tracking: "+err.Error(), toastError)
+		} else {
+			if !paused {
+				m.addToast("Tracking paused", toastWarning)
+			} else {
+				m.addToast("Tracking resumed", toastSuccess)
+			}
+		}
+		return m, nil
+	}
+
 	if m.panelFocus == 1 {
 		switch key {
 		case "j", "down":
@@ -21,62 +45,125 @@ func (m Model) handleDashboardKey(key string) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) renderDashboard(width, height int) string {
+func (m *Model) renderDashboard(width, height int) string {
 	inner := width - 2
-	gap := " "
-	colW := (inner - 2) / 3
-	if colW < 20 {
-		colW = 20
+
+	topHeight := (height * 55) / 100
+	bottomHeight := height - topHeight
+
+	leftW := (inner * 25) / 100
+	midW := (inner * 45) / 100
+	rightW := inner - leftW - midW - 2
+
+	var bottomPart string
+	if width < 100 {
+		weeklyH := (bottomHeight * 70) / 100
+		quickH := bottomHeight - weeklyH - 1
+		weeklyPanel := m.renderWeeklyPanel(inner, weeklyH)
+		quickPanel := m.renderQuickActionsPanel(inner, quickH)
+		bottomPart = lipgloss.JoinVertical(lipgloss.Left, weeklyPanel, "", quickPanel)
+	} else {
+		weeklyW := (inner * 70) / 100
+		quickW := inner - weeklyW - 1
+		weeklyPanel := m.renderWeeklyPanel(weeklyW, bottomHeight)
+		quickPanel := m.renderQuickActionsPanel(quickW, bottomHeight)
+		bottomPart = lipgloss.JoinHorizontal(lipgloss.Top, weeklyPanel, " ", quickPanel)
 	}
-	remainder := inner - 2 - (colW * 3)
-	leftW := colW
-	midW := colW + remainder
-	rightW := colW
 
-	todayPanel := m.renderTodayPanel(leftW)
-	topAppsPanel := m.renderTopAppsPanel(midW)
-	hourlyPanel := m.renderHourlyPanel(rightW)
+	topY := 5
+	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: topY, X2: leftW, Y2: topY + topHeight, ID: "panel-0", Kind: "panel"})
+	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: leftW + 2, Y1: topY, X2: leftW + 2 + midW, Y2: topY + topHeight, ID: "panel-1", Kind: "panel"})
+	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: leftW + midW + 4, Y1: topY, X2: width - 1, Y2: topY + topHeight, ID: "panel-2", Kind: "panel"})
 
-	return lipgloss.JoinHorizontal(lipgloss.Top,
-		todayPanel,
-		gap,
-		topAppsPanel,
-		gap,
-		hourlyPanel,
-	)
+	bottomY := topY + topHeight + 1
+	if width < 100 {
+		weeklyH := (bottomHeight * 70) / 100
+		quickH := bottomHeight - weeklyH - 1
+		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY, X2: width - 1, Y2: bottomY + weeklyH, ID: "panel-3", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY + weeklyH + 1, X2: width - 1, Y2: bottomY + weeklyH + 1 + quickH, ID: "panel-4", Kind: "panel"})
+	} else {
+		weeklyW := (inner * 70) / 100
+		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY, X2: weeklyW, Y2: bottomY + bottomHeight, ID: "panel-3", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: weeklyW + 2, Y1: bottomY, X2: width - 1, Y2: bottomY + bottomHeight, ID: "panel-4", Kind: "panel"})
+	}
+
+	todayPanel := m.renderTodayPanel(leftW, topHeight)
+	topAppsPanel := m.renderTopAppsPanel(midW, topHeight)
+	hourlyPanel := m.renderHourlyPanel(rightW, topHeight)
+
+	topPart := lipgloss.JoinHorizontal(lipgloss.Top, todayPanel, " ", topAppsPanel, " ", hourlyPanel)
+
+	return lipgloss.JoinVertical(lipgloss.Left, topPart, " ", bottomPart)
 }
 
-func (m Model) renderTodayPanel(width int) string {
+func (m *Model) renderTodayPanel(width, height int) string {
 	rows := []string{
 		rowKV("Screen Time", formatDuration(m.dashboard.Total), width-4),
 		rowKV("Active Apps", fmt.Sprintf("%d", m.dashboard.ActiveApps), width-4),
 		rowKV("Limits Hit", fmt.Sprintf("%d", m.dashboard.LimitsHit), width-4),
 	}
-	return panel("TODAY", "", width, "\n"+strings.Join(rows, "\n")+"\n", m.panelFocus == 0)
+	var trendText string
+	if m.dashboard.YesterdayTotal == 0 {
+		if m.dashboard.Total > 0 {
+			trendText = mutedStyle.Render("N/A (first day)")
+		} else {
+			trendText = mutedStyle.Render("0% (no change)")
+		}
+	} else {
+		diff := m.dashboard.Total - m.dashboard.YesterdayTotal
+		pct := int(float64(diff) / float64(m.dashboard.YesterdayTotal) * 100)
+		if pct > 0 {
+			trendText = redStyle.Render(fmt.Sprintf("▲ %d%% (increased)", pct))
+		} else if pct < 0 {
+			trendText = greenStyle.Render(fmt.Sprintf("▼ %d%% (decreased)", -pct))
+		} else {
+			trendText = mutedStyle.Render("0% (no change)")
+		}
+	}
+	rows = append(rows, rowKV("Vs Yesterday", trendText, width-4))
+
+	paddingLines := max(0, height-2-len(rows)-2)
+	body := "\n" + strings.Join(rows, "\n") + strings.Repeat("\n", paddingLines)
+	return panelWithHover("TODAY", "", width, body, m.panelFocus == 0, m.hoveredPanel == 0)
 }
 
-func (m Model) renderTopAppsPanel(width int) string {
+func (m *Model) renderTopAppsPanel(width, height int) string {
 	maxDuration := 0
 	for _, a := range m.dashboard.Apps {
 		maxDuration = max(maxDuration, a.Duration)
 	}
 	limits := system.GetAppTimeLimits()
 	var lines []string
+
+	maxRows := max(1, height-4)
 	if len(m.dashboard.Apps) == 0 {
-		lines = append(lines, mutedStyle.Render("No app data yet. Start the daemon to begin tracking."))
+		lines = append(lines, mutedStyle.Render("No app data yet. Start tracking."))
 	} else {
-		for i, a := range m.dashboard.Apps[:min(10, len(m.dashboard.Apps))] {
+		start := 0
+		if m.dashSelected >= maxRows {
+			start = m.dashSelected - maxRows + 1
+		}
+		end := min(start+maxRows, len(m.dashboard.Apps))
+		if end-start < maxRows {
+			start = max(0, end-maxRows)
+		}
+
+		for idx := start; idx < end; idx++ {
+			a := m.dashboard.Apps[idx]
 			warn := "  "
 			if _, ok := limits[a.Name]; ok {
 				warn = amberStyle.Render("⚠ ")
 			}
 			nameW := max(10, width-24)
-			line := mutedStyle.Render(fmt.Sprintf("%2d. ", i+1)) + warn +
+			line := mutedStyle.Render(fmt.Sprintf("%2d. ", idx+1)) + warn +
 				padRight(truncate(a.Name, nameW), nameW) +
 				padLeft(formatDuration(a.Duration), 8) + "  " +
 				cyanStyle.Render(bar(a.Duration, maxDuration, 3, "█"))
-			if i == m.dashSelected && m.panelFocus == 1 {
+
+			if idx == m.dashSelected && m.panelFocus == 1 {
 				line = selectedRowStyle.Render(padRight(line, width-2))
+			} else if m.hoveredPanel == 1 && m.dashSelected == idx {
+				line = hoverRowStyle.Render(padRight(line, width-2))
 			}
 			lines = append(lines, line)
 		}
@@ -85,10 +172,10 @@ func (m Model) renderTopAppsPanel(width int) string {
 	if m.refreshing {
 		refresh = cyanStyle.Render("↻")
 	}
-	return panel("TOP APPLICATIONS", refresh, width, "\n"+strings.Join(lines, "\n")+"\n", m.panelFocus == 1)
+	return panelWithHover("TOP APPLICATIONS", refresh, width, "\n"+strings.Join(lines, "\n")+"\n", m.panelFocus == 1, m.hoveredPanel == 1)
 }
 
-func (m Model) renderHourlyPanel(width int) string {
+func (m *Model) renderHourlyPanel(width, height int) string {
 	var lines []string
 	lines = append(lines, "")
 	maxVal := 1
@@ -128,6 +215,70 @@ func (m Model) renderHourlyPanel(width int) string {
 		hoursText = truncate(hoursText, width-6)
 	}
 	lines = append(lines, "   "+mutedStyle.Render(hoursText))
-	lines = append(lines, "", "   "+mutedStyle.Render("Heatmap shows activity throughout"), "   "+mutedStyle.Render("the day in hourly blocks."), "")
-	return panel("ACTIVITY HEATMAP", "", width, strings.Join(lines, "\n"), m.panelFocus == 2)
+
+	extraLines := max(0, height-2-len(lines)-2)
+	for i := 0; i < extraLines; i++ {
+		lines = append(lines, "")
+	}
+	return panelWithHover("ACTIVITY HEATMAP", "", width, strings.Join(lines, "\n"), m.panelFocus == 2, m.hoveredPanel == 2)
+}
+
+func (m *Model) renderWeeklyPanel(width, height int) string {
+	var lines []string
+	maxVal := 1
+	for _, day := range m.dashboard.Days {
+		if day.Duration > maxVal {
+			maxVal = day.Duration
+		}
+	}
+
+	maxRows := max(1, height-4)
+	visibleDays := m.dashboard.Days
+	if len(visibleDays) > maxRows {
+		visibleDays = visibleDays[len(visibleDays)-maxRows:]
+	}
+
+	if len(visibleDays) == 0 {
+		lines = append(lines, mutedStyle.Render("No historical weekly trends yet."))
+	} else {
+		for _, day := range visibleDays {
+			labelStyle := mutedStyle
+			if day.Today {
+				labelStyle = boldStyle
+			} else if day.Weekend {
+				labelStyle = amberStyle
+			}
+			barWidth := max(5, width-20)
+			line := labelStyle.Render(padRight(day.Label, 6)) +
+				padRight(day.Date, 12) +
+				cyanStyle.Render(bar(day.Duration, maxVal, barWidth, "█")) + " " +
+				padLeft(formatDuration(day.Duration), 8)
+			lines = append(lines, line)
+		}
+	}
+	padding := max(0, height-2-len(lines)-2)
+	body := "\n" + strings.Join(lines, "\n") + strings.Repeat("\n", padding)
+	return panelWithHover("WEEKLY TREND", "", width, body, m.panelFocus == 3, m.hoveredPanel == 3)
+}
+
+func (m *Model) renderQuickActionsPanel(width, height int) string {
+	pauseLabel := "[p] Pause Tracking"
+	if storage.IsPaused() {
+		pauseLabel = "[p] Resume Tracking"
+	}
+	actions := []string{
+		"[s] Start Focus Session",
+		"[n] Add App Limit",
+		pauseLabel,
+		"[q] Quit Application",
+	}
+	var lines []string
+	lines = append(lines, "")
+	for _, act := range actions {
+		line := "  " + cyanStyle.Render(act[:3]) + mutedStyle.Render(act[3:])
+		lines = append(lines, line)
+	}
+	padding := max(0, height-2-len(lines)-2)
+	body := strings.Join(lines, "\n") + strings.Repeat("\n", padding)
+	return panelWithHover("QUICK ACTIONS", "", width, body, m.panelFocus == 4, m.hoveredPanel == 4)
 }

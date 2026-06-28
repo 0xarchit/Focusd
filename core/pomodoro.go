@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-// DefaultPomodoroMinutes is the fallback Pomodoro session length.
 const DefaultPomodoroMinutes = 25
 
 type PomodoroState struct {
@@ -65,7 +64,6 @@ func loadPomodoroStateFresh() *PomodoroState {
 	state := &PomodoroState{Duration: DefaultPomodoroMinutes}
 	data, err := os.ReadFile(path)
 	if err == nil {
-		// P3: log unmarshal errors instead of silently ignoring them.
 		if err := json.Unmarshal(data, state); err != nil {
 			log.Printf("WARN: failed to parse pomodoro state %s: %v", path, err)
 		}

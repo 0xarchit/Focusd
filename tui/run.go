@@ -7,8 +7,9 @@ import (
 )
 
 func StartTUI() error {
+	m := NewModel()
 	p := tea.NewProgram(
-		NewModel(),
+		&m,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 		tea.WithInput(os.Stdin),

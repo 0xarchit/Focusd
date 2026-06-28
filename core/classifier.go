@@ -11,7 +11,6 @@ var browserSuffixes = []string{
 	"zen browser", "arc", "internet explorer", "personal", "work",
 }
 
-
 func isBrowserSuffix(suffix string) bool {
 	for _, b := range browserSuffixes {
 		if strings.Contains(suffix, b) {

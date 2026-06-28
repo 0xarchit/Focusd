@@ -74,8 +74,6 @@ func PrintSectionHeader(title string) {
 	fmt.Println()
 }
 
-
-
 func PrintOK(msg string) {
 	fmt.Printf("   %s%s%s %s%s%s\n", Green, CheckMark, Reset, Green, msg, Reset)
 }
@@ -104,8 +102,6 @@ func PrintKeyValue(key, value string) {
 	fmt.Printf("   %s%-20s%s %s%s%s\n", Dim, key, Reset, White, value, Reset)
 }
 
-
-
 func FormatDuration(seconds int) string {
 	if seconds < 60 {
 		return fmt.Sprintf("%ds", seconds)
@@ -131,8 +127,6 @@ func FormatDurationShort(seconds int) string {
 	}
 	return fmt.Sprintf("%02dm %02ds", minutes, secs)
 }
-
-
 
 type TableColumn struct {
 	Header string
@@ -229,8 +223,6 @@ func PrintMenuItem(num string, label string, active bool) {
 func PrintMenuDivider() {
 	fmt.Printf("   %s%s%s\n", Gray, strings.Repeat("─", 45), Reset)
 }
-
-
 
 func ClearScreen() {
 	fmt.Print("\033[2J\033[3J\033[H")

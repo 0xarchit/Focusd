@@ -15,10 +15,8 @@ import (
 	"time"
 )
 
-// IPCAddress is the single source of truth for the tracker's IPC endpoint.
 const IPCAddress = "127.0.0.1:48321"
 
-// SendIPCCmd sends a command to the running daemon via the IPC socket and returns if it succeeded.
 func SendIPCCmd(cmd string) bool {
 	conn, err := net.DialTimeout("tcp", IPCAddress, 1*time.Second)
 	if err != nil {
@@ -160,7 +158,6 @@ func (t *Tracker) Start() {
 
 			limits := system.GetAppTimeLimits()
 
-			// P1: snapshot currentSession under the tracker mutex to avoid data race.
 			t.mu.Lock()
 			var sessionExe, sessionAppName string
 			if t.currentSession != nil {
@@ -210,7 +207,6 @@ func (t *Tracker) recoverOrphanedSession() {
 	if err != nil || recovered == nil {
 		return
 	}
-	// P5: log errors from recovering orphaned sessions so they don't disappear silently.
 	if err := storage.InsertSession(recovered); err != nil {
 		log.Printf("ERROR: failed to recover orphaned session (insert): %v", err)
 	}
@@ -318,7 +314,6 @@ func (t *Tracker) flushPendingSessions() {
 	for _, s := range sessions {
 		if err := storage.InsertSession(s); err != nil {
 			log.Printf("ERROR: failed to insert session: %v", err)
-			continue // skip aggregate update to avoid inconsistent state
 		}
 		if err := storage.UpdateAppDaily(s.Date, s.AppName, s.ExeName, s.DurationSecs); err != nil {
 			log.Printf("ERROR: failed to update app daily stats: %v", err)
@@ -433,4 +428,3 @@ func (t *Tracker) handleIPCConnection(conn net.Conn) {
 		log.Printf("WARN: Unknown IPC command received: %q", cmd)
 	}
 }
-

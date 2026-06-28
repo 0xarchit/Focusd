@@ -79,8 +79,6 @@ func EnableAutostartLogic() error {
 	return nil
 }
 
-
-
 func DisableAutostartLogic() error {
 	if err := system.DisableAutoStart(); err != nil {
 		return fmt.Errorf("failed to disable auto-start: %w", err)

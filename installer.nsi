@@ -38,10 +38,13 @@ Section "Install"
     ExecWait '"$INSTDIR\focusd.exe" stop'
 
   File "focusd.exe"
+  File "focusd_daemon.exe"
 
-  ; Create startup shortcut pointing directly to focusd.exe --daemon
-  CreateDirectory "$SMSTARTUP"
-  CreateShortcut "$SMSTARTUP\Focus Daemon.lnk" "$INSTDIR\focusd.exe" "--daemon" "$INSTDIR\focusd.exe" 0
+  ; Delete legacy Startup shortcut if it exists
+  Delete "$SMSTARTUP\Focus Daemon.lnk"
+
+  ; Add to user Autostart registry run key
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "focusd" '"$INSTDIR\focusd_daemon.exe"'
 
   ; Add to user PATH environment variable via registry
   ReadRegStr $0 HKCU "Environment" "Path"
@@ -69,9 +72,9 @@ Section "Install"
 
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
-  ; Start the daemon immediately
+  ; Start the daemon immediately in a detached process context
   DetailPrint "Starting Focusd daemon..."
-  Exec '"$INSTDIR\focusd.exe" start'
+  ExecShell "open" "$INSTDIR\focusd_daemon.exe" "" SW_HIDE
 SectionEnd
 
 Section "Uninstall"
@@ -81,7 +84,14 @@ Section "Uninstall"
     ExecWait '"$INSTDIR\focusd.exe" stop'
     Sleep 1000
 
+  ; Force kill if still running to release file locks
+  ExecWait 'taskkill.exe /F /IM focusd_daemon.exe'
+  Sleep 500
+
   Delete "$INSTDIR\focusd.exe"
+  Delete "$INSTDIR\focusd_daemon.exe"
+  Delete "$INSTDIR\focusd_start.vbs"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "focusd"
   Delete "$SMSTARTUP\Focus Daemon.lnk"
   Delete "$INSTDIR\uninstall.exe"
 

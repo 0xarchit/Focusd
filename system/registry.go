@@ -3,7 +3,6 @@ package system
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -27,22 +26,21 @@ func GetStartupLinkPath() string {
 }
 
 func GetAutoStartEnabled() (bool, string, error) {
-	linkPath := GetStartupLinkPath()
-	if linkPath == "" {
-		return false, "", nil
-	}
-	if _, err := os.Stat(linkPath); err == nil {
-		return true, linkPath, nil
-	}
-
 	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.QUERY_VALUE)
 	if err == nil {
 		defer key.Close()
-		if _, _, err := key.GetStringValue(appName); err == nil {
-
-			return true, "Registry Key (Legacy)", nil
+		if val, _, err := key.GetStringValue(appName); err == nil {
+			return true, val, nil
 		}
 	}
+
+	linkPath := GetStartupLinkPath()
+	if linkPath != "" {
+		if _, err := os.Stat(linkPath); err == nil {
+			return true, "Startup Folder: " + linkPath, nil
+		}
+	}
+
 	return false, "", nil
 }
 
@@ -52,39 +50,34 @@ func EnableAutoStart() error {
 	}
 
 	linkPath := GetStartupLinkPath()
-	if linkPath == "" {
-		return fmt.Errorf("startup directory not found")
+	if linkPath != "" {
+		if err := os.Remove(linkPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove legacy startup shortcut: %w", err)
+		}
 	}
 
-	exePath := GetInstalledExePath()
-
-	psScript := fmt.Sprintf(`
-		$WshShell = New-Object -ComObject WScript.Shell
-		$Shortcut = $WshShell.CreateShortcut("%s")
-		$Shortcut.TargetPath = "%s"
-		$Shortcut.Arguments = "--daemon"
-		$Shortcut.IconLocation = "%s,0"
-		$Shortcut.Description = "Focus Daemon Background Process"
-		$Shortcut.Save()
-	`, linkPath, exePath, exePath)
-
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to create shortcut: %v, output: %s", err, string(output))
+	daemonPath := GetInstalledDaemonPath()
+	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
+	if err != nil {
+		return fmt.Errorf("failed to open registry run key: %w", err)
 	}
+	defer key.Close()
 
-	DisableRegistryAutoStart()
+	val := fmt.Sprintf(`"%s"`, daemonPath)
+	if err := key.SetStringValue(appName, val); err != nil {
+		return fmt.Errorf("failed to write registry run value: %w", err)
+	}
 
 	return nil
 }
 
 func DisableAutoStart() error {
-
 	linkPath := GetStartupLinkPath()
 	if linkPath != "" {
-		os.Remove(linkPath)
+		if err := os.Remove(linkPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove legacy startup shortcut: %w", err)
+		}
 	}
-
 	return DisableRegistryAutoStart()
 }
 

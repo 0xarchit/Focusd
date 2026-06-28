@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"database/sql"
+	"fmt"
 	"time"
 )
 
@@ -41,18 +43,40 @@ func GetTotalSessionCount() (int, error) {
 	return count, err
 }
 
-func ClearAllTrackingData() error {
-	if _, err := db.Exec("DELETE FROM sessions"); err != nil {
+func execOrRollback(tx *sql.Tx, query string) error {
+	if _, err := tx.Exec(query); err != nil {
+		if rbErr := tx.Rollback(); rbErr != nil {
+			return fmt.Errorf("query %q failed: %v (rollback also failed: %v)", query, err, rbErr)
+		}
 		return err
 	}
-	if _, err := db.Exec("DELETE FROM apps_daily"); err != nil {
+	return nil
+}
+
+func ClearAllTrackingData() error {
+	tx, err := db.Begin()
+	if err != nil {
 		return err
 	}
 
-	if _, err := db.Exec("DELETE FROM active_session"); err != nil {
+	if err := execOrRollback(tx, "DELETE FROM sessions"); err != nil {
 		return err
 	}
-	_, err := db.Exec("VACUUM")
+	if err := execOrRollback(tx, "DELETE FROM apps_daily"); err != nil {
+		return err
+	}
+	if err := execOrRollback(tx, "DELETE FROM browsing_daily"); err != nil {
+		return err
+	}
+	if err := execOrRollback(tx, "DELETE FROM active_session"); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	_, err = db.Exec("VACUUM")
 	return err
 }
 
