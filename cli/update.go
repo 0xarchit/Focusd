@@ -62,15 +62,6 @@ func RunUpdate() {
 		return
 	}
 
-	ui.PrintOK(fmt.Sprintf("Successfully updated to v%s!", latestVer))
-
-	if daemonWasRunning {
-		ui.PrintStatus("Restarting focusd daemon...", "", false)
-		time.Sleep(500 * time.Millisecond)
-		restartDaemon()
-		ui.PrintOK("Daemon restarted with new version.")
-	}
-
 	os.Exit(0)
 }
 

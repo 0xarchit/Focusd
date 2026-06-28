@@ -34,8 +34,11 @@ Section "Install"
   
   ; Stop existing daemon if running
   DetailPrint "Stopping existing daemon if active..."
-  IfFileExists "$INSTDIR\focusd.exe" 0 +2
+  IfFileExists "$INSTDIR\focusd.exe" 0 +3
     ExecWait '"$INSTDIR\focusd.exe" stop'
+    Sleep 1000
+  ExecWait 'taskkill.exe /F /IM focusd_daemon.exe'
+  Sleep 500
 
   File "focusd.exe"
   File "focusd_daemon.exe"
