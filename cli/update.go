@@ -10,9 +10,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
+	"syscall"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 var httpClient = &http.Client{Timeout: 15 * time.Second}
@@ -199,10 +201,26 @@ func performUpdate(version string) error {
 
 	ui.PrintStatus("Installing...", "", false)
 
-	cmd := exec.Command(tmpPath, "/S")
-	if err := cmd.Start(); err != nil {
+	verbPtr, err := syscall.UTF16PtrFromString("runas")
+	if err != nil {
 		os.Remove(tmpPath)
-		return fmt.Errorf("failed to start installer: %w", err)
+		return err
+	}
+	pathPtr, err := syscall.UTF16PtrFromString(tmpPath)
+	if err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	argsPtr, err := syscall.UTF16PtrFromString("/S")
+	if err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+
+	err = windows.ShellExecute(0, verbPtr, pathPtr, argsPtr, nil, windows.SW_HIDE)
+	if err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("failed to start installer with elevation: %w", err)
 	}
 
 	ui.PrintOK("Installer started silently. focusd will now close to complete the update.")
