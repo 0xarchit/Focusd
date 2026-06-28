@@ -52,11 +52,7 @@ func Init() error {
 		return err
 	}
 
-	u := &url.URL{
-		Scheme: "file",
-		Path:   filepath.ToSlash(dbPath),
-	}
-	q := u.Query()
+	q := url.Values{}
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "synchronous(NORMAL)")
@@ -64,8 +60,7 @@ func Init() error {
 	q.Add("_pragma", "cache_size(-1000)")
 	q.Add("_pragma", "mmap_size(0)")
 	q.Add("_pragma", "temp_store(MEMORY)")
-	u.RawQuery = q.Encode()
-	dsn := u.String()
+	dsn := fmt.Sprintf("file:%s?%s", filepath.ToSlash(dbPath), q.Encode())
 
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
