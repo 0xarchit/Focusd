@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	ModelURL         = "https://models.github.io/inference/chat/completions"
+	ModelURL         = "https://models.github.ai/inference/chat/completions"
 	ModelName        = "gpt-4o-mini"
 	MaxCharsPerChunk = 15000
 	MaxDiffChars     = 1500
