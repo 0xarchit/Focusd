@@ -8,9 +8,7 @@
     "Pomodoro timer & Break reminders",
     "UPX compressed binary (~3MB)"
   ],
-  "1.0.1": [
-    "Fixed: Initialisation on first start"
-  ],
+  "1.0.1": ["Fixed: Initialisation on first start"],
   "1.1.0": [
     "New: Browser Title Logging (Chrome, Zen, Edge, etc.)",
     "New: Dynamic Browser Configuration (add/remove custom browsers)",
@@ -70,15 +68,13 @@
     "Feature: NSIS installer (focusd_setup.exe) with auto PATH setup",
     "Feature: Standalone installer adds focusd to PATH automatically",
     "Feature: Windows Add/Remove Programs support with proper uninstaller",
-    "Architecture: Go 1.24 minimum requirement",
+    "Architecture: Go 1.26 minimum requirement",
     "Architecture: Auto-update now downloads raw binary from releases",
     "Security: SHA256 checksum verification for downloaded binary (focusd.exe); installer checksum published for manual verification",
     "Security: Removed UPX compression (prevents AV false positives)",
     "Improved: Website updated with current CLI commands and features",
     "Improved: README badges updated to for-the-badge style",
-    "Improved: Installer version now matches release tag"
-  ],
-  "2.0.1": [
+    "Improved: Installer version now matches release tag",
     "Feature: New Interactive UI (added mouse hover, mouse click navigation, and fixed key controls)",
     "Architecture: Dual-binary structure (focusd.exe for CLI/TUI, focusd_daemon.exe for windowless background tracking)",
     "Performance: Extreme RAM optimization (daemon footprint reduced to 4-6MB via custom SQLite pragmas)",

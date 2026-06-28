@@ -4,7 +4,7 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/0xarchit/focusd/release.yml?style=for-the-badge&logo=githubactions&logoColor=white&labelColor=000000&color=000000)](https://github.com/0xarchit/focusd/actions)
 [![Downloads](https://img.shields.io/github/downloads/0xarchit/focusd/total?style=for-the-badge&logo=rolldown&logoColor=white&labelColor=000000&color=000000)](https://github.com/0xarchit/focusd/releases)
 [![License](https://img.shields.io/badge/License-MIT-000000.svg?style=for-the-badge&logo=apache&logoColor=white&labelColor=000000&color=000000)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.24+-000000.svg?style=for-the-badge&logo=go&logoColor=white&labelColor=000000&color=000000)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.26+-000000.svg?style=for-the-badge&logo=go&logoColor=white&labelColor=000000&color=000000)](https://go.dev)
 ![Platform](https://img.shields.io/badge/Platform-Windows_x64-000000.svg?style=for-the-badge&logo=nsis&logoColor=white&labelColor=000000&color=000000)
 <center>
   <pre>
