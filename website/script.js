@@ -328,7 +328,7 @@ function initTerminal() {
           if (cmd === "download") {
             setTimeout(() => {
               window.open(
-                "https://github.com/0xarchit/Focusd/releases",
+                "https://github.com/0xarchit/focusd/releases",
                 "_blank",
               );
             }, 1000);
@@ -430,7 +430,7 @@ function activateGodMode() {
 
 function fetchLatestVersion() {
   const badge = document.getElementById("github-badge");
-  fetch("https://api.github.com/repos/0xarchit/Focusd/releases/latest")
+  fetch("https://api.github.com/repos/0xarchit/focusd/releases/latest")
     .then((response) => response.json())
     .then((data) => {
       if (data.tag_name) {
@@ -487,12 +487,12 @@ function fallbackCopyText(text, successMsg) {
 }
 
 function copyCommand() {
-  const cmd = `iwr "https://github.com/0xarchit/Focusd/releases/latest/download/focusd_setup.exe" -OutFile focusd_setup.exe; ./focusd_setup.exe`;
+  const cmd = `iwr "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" -OutFile focusd_setup.exe; ./focusd_setup.exe`;
   copyToClipboard(cmd, "PowerShell command copied");
 }
 
 function copyCurl() {
-  const cmd = `curl -L -o focusd_setup.exe "https://github.com/0xarchit/Focusd/releases/latest/download/focusd_setup.exe" && focusd_setup.exe`;
+  const cmd = `curl -L -o focusd_setup.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" && focusd_setup.exe`;
   copyToClipboard(cmd, "CMD command copied");
 }
 

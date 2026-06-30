@@ -23,18 +23,18 @@
         <header>
             <div class="logo">
                 <pre>
-   __                           _ 
+   __                           _
   / _|                         | |
  | |_ ___   ___ _   _ ___  ____| |
  |  _/ _ \ / __| | | / __|/ _  | |
  | || (_) | (__| |_| \__ \ (_| |_|
  |_| \___/ \___|\__,_|___/\____(_)
-                                  
+
 </pre>
             </div>
             <div class="nav-links">
-                <a href="https://github.com/0xarchit/Focusd" target="_blank">[GITHUB]</a>
-                <a href="https://github.com/0xarchit/Focusd/releases" target="_blank">[DOWNLOAD]</a>
+                <a href="https://github.com/0xarchit/focusd" target="_blank">[GITHUB]</a>
+                <a href="https://github.com/0xarchit/focusd/releases" target="_blank">[DOWNLOAD]</a>
                 <span id="github-badge">Latest: checking...</span>
             </div>
         </header>
@@ -51,7 +51,7 @@
             <section class="install-block delayed-reveal">
                 <p class="prompt">C:\Users\You> Download Installer</p>
                 <div class="code-box">
-                    <code>iwr "https://github.com/0xarchit/Focusd/releases/latest/download/focusd_setup.exe" -OutFile focusd_setup.exe; ./focusd_setup.exe</code>
+                    <code>iwr "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" -OutFile focusd_setup.exe; ./focusd_setup.exe</code>
                     <button class="copy-btn" onclick="copyCommand()">[COPY]</button>
                 </div>
 
@@ -76,7 +76,7 @@
                     </div>
                     <div class="card">
                         <h3>[BROWSER TRACKING]</h3>
-                        <p>Tracks time per browser tab by page title. Smart grouping for 80+ sites (YouTube, GitHub, etc).</p>
+                        <p>Tracks time per browser tab by page title. Smart grouping for 80+ sites (YouTube, GitHub, ChatGPT, Claude, etc).</p>
                     </div>
                     <div class="card">
                         <h3>[POMODORO TIMER]</h3>
@@ -88,7 +88,7 @@
                     </div>
                     <div class="card">
                         <h3>[PERFORMANCE]</h3>
-                        <p>Written in Go. ~0% CPU, ~5MB RAM. Single ~11MB binary. No dependencies.</p>
+                        <p>Written in Go with native Win32 syscalls. CLI + silent daemon under ~12MB total. ~10-25MB RAM. No CGO, no runtime dependencies.</p>
                     </div>
                     <div class="card">
                         <h3>[BREAK REMINDERS]</h3>
@@ -96,11 +96,23 @@
                     </div>
                     <div class="card">
                         <h3>[DATA CONTROL]</h3>
-                        <p>Configurable retention (1-30 days). Export to CSV. Wipe data anytime. Open SQLite database.</p>
+                        <p>Configurable retention (1-30 days). Export to CSV. Wipe data anytime. Open SQLite database in %APPDATA%\focusd\.</p>
                     </div>
                     <div class="card">
                         <h3>[AUTO-START]</h3>
-                        <p>Optional Windows startup integration. Runs silently in background as a daemon process.</p>
+                        <p>Daemon registered under HKCU\...\Run on install. Runs silently in the background (built with -H=windowsgui). Toggle anytime via focusd autostart.</p>
+                    </div>
+                    <div class="card">
+                        <h3>[WHITELIST]</h3>
+                        <p>Add executables that should never be tracked. Whitelisted apps are skipped entirely by the poller.</p>
+                    </div>
+                    <div class="card">
+                        <h3>[PASSWORD LOCK]</h3>
+                        <p>Optional password gate on the interactive menu. Reset anytime with focusd reset-password.</p>
+                    </div>
+                    <div class="card">
+                        <h3>[AUTO-UPDATE]</h3>
+                        <p>focusd update checks GitHub Releases, verifies the installer's SHA-256 against checksums.txt, and runs silently with UAC elevation.</p>
                     </div>
                 </div>
             </section>
@@ -149,6 +161,8 @@
                             class="col-desc">Check for updates from GitHub</span></div>
                     <div class="row"><span class="col-cmd">focusd reset-password</span><span class="col-alias"></span><span
                             class="col-desc">Reset password protection</span></div>
+                    <div class="row"><span class="col-cmd">focusd help</span><span class="col-alias">h</span><span
+                            class="col-desc">Show built-in help</span></div>
                 </div>
             </section>
 
@@ -170,7 +184,7 @@
                 </div>
                 <div class="contribute">
                     <p class="prompt">C:\Users\You> git commit -m "suggestion"</p>
-                    <p>Have an idea? <a href="https://github.com/0xarchit/Focusd/issues" target="_blank">[SUGGEST A
+                    <p>Have an idea? <a href="https://github.com/0xarchit/focusd/issues" target="_blank">[SUGGEST A
                             FEATURE]</a></p>
                 </div>
             </section>
