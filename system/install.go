@@ -95,26 +95,3 @@ func installFile(src, dst string) error {
 	_, err = io.Copy(dstFile, srcFile)
 	return err
 }
-
-func CleanupOldBinary() {
-	exePath, err := os.Executable()
-	if err != nil {
-		return
-	}
-	oldPath := exePath + ".old"
-	if _, err := os.Stat(oldPath); err == nil {
-
-		_ = os.Remove(oldPath)
-	}
-}
-
-func IsInstalled() bool {
-	exePath := GetInstalledExePath()
-	daemonPath := GetInstalledDaemonPath()
-	if exePath == "" || daemonPath == "" {
-		return false
-	}
-	_, err1 := os.Stat(exePath)
-	_, err2 := os.Stat(daemonPath)
-	return err1 == nil && err2 == nil
-}

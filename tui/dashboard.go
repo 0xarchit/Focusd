@@ -155,10 +155,21 @@ func (m *Model) renderTopAppsPanel(width, height int) string {
 				warn = amberStyle.Render("⚠ ")
 			}
 			nameW := max(10, width-24)
+			filled := 0
+			if maxDuration > 0 {
+				filled = a.Duration * 3 / maxDuration
+				if filled == 0 && a.Duration > 0 {
+					filled = 1
+				}
+				if filled > 3 {
+					filled = 3
+				}
+			}
+			barStr := strings.Repeat("█", filled) + strings.Repeat("░", 3-filled)
 			line := mutedStyle.Render(fmt.Sprintf("%2d. ", idx+1)) + warn +
 				padRight(truncate(a.Name, nameW), nameW) +
 				padLeft(formatDuration(a.Duration), 8) + "  " +
-				cyanStyle.Render(bar(a.Duration, maxDuration, 3, "█"))
+				cyanStyle.Render(barStr)
 
 			if idx == m.dashSelected && m.panelFocus == 1 {
 				line = selectedRowStyle.Render(padRight(line, width-2))
@@ -210,7 +221,8 @@ func (m *Model) renderHourlyPanel(width, height int) string {
 	prefix := "   "
 	suffix := "   "
 	lines = append(lines, prefix+strings.Join(blocks, "")+suffix)
-	hoursText := "00" + strings.Repeat(" ", blockWidth*6-2) + "06" + strings.Repeat(" ", blockWidth*6-2) + "12" + strings.Repeat(" ", blockWidth*6-2) + "18" + strings.Repeat(" ", blockWidth*6-2) + "23"
+	gap := strings.Repeat(" ", blockWidth*6-2)
+	hoursText := "00" + gap + "06" + gap + "12" + gap + "18" + gap + "23"
 	if len(hoursText) > width-6 {
 		hoursText = truncate(hoursText, width-6)
 	}
@@ -249,9 +261,20 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 				labelStyle = amberStyle
 			}
 			barWidth := max(5, width-20)
+			filled := 0
+			if maxVal > 0 {
+				filled = day.Duration * barWidth / maxVal
+				if filled == 0 && day.Duration > 0 {
+					filled = 1
+				}
+				if filled > barWidth {
+					filled = barWidth
+				}
+			}
+			barStr := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 			line := labelStyle.Render(padRight(day.Label, 6)) +
 				padRight(day.Date, 12) +
-				cyanStyle.Render(bar(day.Duration, maxVal, barWidth, "█")) + " " +
+				cyanStyle.Render(barStr) + " " +
 				padLeft(formatDuration(day.Duration), 8)
 			lines = append(lines, line)
 		}

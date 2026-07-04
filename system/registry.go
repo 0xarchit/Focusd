@@ -78,10 +78,10 @@ func DisableAutoStart() error {
 			return fmt.Errorf("failed to remove legacy startup shortcut: %w", err)
 		}
 	}
-	return DisableRegistryAutoStart()
+	return disableRegistryAutoStart()
 }
 
-func DisableRegistryAutoStart() error {
+func disableRegistryAutoStart() error {
 	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
 	if err != nil {
 		return nil

@@ -72,20 +72,6 @@ func GetAppStatsForDate(date string) ([]AppDailyStat, error) {
 	return stats, rows.Err()
 }
 
-func GetTotalScreenTimeTodaySecs() int {
-	today := Today()
-	var secs int
-	err := db.QueryRow(`
-		SELECT COALESCE(SUM(total_duration_secs), 0) FROM apps_daily
-		WHERE date = ?
-	`, today).Scan(&secs)
-	if err != nil {
-		log.Printf("WARN: GetTotalScreenTimeTodaySecs query failed: %v", err)
-		return 0
-	}
-	return secs
-}
-
 func GetAppUsageTodayMinutes(exeName string) int {
 	today := Today()
 	var secs int
@@ -102,8 +88,7 @@ func GetAppUsageTodayMinutes(exeName string) int {
 	return secs / 60
 }
 
-func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Session, int, error) {
-	countQuery := `SELECT COUNT(*) FROM sessions`
+func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Session, error) {
 	dataQuery := `
 		SELECT id, app_name, exe_name, window_title, start_time, end_time, duration_secs, date
 		FROM sessions
@@ -123,18 +108,12 @@ func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Sessi
 		args = append(args, endDate)
 	}
 
-	var total int
-	err := db.QueryRow(countQuery+whereClause, args...).Scan(&total)
-	if err != nil {
-		return nil, 0, err
-	}
-
 	dataQuery += whereClause + " ORDER BY start_time DESC LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
 	rows, err := db.Query(dataQuery, args...)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -144,7 +123,7 @@ func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Sessi
 		var startTime int64
 		var endTime *int64
 		if err := rows.Scan(&s.ID, &s.AppName, &s.ExeName, &s.WindowTitle, &startTime, &endTime, &s.DurationSecs, &s.Date); err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		s.StartTime = time.Unix(startTime, 0)
 		if endTime != nil {
@@ -152,7 +131,7 @@ func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Sessi
 		}
 		sessions = append(sessions, s)
 	}
-	return sessions, total, rows.Err()
+	return sessions, rows.Err()
 }
 
 func GetAllSessions() ([]Session, error) {

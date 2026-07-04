@@ -88,11 +88,6 @@ func (m *Model) renderFocus(width, height int) string {
 		status = "DONE"
 	}
 
-	topH := (height * 45) / 100
-	if topH < 8 {
-		topH = 8
-	}
-
 	inner := width - 2
 
 	mins := int(remaining.Minutes())
@@ -112,15 +107,26 @@ func (m *Model) renderFocus(width, height int) string {
 		})
 		btnStartX += btnW + 2
 
-		if i == m.focusButton && m.panelFocus == 0 {
+		if i == m.focusButton {
 			renderedBtns = append(renderedBtns, activeButtonStyle.Render(label))
 		} else {
 			renderedBtns = append(renderedBtns, buttonStyle.Render(label))
 		}
 	}
 	buttonsLine := strings.Join(renderedBtns, "  ")
-	timerLeftW := (inner * 65) / 100
-	progressBar := cyanStyle.Render(bar(elapsed, total*60, max(10, timerLeftW-8), "▓"))
+	filled := 0
+	barWidth := max(10, inner-8)
+	if total > 0 {
+		filled = elapsed * barWidth / (total * 60)
+		if filled == 0 && elapsed > 0 {
+			filled = 1
+		}
+		if filled > barWidth {
+			filled = barWidth
+		}
+	}
+	barStr := strings.Repeat("▓", filled) + strings.Repeat("░", barWidth-filled)
+	progressBar := cyanStyle.Render(barStr)
 	timerBody := lipgloss.JoinVertical(lipgloss.Left,
 		timerDigits,
 		"",
@@ -131,36 +137,9 @@ func (m *Model) renderFocus(width, height int) string {
 		fmt.Sprintf("Duration: [ %02d ] min      Break: [ %02d ] min", m.focusDuration, m.focusBreak),
 	)
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
-		X1: 1, Y1: 5, X2: timerLeftW + 1, Y2: 5 + topH,
+		X1: 1, Y1: 5, X2: width - 1, Y2: height - 1,
 		ID: "panel-0", Kind: "panel",
 	})
 
-	timerPanel := panelWithHover("FOCUS TIMER", status, timerLeftW, "\n"+timerBody+"\n", m.panelFocus == 0, m.hoveredPanel == 0)
-
-	statsRightW := inner - timerLeftW
-	statsBody := lipgloss.JoinVertical(lipgloss.Left,
-		rowKV("Sessions Completed", "0", statsRightW),
-		rowKV("Total Focus Time", "0m", statsRightW),
-		rowKV("Avg Session Length", "0m", statsRightW),
-		rowKV("Longest Streak", "0 days", statsRightW),
-	)
-	statsPanel := panel("SESSION STATS (30 DAYS)", "", statsRightW, "\n"+statsBody+"\n", false)
-
-	topRow := lipgloss.JoinHorizontal(lipgloss.Top, timerPanel, statsPanel)
-
-	historyY := 5 + topH + 1
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
-		X1: 1, Y1: historyY, X2: width - 1, Y2: height - 1,
-		ID: "panel-1", Kind: "panel",
-	})
-
-	historyTable := strings.Join([]string{
-		boldStyle.Render("#   Started     Duration   Status"),
-		mutedStyle.Render("────────────────────────────────────────────"),
-		mutedStyle.Render("   No focus sessions recorded today."),
-	}, "\n")
-
-	historyPanel := panelWithHover("SESSION HISTORY (TODAY)", "", inner, "\n"+historyTable+"\n", m.panelFocus == 1, m.hoveredPanel == 1)
-
-	return lipgloss.JoinVertical(lipgloss.Left, topRow, historyPanel)
+	return panelWithHover("FOCUS TIMER", status, inner, "\n"+timerBody+"\n", true, m.hoveredPanel == 0)
 }

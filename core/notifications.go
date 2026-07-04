@@ -1,17 +1,16 @@
 package core
 
 import (
-	"sync"
+	"golang.org/x/time/rate"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
 )
 
 var (
-	lastNotificationTime  time.Time
-	notificationMutex     sync.Mutex
-	notificationCooldown  = 10 * time.Second
-	isNotificationVisible bool
+	limiter         = rate.NewLimiter(rate.Every(10*time.Second), 1)
+	activeInstances int32
 )
 
 var (
@@ -32,62 +31,40 @@ const (
 	IDNO               = 7
 )
 
-func ShowNotification(title, message string) {
-	notificationMutex.Lock()
-	if time.Since(lastNotificationTime) < notificationCooldown || isNotificationVisible {
-		notificationMutex.Unlock()
+func show(title, message string, flags uintptr, callback func(ret uintptr)) {
+	if !limiter.Allow() {
 		return
 	}
-	lastNotificationTime = time.Now()
-	isNotificationVisible = true
-	notificationMutex.Unlock()
+	if !atomic.CompareAndSwapInt32(&activeInstances, 0, 1) {
+		return
+	}
 
 	go func() {
-		defer func() {
-			notificationMutex.Lock()
-			isNotificationVisible = false
-			notificationMutex.Unlock()
-		}()
+		defer atomic.StoreInt32(&activeInstances, 0)
 
 		titlePtr, _ := syscall.UTF16PtrFromString(title)
 		messagePtr, _ := syscall.UTF16PtrFromString(message)
-		procMessageBoxW.Call(
-			0,
-			uintptr(unsafe.Pointer(messagePtr)),
-			uintptr(unsafe.Pointer(titlePtr)),
-			uintptr(MB_OK|MB_ICONINFORMATION|MB_SETFOREGROUND),
-		)
-	}()
-}
-
-func ShowNotificationWithAction(title, message string, callback func(disable bool)) {
-	notificationMutex.Lock()
-	if time.Since(lastNotificationTime) < notificationCooldown || isNotificationVisible {
-		notificationMutex.Unlock()
-		return
-	}
-	lastNotificationTime = time.Now()
-	isNotificationVisible = true
-	notificationMutex.Unlock()
-
-	go func() {
-		defer func() {
-			notificationMutex.Lock()
-			isNotificationVisible = false
-			notificationMutex.Unlock()
-		}()
-
-		titlePtr, _ := syscall.UTF16PtrFromString(title)
-		fullMessage := message + "\n\n[OK] Disable this reminder\n[Cancel] Just close"
-		messagePtr, _ := syscall.UTF16PtrFromString(fullMessage)
 		ret, _, _ := procMessageBoxW.Call(
 			0,
 			uintptr(unsafe.Pointer(messagePtr)),
 			uintptr(unsafe.Pointer(titlePtr)),
-			uintptr(MB_OKCANCEL|MB_ICONWARNING|MB_SETFOREGROUND),
+			flags|MB_SETFOREGROUND,
 		)
+		if callback != nil {
+			callback(ret)
+		}
+	}()
+}
+
+func ShowNotification(title, message string) {
+	show(title, message, MB_OK|MB_ICONINFORMATION, nil)
+}
+
+func ShowNotificationWithAction(title, message string, callback func(disable bool)) {
+	fullMessage := message + "\n\n[OK] Disable this reminder\n[Cancel] Just close"
+	show(title, fullMessage, MB_OKCANCEL|MB_ICONWARNING, func(ret uintptr) {
 		if callback != nil {
 			callback(ret == IDOK)
 		}
-	}()
+	})
 }

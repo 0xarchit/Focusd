@@ -3,7 +3,6 @@ package tui
 import (
 	"encoding/csv"
 	"encoding/json"
-	"fmt"
 	"focusd/core"
 	"focusd/storage"
 	"focusd/system"
@@ -31,7 +30,7 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 				m.addToast("Browser name is required", toastError)
 				return *m, nil
 			}
-			if err := storage.AddCustomBrowser(m.settingsBrowserInput); err != nil {
+			if err := system.AddCustomBrowser(m.settingsBrowserInput); err != nil {
 				m.addToast(err.Error(), toastError)
 			} else {
 				m.addToast("Added "+m.settingsBrowserInput, toastSuccess)
@@ -48,82 +47,22 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 
 	switch key {
 	case "j", "down":
-		m.settingsSelected = min(m.settingsSelected+1, 12)
+		m.settingsSelected = min(m.settingsSelected+1, 8)
 	case "k", "up":
 		m.settingsSelected = max(0, m.settingsSelected-1)
 	case "h", "left":
 		switch m.settingsSelected {
-		case 8:
-			m.settingsBrowserSelected = max(0, m.settingsBrowserSelected-1)
 		case 4:
-			current := storage.GetTrackingIntervalSeconds()
-			next := max(storage.MinTrackingIntervalSeconds, current-1)
-			if next != current {
-				if err := storage.SetTrackingIntervalSeconds(next); err != nil {
-					m.addToast("Failed to save tracking interval", toastError)
-				} else {
-					m.addToast(fmt.Sprintf("Tracking interval: %ds", next), toastSuccess)
-				}
-			}
-		case 5:
-			current := storage.GetIdleThresholdSeconds()
-			next := max(storage.MinIdleThresholdSeconds, current-5)
-			if next != current {
-				if err := storage.SetIdleThresholdSeconds(next); err != nil {
-					m.addToast("Failed to save idle threshold", toastError)
-				} else {
-					m.addToast(fmt.Sprintf("Idle threshold: %ds", next), toastSuccess)
-				}
-			}
-		case 7:
-			current := storage.GetWarningThresholdPercent()
-			next := max(storage.MinWarningThresholdPercent, current-5)
-			if next != current {
-				if err := storage.SetWarningThresholdPercent(next); err != nil {
-					m.addToast("Failed to save warning threshold", toastError)
-				} else {
-					m.addToast(fmt.Sprintf("Warning threshold: %d%%", next), toastSuccess)
-				}
-			}
-		case 10:
+			m.settingsBrowserSelected = max(0, m.settingsBrowserSelected-1)
+		case 6:
 			m.settingsExportSelected = 0
 		}
 	case "l", "right":
 		switch m.settingsSelected {
-		case 8:
-			browsers := storage.GetCustomBrowsersList()
-			m.settingsBrowserSelected = min(m.settingsBrowserSelected+1, max(0, len(browsers)-1))
 		case 4:
-			current := storage.GetTrackingIntervalSeconds()
-			next := min(storage.MaxTrackingIntervalSeconds, current+1)
-			if next != current {
-				if err := storage.SetTrackingIntervalSeconds(next); err != nil {
-					m.addToast("Failed to save tracking interval", toastError)
-				} else {
-					m.addToast(fmt.Sprintf("Tracking interval: %ds", next), toastSuccess)
-				}
-			}
-		case 5:
-			current := storage.GetIdleThresholdSeconds()
-			next := min(storage.MaxIdleThresholdSeconds, current+5)
-			if next != current {
-				if err := storage.SetIdleThresholdSeconds(next); err != nil {
-					m.addToast("Failed to save idle threshold", toastError)
-				} else {
-					m.addToast(fmt.Sprintf("Idle threshold: %ds", next), toastSuccess)
-				}
-			}
-		case 7:
-			current := storage.GetWarningThresholdPercent()
-			next := min(storage.MaxWarningThresholdPercent, current+5)
-			if next != current {
-				if err := storage.SetWarningThresholdPercent(next); err != nil {
-					m.addToast("Failed to save warning threshold", toastError)
-				} else {
-					m.addToast(fmt.Sprintf("Warning threshold: %d%%", next), toastSuccess)
-				}
-			}
-		case 10:
+			browsers := system.GetCustomBrowsersList()
+			m.settingsBrowserSelected = min(m.settingsBrowserSelected+1, max(0, len(browsers)-1))
+		case 6:
 			m.settingsExportSelected = 1
 		}
 	case "space", "enter":
@@ -161,33 +100,6 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 				m.addToast("Browser tracking toggled", toastSuccess)
 			}
 		case 3:
-			enabled := system.GetSmartGroupingEnabled()
-			if err := system.SetSmartGroupingEnabled(!enabled); err != nil {
-				m.addToast("Failed to toggle smart grouping", toastError)
-			} else {
-				m.addToast(fmt.Sprintf("Smart grouping: %s", ifThen(!enabled, "Enabled", "Disabled")), toastSuccess)
-			}
-		case 4:
-			current := storage.GetTrackingIntervalSeconds()
-			next := min(storage.MaxTrackingIntervalSeconds, current+1)
-			if next != current {
-				if err := storage.SetTrackingIntervalSeconds(next); err != nil {
-					m.addToast("Failed to save tracking interval", toastError)
-					break
-				}
-			}
-			m.addToast(fmt.Sprintf("Tracking interval: %ds", next), toastSuccess)
-		case 5:
-			current := storage.GetIdleThresholdSeconds()
-			next := min(storage.MaxIdleThresholdSeconds, current+5)
-			if next != current {
-				if err := storage.SetIdleThresholdSeconds(next); err != nil {
-					m.addToast("Failed to save idle threshold", toastError)
-					break
-				}
-			}
-			m.addToast(fmt.Sprintf("Idle threshold: %ds", next), toastSuccess)
-		case 6:
 			enabled := system.GetBreakReminderEnabled()
 			minutes := system.GetBreakReminderMinutes()
 			if err := system.SetBreakReminder(!enabled, minutes); err != nil {
@@ -195,22 +107,12 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			} else {
 				m.addToast("Focus alerts toggled", toastSuccess)
 			}
-		case 7:
-			current := storage.GetWarningThresholdPercent()
-			next := min(storage.MaxWarningThresholdPercent, current+5)
-			if next != current {
-				if err := storage.SetWarningThresholdPercent(next); err != nil {
-					m.addToast("Failed to save warning threshold", toastError)
-					break
-				}
-			}
-			m.addToast(fmt.Sprintf("Warning threshold: %d%%", next), toastSuccess)
-		case 8:
+		case 4:
 			m.settingsAddingBrowser = true
 			m.settingsBrowserInput = ""
-		case 9:
+		case 5:
 			openDBFolder()
-		case 10:
+		case 6:
 			jsonOut := m.settingsExportSelected == 1
 			path, err := exportData(jsonOut)
 			if err != nil {
@@ -218,24 +120,24 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			} else {
 				m.addToast("Exported to "+filepath.Base(path), toastSuccess)
 			}
-		case 11:
+		case 7:
 			if err := launchGitHubUpdate(); err != nil {
 				m.addToast("Failed to launch updater", toastError)
 			} else {
 				m.addToast("Updater opened in new window", toastSuccess)
 			}
-		case 12:
+		case 8:
 			m.modal = modal{
 				Active: true, Title: "WIPE DATA", Required: "DELETE", Danger: true,
 				Message: "This will delete all tracking data and cannot be undone.",
 			}
 		}
 	case "d":
-		if m.settingsSelected == 8 {
-			browsers := storage.GetCustomBrowsersList()
+		if m.settingsSelected == 4 {
+			browsers := system.GetCustomBrowsersList()
 			if len(browsers) > 0 {
 				i := min(m.settingsBrowserSelected, len(browsers)-1)
-				storage.RemoveCustomBrowser(browsers[i])
+				system.RemoveCustomBrowser(browsers[i])
 				m.addToast("Removed "+browsers[i], toastWarning)
 			}
 		}
@@ -246,11 +148,8 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 func (m *Model) renderSettings(width, height int) string {
 	auto, _, _ := system.GetAutoStartEnabled()
 	paused := storage.IsPaused()
-	trackingInterval := storage.GetTrackingIntervalSeconds()
-	idleThreshold := storage.GetIdleThresholdSeconds()
 	focusAlerts := system.GetBreakReminderEnabled()
-	warningThreshold := storage.GetWarningThresholdPercent()
-	browsers := append([]string{"chrome.exe", "firefox.exe", "edge.exe"}, storage.GetCustomBrowsersList()...)
+	browsers := append([]string{"chrome.exe", "firefox.exe", "edge.exe"}, system.GetCustomBrowsersList()...)
 	dbPath := m.dashboard.DBPath
 	if dbPath == "" {
 		dbPath, _ = storage.GetDBPath()
@@ -268,24 +167,20 @@ func (m *Model) renderSettings(width, height int) string {
 		"",
 		"TRACKING",
 		m.settingRow(2, m.settingsSelected, "Browser tracking", toggleText(!paused), inner),
-		m.settingRow(3, m.settingsSelected, "Smart app grouping", toggleText(system.GetSmartGroupingEnabled())+"  "+mutedStyle.Render("(experimental)"), inner),
-		m.settingRow(4, m.settingsSelected, "Tracking interval", fmt.Sprintf("[ %d ] seconds", trackingInterval), inner),
-		m.settingRow(5, m.settingsSelected, "Idle threshold", fmt.Sprintf("[ %d ] seconds", idleThreshold), inner),
 		"",
 		"NOTIFICATIONS",
-		m.settingRow(6, m.settingsSelected, "Focus complete alert", toggleText(focusAlerts), inner),
-		m.settingRow(7, m.settingsSelected, "Limit warning at", fmt.Sprintf("[ %d ] %% usage", warningThreshold), inner),
+		m.settingRow(3, m.settingsSelected, "Focus complete alert", toggleText(focusAlerts), inner),
 		"",
 		"BROWSERS",
-		m.settingRow(8, m.settingsSelected, "Tracked browsers", browserValue, inner),
+		m.settingRow(4, m.settingsSelected, "Tracked browsers", browserValue, inner),
 		"",
 		"DATA",
-		m.settingRow(9, m.settingsSelected, "Database path", mutedStyle.Render(truncate(dbPath, max(10, inner-45)))+"   "+buttonText("Open Folder"), inner),
-		m.settingRow(10, m.settingsSelected, "Export data", renderExportButtons(m.settingsSelected == 10, m.settingsExportSelected), inner),
-		m.settingRow(11, m.settingsSelected, "Update app", buttonText("Update from GitHub"), inner),
+		m.settingRow(5, m.settingsSelected, "Database path", mutedStyle.Render(truncate(dbPath, max(10, inner-45)))+"   "+buttonText("Open Folder"), inner),
+		m.settingRow(6, m.settingsSelected, "Export data", renderExportButtons(m.settingsSelected == 6, m.settingsExportSelected), inner),
+		m.settingRow(7, m.settingsSelected, "Update app", buttonText("Update from GitHub"), inner),
 		"",
 		"DANGER ZONE",
-		m.settingRow(12, m.settingsSelected, "Danger zone", redStyle.Bold(true).Render("[ Uninstall / Wipe All Data ]"), inner),
+		m.settingRow(8, m.settingsSelected, "Danger zone", redStyle.Bold(true).Render("[ Uninstall / Wipe All Data ]"), inner),
 	}
 	for i, line := range lines {
 		switch line {
@@ -417,14 +312,10 @@ func exportData(jsonOut bool) (string, error) {
 }
 
 func renderExportButtons(active bool, selectedButton int) string {
-	csvLabel := "Export CSV"
-	jsonLabel := "Export JSON"
+	c := [2]string{"Export CSV", "Export JSON"}
+	s := [2]string{cyanStyle.Render("[ " + c[0] + " ]"), cyanStyle.Render("[ " + c[1] + " ]")}
 	if active {
-		if selectedButton == 0 {
-			return greenStyle.Render("[ "+csvLabel+" ]") + "   " + cyanStyle.Render("[ "+jsonLabel+" ]")
-		} else {
-			return cyanStyle.Render("[ "+csvLabel+" ]") + "   " + greenStyle.Render("[ "+jsonLabel+" ]")
-		}
+		s[selectedButton] = greenStyle.Render("[ " + c[selectedButton] + " ]")
 	}
-	return cyanStyle.Render("[ "+csvLabel+" ]") + "   " + cyanStyle.Render("[ "+jsonLabel+" ]")
+	return s[0] + "   " + s[1]
 }

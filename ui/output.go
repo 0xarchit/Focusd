@@ -40,28 +40,10 @@ const (
 	FilledCircle = "●"
 )
 
-func PrintLogo() {
-	fmt.Println()
-	fmt.Printf("%s%s   ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓%s\n", Bold, Cyan, Reset)
-	fmt.Printf("%s%s   ┃    █▀▀ █▀█ █▀▀ █ █ █▀ █▀▄                       ┃%s\n", Bold, Cyan, Reset)
-	fmt.Printf("%s%s   ┃    █▀  █▄█ █▄▄ █▄█ ▄█ █▄▀   %s%sFocus Daemon%s%s        ┃%s\n", Bold, Cyan, Yellow, Bold, Reset, Cyan, Reset)
-	fmt.Printf("%s%s   ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛%s\n", Bold, Cyan, Reset)
-	fmt.Println()
-}
-
 func PrintHeader() {
 	fmt.Println()
 	fmt.Printf("   %s%s%s focusd %s\n", Yellow, Arrow, Reset, Dim+"Local Focus Daemon"+Reset)
 	fmt.Printf("   %s%s%s\n", Gray, strings.Repeat("─", 50), Reset)
-	fmt.Println()
-}
-
-func PrintMenuHeader() {
-	PrintLogo()
-	fmt.Printf("   %sPrivate%s %s•%s %sOffline%s %s•%s %sLocal-first%s\n",
-		Green, Reset, Gray, Reset,
-		Blue, Reset, Gray, Reset,
-		Magenta, Reset)
 	fmt.Println()
 }
 
@@ -96,10 +78,6 @@ func PrintStatus(label, value string, active bool) {
 		color = Green
 	}
 	fmt.Printf("   %s%-15s%s %s%s%s\n", Dim, label, Reset, color, value, Reset)
-}
-
-func PrintKeyValue(key, value string) {
-	fmt.Printf("   %s%-20s%s %s%s%s\n", Dim, key, Reset, White, value, Reset)
 }
 
 func FormatDuration(seconds int) string {
@@ -193,35 +171,6 @@ func TruncateString(s string, maxLen int) string {
 		return string(runes[:maxLen])
 	}
 	return string(runes[:maxLen-3]) + "..."
-}
-
-func Confirm(prompt string) bool {
-	fmt.Printf("   %s%s%s [y/N]: ", Yellow, prompt, Reset)
-	var response string
-	fmt.Scanln(&response)
-	response = strings.ToLower(strings.TrimSpace(response))
-	return response == "y" || response == "yes"
-}
-
-func ConfirmDestructive(action string) bool {
-	fmt.Println()
-	PrintWarn("This action is irreversible!")
-	fmt.Println()
-	return Confirm(fmt.Sprintf("Are you sure you want to %s?", action))
-}
-
-func PrintMenuItem(num string, label string, active bool) {
-	indicator := " "
-	color := White
-	if active {
-		indicator = FilledCircle
-		color = Green
-	}
-	fmt.Printf("   %s%s%s  %s%s.%s %s%s%s\n", Green, indicator, Reset, Dim, num, Reset, color, label, Reset)
-}
-
-func PrintMenuDivider() {
-	fmt.Printf("   %s%s%s\n", Gray, strings.Repeat("─", 45), Reset)
 }
 
 func ClearScreen() {

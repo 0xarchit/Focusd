@@ -2,7 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"focusd/storage"
+	"focusd/system"
 	"focusd/ui"
 	"os"
 )
@@ -38,7 +38,7 @@ func HandleBrowsersCommand(args []string) {
 func RunBrowserList() {
 	ui.PrintSectionHeader("Browser Configuration")
 
-	customs := storage.GetCustomBrowsersList()
+	customs := system.GetCustomBrowsersList()
 	if len(customs) > 0 {
 		fmt.Println("  User-Defined Browsers:")
 		for _, b := range customs {
@@ -55,7 +55,7 @@ func RunBrowserList() {
 }
 
 func RunBrowserAdd(exeName string) {
-	if err := storage.AddCustomBrowser(exeName); err != nil {
+	if err := system.AddCustomBrowser(exeName); err != nil {
 		ui.PrintError(err.Error())
 		os.Exit(1)
 	}
@@ -63,7 +63,7 @@ func RunBrowserAdd(exeName string) {
 }
 
 func RunBrowserRemove(exeName string) {
-	if err := storage.RemoveCustomBrowser(exeName); err != nil {
+	if err := system.RemoveCustomBrowser(exeName); err != nil {
 		ui.PrintError(err.Error())
 		os.Exit(1)
 	}

@@ -12,6 +12,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+type limitRow struct {
+	Name         string
+	LimitMinutes int
+	UsedSeconds  int
+}
+
 func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 	if m.limitForm.Visible {
 		switch key {
@@ -103,7 +109,7 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 		rows := m.limitRows()
 		if len(rows) > 0 {
 			row := rows[m.limitsSelected]
-			m.limitForm = limitForm{Visible: true, Editing: true, App: row.Name, OriginalApp: row.Name, Hours: row.Opens / 60, Minutes: row.Opens % 60}
+			m.limitForm = limitForm{Visible: true, Editing: true, App: row.Name, OriginalApp: row.Name, Hours: row.LimitMinutes / 60, Minutes: row.LimitMinutes % 60}
 		}
 	case "d":
 		rows := m.limitRows()
@@ -122,7 +128,7 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 
 func (m *Model) renderLimits(width, height int) string {
 	rows := m.limitRows()
-	warnAt := storage.GetWarningThresholdPercent()
+	warnAt := 80
 	maxW := width - 2
 	var lines []string
 
@@ -145,8 +151,8 @@ func (m *Model) renderLimits(width, height int) string {
 	end := min(len(rows), start+visibleRows)
 	for i := start; i < end; i++ {
 		r := rows[i]
-		limitSecs := r.Opens * 60
-		used := r.Duration
+		limitSecs := r.LimitMinutes * 60
+		used := r.UsedSeconds
 		remaining := max(0, limitSecs-used)
 		pct := 0
 		if limitSecs > 0 {
@@ -162,11 +168,23 @@ func (m *Model) renderLimits(width, height int) string {
 			status = "⚠ WARNING"
 		}
 
+		barWidth := max(4, col5W-12)
+		filled := 0
+		if pct > 0 {
+			filled = pct * barWidth / 100
+			if filled == 0 {
+				filled = 1
+			}
+			if filled > barWidth {
+				filled = barWidth
+			}
+		}
+		barStr := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 		line := padRight(truncate(r.Name, col1W), col1W) +
 			padLeft(formatDuration(limitSecs), col2W) +
 			padLeft(formatDuration(used), col3W) +
 			padLeft(formatDuration(remaining), col4W) + "  " +
-			style.Render(bar(pct, 100, max(4, col5W-12), "█")) + "  " + style.Render(status)
+			style.Render(barStr) + "  " + style.Render(status)
 		if pct >= 95 {
 			line = dangerRowStyle.Render(padRight(line, maxW-2))
 		} else if i == m.limitsSelected && !m.limitForm.Visible {
@@ -217,11 +235,11 @@ func (m *Model) renderLimits(width, height int) string {
 	return lipgloss.JoinVertical(lipgloss.Left, table, panelWithHover(formTitle, "", maxW, "\n"+strings.Join(fields, "\n")+"\n", m.panelFocus == 1, m.hoveredPanel == 1))
 }
 
-func (m *Model) limitRows() []appUsage {
+func (m *Model) limitRows() []limitRow {
 	limits := system.GetAppTimeLimits()
-	rows := make([]appUsage, 0, len(limits))
+	rows := make([]limitRow, 0, len(limits))
 	for app, mins := range limits {
-		rows = append(rows, appUsage{Name: app, Opens: mins, Duration: storage.GetAppUsageTodayMinutes(app) * 60})
+		rows = append(rows, limitRow{Name: app, LimitMinutes: mins, UsedSeconds: storage.GetAppUsageTodayMinutes(app) * 60})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
 	return rows

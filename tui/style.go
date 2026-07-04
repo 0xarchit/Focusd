@@ -2,7 +2,6 @@ package tui
 
 import (
 	"strings"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
@@ -72,10 +71,6 @@ var (
 			Foreground(cWhite)
 )
 
-func borderColor(focused bool) lipgloss.Color {
-	return borderColorWithHover(focused, false)
-}
-
 func borderColorWithHover(focused bool, hovered bool) lipgloss.Color {
 	if focused {
 		return cCyan
@@ -84,10 +79,6 @@ func borderColorWithHover(focused bool, hovered bool) lipgloss.Color {
 		return lipgloss.Color("#008FAD")
 	}
 	return cMuted
-}
-
-func panel(title string, right string, width int, body string, focused bool) string {
-	return panelWithHover(title, right, width, body, focused, false)
 }
 
 func panelWithHover(title string, right string, width int, body string, focused bool, hovered bool) string {
@@ -203,25 +194,22 @@ func clampScrollOffset(offset, visible, total int) int {
 	return offset
 }
 
-func padRight(s string, width int) string {
+func pad(s string, width int, left bool) string {
 	if width <= 0 {
 		return ""
 	}
 	if lipgloss.Width(s) > width {
 		return truncate(s, width)
 	}
-	return s + strings.Repeat(" ", width-lipgloss.Width(s))
+	p := strings.Repeat(" ", width-lipgloss.Width(s))
+	if left {
+		return p + s
+	}
+	return s + p
 }
 
-func padLeft(s string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	if lipgloss.Width(s) > width {
-		return truncate(s, width)
-	}
-	return strings.Repeat(" ", width-lipgloss.Width(s)) + s
-}
+func padLeft(s string, width int) string { return pad(s, width, true) }
+func padRight(s string, width int) string { return pad(s, width, false) }
 
 func center(s string, width int) string {
 	if lipgloss.Width(s) >= width {
@@ -232,52 +220,7 @@ func center(s string, width int) string {
 }
 
 func truncate(s string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	if lipgloss.Width(s) <= width {
-		return s
-	}
-	if width == 1 {
-		return "…"
-	}
-
-	var result strings.Builder
-	currentWidth := 0
-	inEscape := false
-	targetWidth := width - 1
-
-	for i := 0; i < len(s); {
-		if s[i] == '\x1b' {
-			inEscape = true
-			result.WriteByte(s[i])
-			i++
-			continue
-		}
-		if inEscape {
-			result.WriteByte(s[i])
-			if s[i] >= 0x40 && s[i] <= 0x7E {
-				inEscape = false
-			}
-			i++
-			continue
-		}
-
-		r, size := utf8.DecodeRuneInString(s[i:])
-		w := runewidth.RuneWidth(r)
-		if currentWidth+w > targetWidth {
-			break
-		}
-		result.WriteRune(r)
-		currentWidth += w
-		i += size
-	}
-
-	if strings.Contains(s, "\x1b") {
-		result.WriteString("\x1b[0m")
-	}
-	result.WriteString("…")
-	return result.String()
+	return runewidth.Truncate(s, width, "…")
 }
 
 func fill(width int, ch string) string {
@@ -285,24 +228,4 @@ func fill(width int, ch string) string {
 		return ""
 	}
 	return strings.Repeat(ch, width)
-}
-
-func bar(value, maxValue, width int, fillChar string) string {
-	if width <= 0 {
-		return ""
-	}
-	if maxValue <= 0 {
-		return strings.Repeat("░", width)
-	}
-	filled := value * width / maxValue
-	if filled < 0 {
-		filled = 0
-	}
-	if filled > width {
-		filled = width
-	}
-	if filled == 0 && value > 0 {
-		filled = 1
-	}
-	return strings.Repeat(fillChar, filled) + strings.Repeat("░", width-filled)
 }

@@ -81,12 +81,10 @@ func (t *Tracker) Start() {
 	go t.startIPCOnport()
 
 	pollTicker := time.NewTicker(t.pollInterval)
-	batchTicker := time.NewTicker(t.batchInterval)
 	persistTicker := time.NewTicker(5 * time.Minute)
 	retentionTicker := time.NewTicker(1 * time.Hour)
 	focusTicker := time.NewTicker(5 * time.Second)
 	defer pollTicker.Stop()
-	defer batchTicker.Stop()
 	defer persistTicker.Stop()
 	defer retentionTicker.Stop()
 	defer focusTicker.Stop()
@@ -116,9 +114,8 @@ func (t *Tracker) Start() {
 			if continuousUseStart.IsZero() {
 				continuousUseStart = time.Now()
 			}
-		case <-batchTicker.C:
-			t.flushPendingSessions()
 		case <-persistTicker.C:
+			t.flushPendingSessions()
 			t.persistActiveSession()
 		case <-retentionTicker.C:
 			storage.EnforceRetention()
@@ -319,7 +316,7 @@ func (t *Tracker) flushPendingSessions() {
 			log.Printf("ERROR: failed to update app daily stats: %v", err)
 		}
 
-		if storage.IsBrowser(s.ExeName) {
+		if system.IsBrowser(s.ExeName) {
 			cleanTitle := CleanWindowTitle(s.WindowTitle, s.ExeName)
 			if err := storage.UpdateBrowserDaily(s.Date, cleanTitle, s.DurationSecs); err != nil {
 				log.Printf("ERROR: failed to update browser daily stats: %v", err)
@@ -341,11 +338,8 @@ var nameMap = map[string]string{
 	"sublime_text":    "Sublime Text",
 	"atom":            "Atom",
 	"explorer":        "File Explorer",
-	"Discord":         "Discord",
-	"Spotify":         "Spotify",
 	"slack":           "Slack",
 	"Teams":           "Microsoft Teams",
-	"Zoom":            "Zoom",
 	"WINWORD":         "Microsoft Word",
 	"EXCEL":           "Microsoft Excel",
 	"POWERPNT":        "PowerPoint",

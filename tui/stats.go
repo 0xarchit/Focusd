@@ -59,7 +59,7 @@ func (m *Model) statsPanelAt(x, y int) int {
 		return -1
 	}
 	relY := y - contentY
-	rangePanel := panel("TIME RANGE", "", inner, "\n"+m.renderRangeSelector(inner-4)+"\n", m.panelFocus == 0)
+	rangePanel := panelWithHover("TIME RANGE", "", inner, "\n"+m.renderRangeSelector(inner-4)+"\n", m.panelFocus == 0, false)
 	rangeH := lipgloss.Height(rangePanel)
 	if relY < rangeH {
 		return 0
@@ -67,7 +67,7 @@ func (m *Model) statsPanelAt(x, y int) int {
 	curY := rangeH
 	if inner >= 120 {
 		tableRows := max(3, min(10, contentHeight-15))
-		tbl := panel("APPLICATION BREAKDOWN", "", (inner-2)/2, "\n"+m.renderUsageBreakdown((inner-2)/2, tableRows)+"\n", m.panelFocus == 1)
+		tbl := panelWithHover("APPLICATION BREAKDOWN", "", (inner-2)/2, "\n"+m.renderUsageBreakdown((inner-2)/2, tableRows)+"\n", m.panelFocus == 1, false)
 		tblH := lipgloss.Height(tbl)
 		if relY < curY+tblH {
 			if x < contentX+inner/2 {
@@ -78,14 +78,14 @@ func (m *Model) statsPanelAt(x, y int) int {
 		return 3
 	}
 	if m.panelFocus == 0 || m.panelFocus == 1 {
-		tbl := panel("APPLICATION BREAKDOWN", "", inner, "\n"+m.renderUsageBreakdown(inner, m.statsVisibleUsageRows())+"\n", m.panelFocus == 1)
+		tbl := panelWithHover("APPLICATION BREAKDOWN", "", inner, "\n"+m.renderUsageBreakdown(inner, m.statsVisibleUsageRows())+"\n", m.panelFocus == 1, false)
 		tblH := lipgloss.Height(tbl)
 		if relY < curY+tblH {
 			return 1
 		}
 		curY += tblH
 	} else if m.panelFocus == 2 {
-		tbl := panel("BROWSER USAGE", "", inner, "\n"+m.renderBrowserUsage(inner, m.statsVisibleBrowserRows())+"\n", m.panelFocus == 2)
+		tbl := panelWithHover("BROWSER USAGE", "", inner, "\n"+m.renderBrowserUsage(inner, m.statsVisibleBrowserRows())+"\n", m.panelFocus == 2, false)
 		tblH := lipgloss.Height(tbl)
 		if relY < curY+tblH {
 			return 2
@@ -109,15 +109,19 @@ func (m Model) handleCustomRangeModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	case "esc":
 		m.modal = modal{}
 		m.statsCustomEditing = false
-	case "tab", "right", "l":
-		m.statsCustomField = (m.statsCustomField + 1) % 2
-	case "shift+tab", "left", "h":
+	case "tab", "shift+tab", "left", "right", "h", "l":
 		m.statsCustomField = (m.statsCustomField + 1) % 2
 	case "backspace":
-		if m.statsCustomField == 0 {
-			m.statsCustomDraftFrom = removeDateChar(m.statsCustomDraftFrom)
-		} else {
-			m.statsCustomDraftTo = removeDateChar(m.statsCustomDraftTo)
+		draft := &m.statsCustomDraftFrom
+		if m.statsCustomField == 1 {
+			draft = &m.statsCustomDraftTo
+		}
+		if n := len(*draft); n > 0 {
+			if n == 6 || n == 9 {
+				*draft = (*draft)[:n-2]
+			} else {
+				*draft = (*draft)[:n-1]
+			}
 		}
 	case "enter":
 		from, to, err := validateCustomRange(m.statsCustomDraftFrom, m.statsCustomDraftTo)
@@ -133,14 +137,21 @@ func (m Model) handleCustomRangeModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, m.loadStatsCmd()
 	default:
 		for _, r := range msg.Runes {
-			if !isDateInputRune(r) {
+			if r < '0' || r > '9' {
 				continue
 			}
-			if m.statsCustomField == 0 {
-				m.statsCustomDraftFrom = appendDateChar(m.statsCustomDraftFrom, r)
-			} else {
-				m.statsCustomDraftTo = appendDateChar(m.statsCustomDraftTo, r)
+			draft := &m.statsCustomDraftFrom
+			if m.statsCustomField == 1 {
+				draft = &m.statsCustomDraftTo
 			}
+			n := len(*draft)
+			if n >= 10 {
+				continue
+			}
+			if n == 4 || n == 7 {
+				*draft += "-"
+			}
+			*draft += string(r)
 		}
 	}
 	return m, nil
@@ -267,50 +278,6 @@ func (m Model) handleStatsKey(key string) (Model, tea.Cmd) {
 func validDateInput(value string) bool {
 	_, err := time.Parse("2006-01-02", value)
 	return err == nil
-}
-
-func isDateInputRune(r rune) bool {
-	return r == '-' || (r >= '0' && r <= '9')
-}
-
-func appendDateChar(current string, r rune) string {
-	digits := dateDigits(current)
-	if r >= '0' && r <= '9' && len(digits) < 8 {
-		digits += string(r)
-	}
-	return formatDateDigits(digits)
-}
-
-func removeDateChar(current string) string {
-	digits := dateDigits(current)
-	if len(digits) > 0 {
-		digits = digits[:len(digits)-1]
-	}
-	return formatDateDigits(digits)
-}
-
-func dateDigits(value string) string {
-	var out []rune
-	for _, r := range value {
-		if r >= '0' && r <= '9' {
-			out = append(out, r)
-		}
-	}
-	return string(out)
-}
-
-func formatDateDigits(digits string) string {
-	n := len(digits)
-	if n == 0 {
-		return ""
-	}
-	if n <= 4 {
-		return digits
-	}
-	if n <= 6 {
-		return digits[:4] + "-" + digits[4:]
-	}
-	return digits[:4] + "-" + digits[4:6] + "-" + digits[6:]
 }
 
 func validateCustomRange(from, to string) (string, string, error) {
@@ -463,11 +430,22 @@ func (m *Model) renderUsageBreakdown(width, visibleRows int) string {
 			if i == m.statsSelected && m.panelFocus == 1 {
 				color = lipgloss.NewStyle().Foreground(cWhite)
 			}
+			filled := 0
+			if maxDuration > 0 {
+				filled = a.Duration * 3 / maxDuration
+				if filled == 0 && a.Duration > 0 {
+					filled = 1
+				}
+				if filled > 3 {
+					filled = 3
+				}
+			}
+			barStr := strings.Repeat("█", filled) + strings.Repeat("░", 3-filled)
 			line := mutedStyle.Render(fmt.Sprintf("%2d. ", i+1)) +
 				color.Render(padRight(truncate(a.Name, max(8, width-36)), max(8, width-36))) +
 				padLeft(formatDuration(a.Duration), 8) +
 				padLeft(strconv.Itoa(a.Opens), 8) + " " +
-				color.Render(bar(a.Duration, maxDuration, 3, "█"))
+				color.Render(barStr)
 
 			if i == m.statsSelected && m.panelFocus == 1 {
 				line = selectedRowStyle.Render(padRight(line, width-4))
@@ -593,7 +571,7 @@ func (m *Model) renderCustomRangeModal() string {
 		"",
 		mutedStyle.Render("Tab / ← → switch fields   Backspace deletes"),
 	}
-	return panel("CUSTOM RANGE", "", 50, strings.Join(msg, "\n"), true)
+	return panelWithHover("CUSTOM RANGE", "", 50, strings.Join(msg, "\n"), true, false)
 }
 
 func (m *Model) sortedStatsApps() []appUsage {

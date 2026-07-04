@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 )
 
@@ -18,12 +17,6 @@ type PomodoroState struct {
 	Notified  bool      `json:"notified"`
 }
 
-var (
-	cachedState        *PomodoroState
-	cachedModTime      time.Time
-	pomodoroCacheMutex sync.Mutex
-)
-
 func getPomodoroPath() string {
 	appData := os.Getenv("APPDATA")
 	if appData == "" {
@@ -32,46 +25,20 @@ func getPomodoroPath() string {
 	return filepath.Join(appData, "focusd", "pomodoro.json")
 }
 
-func clonePomodoroState(state *PomodoroState) *PomodoroState {
-	if state == nil {
-		return nil
-	}
-	cloned := *state
-	return &cloned
-}
-
 func loadPomodoroStateFresh() *PomodoroState {
-	pomodoroCacheMutex.Lock()
-	defer pomodoroCacheMutex.Unlock()
-
+	state := &PomodoroState{Duration: DefaultPomodoroMinutes}
 	path := getPomodoroPath()
 	if path == "" {
-		return &PomodoroState{Duration: DefaultPomodoroMinutes}
+		return state
 	}
 
-	info, err := os.Stat(path)
-	if err != nil {
-		cachedState = &PomodoroState{Duration: DefaultPomodoroMinutes}
-		cachedModTime = time.Time{}
-		return clonePomodoroState(cachedState)
-	}
-
-	modTime := info.ModTime()
-	if cachedState != nil && modTime.Equal(cachedModTime) {
-		return clonePomodoroState(cachedState)
-	}
-
-	state := &PomodoroState{Duration: DefaultPomodoroMinutes}
 	data, err := os.ReadFile(path)
 	if err == nil {
 		if err := json.Unmarshal(data, state); err != nil {
 			log.Printf("WARN: failed to parse pomodoro state %s: %v", path, err)
 		}
 	}
-
-	cachedState = state
-	cachedModTime = modTime
-	return clonePomodoroState(state)
+	return state
 }
 
 func savePomodoroState(state *PomodoroState) error {
@@ -90,20 +57,7 @@ func savePomodoroState(state *PomodoroState) error {
 		return err
 	}
 
-	if err := os.Rename(tempPath, path); err != nil {
-		return err
-	}
-
-	pomodoroCacheMutex.Lock()
-	cachedState = state
-	if info, err := os.Stat(path); err == nil {
-		cachedModTime = info.ModTime()
-	} else {
-		cachedModTime = time.Now()
-	}
-	pomodoroCacheMutex.Unlock()
-
-	return nil
+	return os.Rename(tempPath, path)
 }
 
 func StartPomodoro(minutes int) error {

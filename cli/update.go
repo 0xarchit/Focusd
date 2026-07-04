@@ -57,18 +57,13 @@ func RunUpdate() {
 		ui.PrintError(fmt.Sprintf("Update failed: %v", err))
 		if daemonWasRunning {
 			ui.PrintInfo("Attempting to restart daemon...")
-			restartDaemon()
+			if _, err := system.StartDaemon(); err != nil {
+				log.Printf("WARN: failed to restart daemon after update: %v", err)
+			}
 		}
-		return
 	}
 
 	os.Exit(0)
-}
-
-func restartDaemon() {
-	if _, err := system.StartDaemon(); err != nil {
-		log.Printf("WARN: failed to restart daemon after update: %v", err)
-	}
 }
 
 func fetchLatestVersion() (string, error) {
@@ -130,17 +125,12 @@ func fetchChecksum(version string) (string, error) {
 }
 
 func calculateFileHash(filePath string) (string, error) {
-	f, err := os.Open(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:]), nil
 }
 
 func performUpdate(version string) error {

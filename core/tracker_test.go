@@ -123,7 +123,7 @@ func TestFlushPendingSessions(t *testing.T) {
 		t.Errorf("pending sessions should be cleared, got %d", len(tracker.pendingSessions))
 	}
 
-	sessions, _, err := storage.GetSessionsPaginated(10, 0, storage.Today(), storage.Today())
+	sessions, err := storage.GetSessionsPaginated(10, 0, storage.Today(), storage.Today())
 	if err != nil {
 		t.Fatalf("failed to retrieve sessions: %v", err)
 	}

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -122,8 +121,7 @@ func getCommitData() []string {
 		}
 		msg := strings.TrimSpace(string(outMsg))
 
-		args := []string{"show", "--patch", "--stat", "--format=", h, "--"}
-		args = append(args, IncludedPaths...)
+		args := append([]string{"show", "--patch", "--stat", "--format=", h, "--"}, IncludedPaths...)
 		cmdShowDiff := exec.Command("git", args...)
 		outDiff, err := cmdShowDiff.Output()
 		if err != nil {
@@ -147,18 +145,16 @@ func getCommitData() []string {
 
 func generateAIReleaseNotes(commitData []string, apiKey string) error {
 	var chunks []string
-	var currentChunk strings.Builder
-
-	for _, data := range commitData {
-		if currentChunk.Len()+len(data) > MaxCharsPerChunk {
-			chunks = append(chunks, currentChunk.String())
-			currentChunk.Reset()
+	curr := ""
+	for _, d := range commitData {
+		if len(curr)+len(d) > MaxCharsPerChunk {
+			chunks = append(chunks, curr)
+			curr = ""
 		}
-		currentChunk.WriteString(data)
-		currentChunk.WriteString("\n\n")
+		curr += d + "\n\n"
 	}
-	if currentChunk.Len() > 0 {
-		chunks = append(chunks, currentChunk.String())
+	if curr != "" {
+		chunks = append(chunks, curr)
 	}
 
 	var summaries []string
@@ -204,56 +200,33 @@ func generateAIReleaseNotes(commitData []string, apiKey string) error {
 
 func callAIWithRetries(payload ChatPayload, apiKey string) (string, error) {
 	client := &http.Client{Timeout: 45 * time.Second}
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
+	jsonData, _ := json.Marshal(payload)
 
-	maxRetries := 3
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		req, err := http.NewRequest("POST", ModelURL, bytes.NewBuffer(jsonData))
-		if err != nil {
-			return "", err
-		}
+	for attempt := 0; attempt < 3; attempt++ {
+		req, _ := http.NewRequest("POST", ModelURL, bytes.NewBuffer(jsonData))
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 		req.Header.Set("Content-Type", "application/json")
 
 		resp, err := client.Do(req)
-		if err != nil {
-			if attempt < maxRetries-1 {
-				time.Sleep(time.Duration(5*(attempt+1)) * time.Second)
-				continue
+		if err != nil || resp.StatusCode != http.StatusOK {
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == 429 {
+					time.Sleep(time.Duration(10*(attempt+1)) * time.Second)
+					continue
+				}
 			}
-			return "", err
-		}
-
-		if resp.StatusCode == 429 {
-			resp.Body.Close()
-			time.Sleep(time.Duration(20*(attempt+1)) * time.Second)
+			time.Sleep(time.Duration(attempt+1) * time.Second)
 			continue
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if attempt < maxRetries-1 {
-				time.Sleep(time.Duration(5*(attempt+1)) * time.Second)
-				continue
-			}
-			return "", fmt.Errorf("server returned status %d: %s", resp.StatusCode, string(body))
 		}
 
 		var chatResponse ChatResponse
 		err = json.NewDecoder(resp.Body).Decode(&chatResponse)
 		resp.Body.Close()
-		if err != nil {
-			return "", err
-		}
-
-		if len(chatResponse.Choices) > 0 {
+		if err == nil && len(chatResponse.Choices) > 0 {
 			return chatResponse.Choices[0].Message.Content, nil
 		}
 	}
 
-	return "", fmt.Errorf("max retries reached")
+	return "", fmt.Errorf("failed to fetch AI summary")
 }

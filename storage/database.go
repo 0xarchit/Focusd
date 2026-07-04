@@ -63,22 +63,15 @@ func Init() error {
 	dsn := fmt.Sprintf("file:%s?%s", filepath.ToSlash(dbPath), q.Encode())
 
 	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		db, lastErr = sql.Open("sqlite", dsn)
-		if lastErr == nil {
-			if pingErr := db.Ping(); pingErr == nil {
-				break
-			} else {
-				lastErr = pingErr
-				db.Close()
-				db = nil
-			}
-		}
-		time.Sleep(time.Duration(100*(attempt+1)) * time.Millisecond)
-	}
+	db, lastErr = sql.Open("sqlite", dsn)
 	if lastErr != nil {
 		db = nil
-		return fmt.Errorf("failed to open database after retries: %w", lastErr)
+		return fmt.Errorf("failed to open database: %w", lastErr)
+	}
+	if pingErr := db.Ping(); pingErr != nil {
+		db.Close()
+		db = nil
+		return fmt.Errorf("failed to ping database: %w", pingErr)
 	}
 
 	db.SetMaxOpenConns(10)
@@ -151,10 +144,6 @@ func createSchema() error {
 	return err
 }
 
-func GetDB() *sql.DB {
-	return db
-}
-
 func Close() error {
 	if db != nil {
 		err := db.Close()
@@ -162,20 +151,6 @@ func Close() error {
 		return err
 	}
 	return nil
-}
-
-func DeleteAllData() error {
-	dataDir, err := GetDataDir()
-	if err != nil {
-		return err
-	}
-
-	if db != nil {
-		db.Close()
-		db = nil
-	}
-
-	return os.RemoveAll(dataDir)
 }
 
 func Today() string {

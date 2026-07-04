@@ -287,7 +287,7 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	}
 
 	if includeHourly {
-		sessions, _, err := storage.GetSessionsPaginated(500, 0, today, today)
+		sessions, err := storage.GetSessionsPaginated(500, 0, today, today)
 		if err != nil {
 			data.Err = err
 			return data
@@ -787,7 +787,7 @@ func (m Model) renderModal() string {
 		"",
 		center(buttonStyle.Render("[ CANCEL ]")+"   "+redStyle.Bold(true).Render("[ CONFIRM ]"), 40),
 	}
-	return panel("CONFIRM", "", 44, strings.Join(msg, "\n"), true)
+	return panelWithHover("CONFIRM", "", 44, strings.Join(msg, "\n"), true, false)
 }
 
 func (m Model) overlay(base, modalView string) string {
@@ -929,7 +929,7 @@ func (m Model) renderHelp() string {
 		rows[i] = padRight(l, 36) + "  " + r
 	}
 	rows = append(rows, "", center(mutedStyle.Render("Press ? or Esc to close"), 72))
-	return panel("KEYBOARD SHORTCUTS", "", 78, "\n"+strings.Join(rows, "\n")+"\n", true)
+	return panelWithHover("KEYBOARD SHORTCUTS", "", 78, "\n"+strings.Join(rows, "\n")+"\n", true, false)
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {

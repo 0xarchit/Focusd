@@ -1,13 +1,11 @@
 package cli
 
 import (
-	"bufio"
 	"fmt"
 	"focusd/core"
 	"focusd/storage"
 	"focusd/ui"
 	"os"
-	"strings"
 )
 
 func RunStats() {
@@ -27,57 +25,6 @@ func RunStats() {
 	}
 
 	DisplayStats(summary)
-}
-
-func HandleStatsMenu(reader *bufio.Reader) {
-	for {
-		ui.ClearScreen()
-		ui.PrintSectionHeader("View Statistics")
-
-		fmt.Printf("     %s1.%s Today\n", ui.Cyan, ui.Reset)
-		fmt.Printf("     %s2.%s Last 7 Days\n", ui.Cyan, ui.Reset)
-		fmt.Printf("     %s3.%s All Time (30 Days)\n", ui.Cyan, ui.Reset)
-		fmt.Println()
-		fmt.Printf("     %s0.%s Back\n", ui.Dim, ui.Reset)
-		fmt.Println()
-		fmt.Print("   Enter choice: ")
-
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(input)
-
-		var days int
-		switch input {
-		case "1":
-			days = 1
-		case "2":
-			days = 7
-		case "3":
-			days = 30
-		case "0", "":
-			return
-		default:
-			continue
-		}
-
-		ui.ClearScreen()
-
-		var summary *core.DailySummary
-		var err error
-
-		if days == 1 {
-			summary, err = core.GetDailySummary(storage.Today())
-		} else {
-			summary, err = core.GetPeriodSummary(days)
-		}
-
-		if err != nil {
-			ui.PrintError(fmt.Sprintf("Failed to fetch statistics: %v", err))
-		} else {
-			DisplayStats(summary)
-		}
-
-		waitForEnterWithReader(reader)
-	}
 }
 
 func DisplayStats(summary *core.DailySummary) {

@@ -4,16 +4,10 @@ import "strings"
 
 func RenderBlockTimer(mins, secs int) string {
 	var minDigits []int
-	if mins == 0 {
-		minDigits = []int{0, 0}
-	} else if mins < 10 {
-		minDigits = []int{0, mins}
+	if mins >= 100 {
+		minDigits = []int{mins / 100, (mins / 10) % 10, mins % 10}
 	} else {
-		temp := mins
-		for temp > 0 {
-			minDigits = append([]int{temp % 10}, minDigits...)
-			temp /= 10
-		}
+		minDigits = []int{mins / 10, mins % 10}
 	}
 
 	s1, s2 := secs/10, secs%10

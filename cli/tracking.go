@@ -78,10 +78,6 @@ func RunDaemon() {
 	}
 	defer storage.Close()
 
-	if !storage.IsConsentGranted() {
-		os.Exit(1)
-	}
-
 	storage.EnforceRetention()
 
 	tracker := core.NewTracker()
