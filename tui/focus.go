@@ -18,44 +18,42 @@ func (m *Model) handleFocusKey(key string) (Model, tea.Cmd) {
 	case "l", "right":
 		m.focusButton = min(2, m.focusButton+1)
 	case "s":
-		return m.startFocus()
+		m.focusButton = 0
+		return m.triggerFocusButton()
 	case "x":
+		m.focusButton = 1
+		return m.triggerFocusButton()
+	case "r":
+		m.focusButton = 2
+		return m.triggerFocusButton()
+	case "enter":
+		return m.triggerFocusButton()
+	case "up":
+		m.focusDuration = min(180, m.focusDuration+1)
+	case "down":
+		m.focusDuration = max(1, m.focusDuration-1)
+	}
+	return *m, nil
+}
+
+func (m *Model) triggerFocusButton() (Model, tea.Cmd) {
+	switch m.focusButton {
+	case 0:
+		return m.startFocus()
+	case 1:
 		if err := core.StopPomodoro(); err != nil {
 			m.addToast(fmt.Sprintf("Failed to stop timer: %v", err), toastError)
 		} else {
 			m.focusPaused = false
 			m.addToast("Focus timer stopped", toastWarning)
 		}
-	case "r":
+	case 2:
 		if err := core.StopPomodoro(); err != nil {
 			m.addToast(fmt.Sprintf("Failed to reset timer: %v", err), toastError)
 		} else {
 			m.focusPaused = false
 			m.addToast("Focus timer reset", toastInfo)
 		}
-	case "enter":
-		switch m.focusButton {
-		case 0:
-			return m.startFocus()
-		case 1:
-			if err := core.StopPomodoro(); err != nil {
-				m.addToast(fmt.Sprintf("Failed to stop timer: %v", err), toastError)
-			} else {
-				m.focusPaused = false
-				m.addToast("Focus timer stopped", toastWarning)
-			}
-		case 2:
-			if err := core.StopPomodoro(); err != nil {
-				m.addToast(fmt.Sprintf("Failed to reset timer: %v", err), toastError)
-			} else {
-				m.focusPaused = false
-				m.addToast("Focus timer reset", toastInfo)
-			}
-		}
-	case "up":
-		m.focusDuration = min(180, m.focusDuration+1)
-	case "down":
-		m.focusDuration = max(1, m.focusDuration-1)
 	}
 	return *m, nil
 }

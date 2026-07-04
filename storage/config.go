@@ -38,15 +38,6 @@ func SetConfig(key, value string) error {
 	return err
 }
 
-func getBoolConfig(key string) bool {
-	value, err := GetConfig(key)
-	return err == nil && value == "true"
-}
-
-func setBoolConfig(key string, val bool) error {
-	return SetConfig(key, strconv.FormatBool(val))
-}
-
 func GetRetentionDays() int {
 	value, err := GetConfig(ConfigKeyRetentionDays)
 	if err != nil {
@@ -70,11 +61,12 @@ func SetRetentionDays(days int) error {
 }
 
 func IsPaused() bool {
-	return getBoolConfig(ConfigKeyPaused)
+	value, err := GetConfig(ConfigKeyPaused)
+	return err == nil && value == "true"
 }
 
 func SetPaused(paused bool) error {
-	return setBoolConfig(ConfigKeyPaused, paused)
+	return SetConfig(ConfigKeyPaused, strconv.FormatBool(paused))
 }
 
 func GetTrackingIntervalSeconds() int {

@@ -16,7 +16,6 @@ type UserConfig struct {
 	BreakReminderMinutes  int            `json:"break_reminder_minutes"`
 	AppTimeLimits         map[string]int `json:"app_time_limits"`
 	PomodoroMinutes       int            `json:"pomodoro_minutes"`
-	Password              string         `json:"password"`
 	SnoozeDurationMinutes int            `json:"snooze_duration_minutes"`
 	CustomBrowsers        []string       `json:"custom_browsers"`
 }
@@ -41,7 +40,6 @@ func defaultUserConfig() *UserConfig {
 		BreakReminderMinutes:  60,
 		AppTimeLimits:         make(map[string]int),
 		PomodoroMinutes:       25,
-		Password:              "",
 		SnoozeDurationMinutes: 60,
 		CustomBrowsers:        []string{},
 	}
@@ -50,6 +48,10 @@ func defaultUserConfig() *UserConfig {
 func loadFromDisk() {
 	configMu.Lock()
 	defer configMu.Unlock()
+	loadFromDiskLocked()
+}
+
+func loadFromDiskLocked() {
 	if userConfig != nil {
 		return
 	}
@@ -103,60 +105,6 @@ func saveUserConfigLocked() error {
 	return os.Rename(tempPath, configPath)
 }
 
-func GetWhitelistApps() []string {
-	loadFromDisk()
-	configMu.RLock()
-	defer configMu.RUnlock()
-	config := userConfig
-	if config.WhitelistApps == nil {
-		return nil
-	}
-	cloned := make([]string, len(config.WhitelistApps))
-	copy(cloned, config.WhitelistApps)
-	return cloned
-}
-
-func AddWhitelistApp(exeName string) error {
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
-	config := userConfig
-
-	exeName = strings.ToLower(strings.TrimSpace(exeName))
-	if exeName == "" {
-		return nil
-	}
-
-	if !strings.HasSuffix(exeName, ".exe") {
-		exeName += ".exe"
-	}
-
-	for _, a := range config.WhitelistApps {
-		if strings.EqualFold(a, exeName) {
-			return nil
-		}
-	}
-
-	config.WhitelistApps = append(config.WhitelistApps, exeName)
-	return saveUserConfigLocked()
-}
-
-func RemoveWhitelistApp(exeName string) error {
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
-	config := userConfig
-
-	var updated []string
-	for _, a := range config.WhitelistApps {
-		if !strings.EqualFold(a, exeName) {
-			updated = append(updated, a)
-		}
-	}
-	config.WhitelistApps = updated
-	return saveUserConfigLocked()
-}
-
 func IsWhitelisted(exeName string) bool {
 	loadFromDisk()
 	configMu.RLock()
@@ -174,9 +122,9 @@ func IsWhitelisted(exeName string) bool {
 
 func ReloadUserConfig() {
 	configMu.Lock()
+	defer configMu.Unlock()
 	userConfig = nil
-	configMu.Unlock()
-	loadFromDisk()
+	loadFromDiskLocked()
 }
 
 func GetBreakReminderEnabled() bool {
@@ -271,36 +219,6 @@ func SetPomodoroMinutes(minutes int) error {
 	return saveUserConfigLocked()
 }
 
-func GetPassword() string {
-	loadFromDisk()
-	configMu.RLock()
-	defer configMu.RUnlock()
-	return userConfig.Password
-}
-
-func SetPassword(password string) error {
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
-	config := userConfig
-	config.Password = password
-	return saveUserConfigLocked()
-}
-
-func IsPasswordEnabled() bool {
-	loadFromDisk()
-	configMu.RLock()
-	defer configMu.RUnlock()
-	return userConfig.Password != ""
-}
-
-func CheckPassword(input string) bool {
-	loadFromDisk()
-	configMu.RLock()
-	defer configMu.RUnlock()
-	return userConfig.Password == input
-}
-
 func GetSnoozeDurationMinutes() int {
 	loadFromDisk()
 	configMu.RLock()
@@ -310,15 +228,6 @@ func GetSnoozeDurationMinutes() int {
 		return 60
 	}
 	return mins
-}
-
-func SetSnoozeDurationMinutes(minutes int) error {
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
-	config := userConfig
-	config.SnoozeDurationMinutes = minutes
-	return saveUserConfigLocked()
 }
 
 var defaultBrowsers = map[string]bool{

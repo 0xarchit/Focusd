@@ -21,14 +21,10 @@ var (
 const (
 	MB_OK              = 0x00000000
 	MB_OKCANCEL        = 0x00000001
-	MB_YESNO           = 0x00000004
 	MB_ICONINFORMATION = 0x00000040
 	MB_ICONWARNING     = 0x00000030
-	MB_SYSTEMMODAL     = 0x00001000
 	MB_SETFOREGROUND   = 0x00010000
 	IDOK               = 1
-	IDYES              = 6
-	IDNO               = 7
 )
 
 func show(title, message string, flags uintptr, callback func(ret uintptr)) {

@@ -10,14 +10,13 @@ const (
 	Bold  = "\033[1m"
 	Dim   = "\033[2m"
 
-	Red     = "\033[31m"
-	Green   = "\033[32m"
-	Yellow  = "\033[33m"
-	Blue    = "\033[34m"
-	Magenta = "\033[35m"
-	Cyan    = "\033[36m"
-	White   = "\033[37m"
-	Gray    = "\033[90m"
+	Red    = "\033[31m"
+	Green  = "\033[32m"
+	Yellow = "\033[33m"
+	Blue   = "\033[34m"
+	Cyan   = "\033[36m"
+	White  = "\033[37m"
+	Gray   = "\033[90m"
 )
 
 const (
@@ -33,11 +32,10 @@ const (
 	BoxTopMiddle    = "┬"
 	BoxBottomMiddle = "┴"
 
-	Arrow        = "❯❯❯"
-	CheckMark    = "✓"
-	CrossMark    = "✗"
-	Circle       = "○"
-	FilledCircle = "●"
+	Arrow     = "❯❯❯"
+	CheckMark = "✓"
+	CrossMark = "✗"
+	Circle    = "○"
 )
 
 func PrintHeader() {
@@ -171,8 +169,4 @@ func TruncateString(s string, maxLen int) string {
 		return string(runes[:maxLen])
 	}
 	return string(runes[:maxLen-3]) + "..."
-}
-
-func ClearScreen() {
-	fmt.Print("\033[2J\033[3J\033[H")
 }

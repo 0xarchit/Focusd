@@ -94,17 +94,11 @@ func getDigitLines(d int) [3]string {
 			"█▀▀▀█",
 			"█▄▄▄█",
 		}
-	case 9:
+	default:
 		return [3]string{
 			"█▀▀▀█",
 			"▀▀▀▀█",
 			"▄▄▄▄▀",
-		}
-	default:
-		return [3]string{
-			" ▄▄  ",
-			" ▀▀  ",
-			"     ",
 		}
 	}
 }

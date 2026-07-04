@@ -16,7 +16,6 @@ var (
 	cRed     = lipgloss.Color("#EF4444")
 	cMuted   = lipgloss.Color("#6B7280")
 	cWhite   = lipgloss.Color("#F8FAFC")
-	cPanel   = lipgloss.Color("#111827")
 	cRow     = lipgloss.Color("#1E293B")
 	cDanger  = lipgloss.Color("#2D1B1B")
 	cOverlay = lipgloss.Color("#3F3F3F")
@@ -69,6 +68,10 @@ var (
 	hoverRowStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color("#1B2230")).
 			Foreground(cWhite)
+
+	titleStyle = lipgloss.NewStyle().
+			Foreground(cWhite).
+			Bold(true)
 )
 
 func borderColorWithHover(focused bool, hovered bool) lipgloss.Color {
@@ -98,7 +101,7 @@ func panelWithHover(title string, right string, width int, body string, focused 
 		topFill = 1
 	}
 	edge := lipgloss.NewStyle().Foreground(borderColorWithHover(focused, hovered))
-	top := edge.Render("╭─") + titleStyle().Render(titleText) + edge.Render(strings.Repeat("─", topFill))
+	top := edge.Render("╭─") + titleStyle.Render(titleText) + edge.Render(strings.Repeat("─", topFill))
 	if right != "" {
 		top += mutedStyle.Render(right)
 	}
@@ -108,12 +111,7 @@ func panelWithHover(title string, right string, width int, body string, focused 
 		lines[i] = edge.Render("│") + lines[i] + edge.Render("│")
 	}
 	bottom := edge.Render("╰" + strings.Repeat("─", inner) + "╯")
-	box := lipgloss.JoinVertical(lipgloss.Left, append(append([]string{top}, lines...), bottom)...)
-	return lipgloss.NewStyle().BorderForeground(borderColorWithHover(focused, hovered)).Render(box)
-}
-
-func titleStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(cWhite).Bold(true)
+	return lipgloss.JoinVertical(lipgloss.Left, append(append([]string{top}, lines...), bottom)...)
 }
 
 func normalizeLines(s string, width int) []string {

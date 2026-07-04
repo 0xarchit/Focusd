@@ -116,38 +116,28 @@ func handleRetention(args []string) {
 	}
 }
 
-func handleAutostart(args []string) {
+func handleToggle(name string, args []string, enableFn, disableFn, statusFn func()) {
 	if len(args) < 3 {
-		RunAutostartStatus()
+		statusFn()
 		return
 	}
 	switch args[2] {
 	case "enable":
-		RunAutostartEnable()
+		enableFn()
 	case "disable":
-		RunAutostartDisable()
+		disableFn()
 	case "status":
-		RunAutostartStatus()
+		statusFn()
 	default:
-		fmt.Printf("Unknown autostart command: %s\n", args[2])
+		fmt.Printf("Unknown %s command: %s\n", name, args[2])
 		os.Exit(1)
 	}
 }
 
+func handleAutostart(args []string) {
+	handleToggle("autostart", args, RunAutostartEnable, RunAutostartDisable, RunAutostartStatus)
+}
+
 func handlePath(args []string) {
-	if len(args) < 3 {
-		RunPathStatus()
-		return
-	}
-	switch args[2] {
-	case "enable":
-		RunPathEnable()
-	case "disable":
-		RunPathDisable()
-	case "status":
-		RunPathStatus()
-	default:
-		fmt.Printf("Unknown path command: %s\n", args[2])
-		os.Exit(1)
-	}
+	handleToggle("path", args, RunPathEnable, RunPathDisable, RunPathStatus)
 }

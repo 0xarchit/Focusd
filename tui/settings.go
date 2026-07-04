@@ -268,10 +268,9 @@ func launchGitHubUpdate() error {
 }
 
 func exportData(jsonOut bool) (string, error) {
-	userProfile := os.Getenv("USERPROFILE")
-	exportDir := filepath.Join(userProfile, "Desktop")
-	if userProfile == "" {
-		exportDir = "."
+	exportDir := "."
+	if userProfile := os.Getenv("USERPROFILE"); userProfile != "" {
+		exportDir = filepath.Join(userProfile, "Desktop")
 	}
 	if jsonOut {
 		path := filepath.Join(exportDir, "focusd_export.json")

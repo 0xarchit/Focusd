@@ -50,7 +50,6 @@ type Tracker struct {
 	mu              sync.Mutex
 	currentSession  *ActiveSession
 	pollInterval    time.Duration
-	batchInterval   time.Duration
 	pendingSessions []*storage.Session
 	ctx             context.Context
 	cancel          context.CancelFunc
@@ -61,7 +60,6 @@ func NewTracker() *Tracker {
 	pollSeconds := storage.GetTrackingIntervalSeconds()
 	return &Tracker{
 		pollInterval:  time.Duration(pollSeconds) * time.Second,
-		batchInterval: 5 * time.Minute,
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -164,22 +162,19 @@ func (t *Tracker) Start() {
 			t.mu.Unlock()
 
 			if len(limits) > 0 && sessionExe != "" {
-				currentExe := sessionExe
-				currentAppName := sessionAppName
-
-				if currentExe != prevSessionApp {
-					prevSessionApp = currentExe
+				if sessionExe != prevSessionApp {
+					prevSessionApp = sessionExe
 
 					stateMu.Lock()
-					appSnoozed := !disabledLimitApps[currentExe].IsZero() && now.Before(disabledLimitApps[currentExe])
+					appSnoozed := !disabledLimitApps[sessionExe].IsZero() && now.Before(disabledLimitApps[sessionExe])
 					stateMu.Unlock()
 
-					if limit, ok := limits[currentExe]; ok && !appSnoozed {
-						todayUsage := storage.GetAppUsageTodayMinutes(currentExe)
+					if limit, ok := limits[sessionExe]; ok && !appSnoozed {
+						todayUsage := storage.GetAppUsageTodayMinutes(sessionExe)
 						if todayUsage >= limit {
-							exeCopy := currentExe
+							exeCopy := sessionExe
 							ShowNotificationWithAction("App Time Limit",
-								currentAppName+" has exceeded daily limit!",
+								sessionAppName+" has exceeded daily limit!",
 								func(disable bool) {
 									if disable {
 										stateMu.Lock()
