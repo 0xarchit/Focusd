@@ -94,50 +94,46 @@ func Run(args []string) {
 	}
 }
 
-func handleRetention(args []string) {
+func handleSubcommand(name string, args []string, defaultFn func(), commands map[string]func()) {
 	if len(args) < 3 {
-		RunRetentionStatus()
+		defaultFn()
 		return
 	}
-	switch args[2] {
-	case "status":
-		RunRetentionStatus()
-	case "set":
-		if len(args) < 4 {
-			fmt.Println("Usage: focusd retention set <days>")
-			os.Exit(1)
-		}
-		RunRetentionSet(args[3])
-	case "reset":
-		RunRetentionReset()
-	default:
-		fmt.Printf("Unknown retention command: %s\n", args[2])
+	sub := args[2]
+	if fn, ok := commands[sub]; ok {
+		fn()
+	} else {
+		fmt.Printf("Unknown %s command: %s\n", name, sub)
 		os.Exit(1)
 	}
 }
 
-func handleToggle(name string, args []string, enableFn, disableFn, statusFn func()) {
-	if len(args) < 3 {
-		statusFn()
-		return
-	}
-	switch args[2] {
-	case "enable":
-		enableFn()
-	case "disable":
-		disableFn()
-	case "status":
-		statusFn()
-	default:
-		fmt.Printf("Unknown %s command: %s\n", name, args[2])
-		os.Exit(1)
-	}
+func handleRetention(args []string) {
+	handleSubcommand("retention", args, RunRetentionStatus, map[string]func(){
+		"status": RunRetentionStatus,
+		"set": func() {
+			if len(args) < 4 {
+				fmt.Println("Usage: focusd retention set <days>")
+				os.Exit(1)
+			}
+			RunRetentionSet(args[3])
+		},
+		"reset": RunRetentionReset,
+	})
 }
 
 func handleAutostart(args []string) {
-	handleToggle("autostart", args, RunAutostartEnable, RunAutostartDisable, RunAutostartStatus)
+	handleSubcommand("autostart", args, RunAutostartStatus, map[string]func(){
+		"enable":  RunAutostartEnable,
+		"disable": RunAutostartDisable,
+		"status":  RunAutostartStatus,
+	})
 }
 
 func handlePath(args []string) {
-	handleToggle("path", args, RunPathEnable, RunPathDisable, RunPathStatus)
+	handleSubcommand("path", args, RunPathStatus, map[string]func(){
+		"enable":  RunPathEnable,
+		"disable": RunPathDisable,
+		"status":  RunPathStatus,
+	})
 }
