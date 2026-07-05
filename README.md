@@ -6,9 +6,10 @@
 [![License](https://img.shields.io/badge/License-MIT-000000.svg?style=for-the-badge&logo=apache&logoColor=white&labelColor=000000&color=000000)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26+-000000.svg?style=for-the-badge&logo=go&logoColor=white&labelColor=000000&color=000000)](https://go.dev)
 ![Platform](https://img.shields.io/badge/Platform-Windows_x64-000000.svg?style=for-the-badge&logo=nsis&logoColor=white&labelColor=000000&color=000000)
-<center>
-  <img src=website/assets/focusd-icon.svg width="128"/>
-</center>
+
+<p align="center">
+  <img src="website/assets/focusd-icon.svg" width="128" alt="focusd icon">
+</p>
 
 <h3 align="center">Privacy-First Digital Wellbeing for Windows</h3>
 
