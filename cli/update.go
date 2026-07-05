@@ -40,7 +40,10 @@ func RunUpdate() {
 	fmt.Print("Do you want to update? [y/N]: ")
 
 	var response string
-	fmt.Scanln(&response)
+	if _, err := fmt.Scanln(&response); err != nil && err.Error() != "unexpected newline" {
+		ui.PrintError(fmt.Sprintf("Failed to read input: %v", err))
+		return
+	}
 	if strings.ToLower(strings.TrimSpace(response)) != "y" {
 		fmt.Println("Update cancelled.")
 		return

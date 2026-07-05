@@ -1,7 +1,6 @@
 package core
 
 import (
-	"golang.org/x/time/rate"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -9,8 +8,8 @@ import (
 )
 
 var (
-	limiter         = rate.NewLimiter(rate.Every(10*time.Second), 1)
-	activeInstances int32
+	lastNotificationTime int64
+	activeInstances      int32
 )
 
 var (
@@ -28,12 +27,15 @@ const (
 )
 
 func show(title, message string, flags uintptr, callback func(ret uintptr)) {
-	if !limiter.Allow() {
+	now := time.Now().Unix()
+	last := atomic.LoadInt64(&lastNotificationTime)
+	if now-last < 10 {
 		return
 	}
 	if !atomic.CompareAndSwapInt32(&activeInstances, 0, 1) {
 		return
 	}
+	atomic.StoreInt64(&lastNotificationTime, now)
 
 	go func() {
 		defer atomic.StoreInt32(&activeInstances, 0)

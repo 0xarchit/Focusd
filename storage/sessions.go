@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"database/sql"
+	"errors"
 	"log"
 	"time"
 )
@@ -80,7 +82,7 @@ func GetAppUsageTodayMinutes(exeName string) int {
 		WHERE date = ? AND exe_name = ?
 	`, today, exeName).Scan(&secs)
 	if err != nil {
-		if err.Error() != "sql: no rows in result set" {
+		if !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("WARN: GetAppUsageTodayMinutes query failed for %s: %v", exeName, err)
 		}
 		return 0
@@ -112,6 +114,12 @@ func GetAppUsageTodayMinutesMap() (map[string]int, error) {
 }
 
 func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Session, error) {
+	if limit < 0 {
+		limit = 0
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	dataQuery := `
 		SELECT id, app_name, exe_name, window_title, start_time, end_time, duration_secs, date
 		FROM sessions
@@ -267,7 +275,10 @@ func RecoverActiveSession() (*Session, error) {
 	`).Scan(&s.AppName, &s.ExeName, &s.WindowTitle, &startTime, &lastSeen, &s.Date)
 
 	if err != nil {
-		return nil, nil
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
 	}
 
 	ClearActiveSession()

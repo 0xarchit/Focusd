@@ -6,6 +6,7 @@ import (
 	"focusd/core"
 	"focusd/storage"
 	"focusd/system"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -78,8 +79,10 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 				m.addToast("Run focusd start to launch daemon", toastInfo)
 			}
 		case 1:
-			enabled, _, _ := system.GetAutoStartEnabled()
-			if enabled {
+			enabled, _, err := system.GetAutoStartEnabled()
+			if err != nil {
+				m.addToast(fmt.Sprintf("Failed to query auto-start: %v", err), toastError)
+			} else if enabled {
 				if err := system.DisableAutoStart(); err != nil {
 					m.addToast("Failed to disable auto-start", toastError)
 				} else {

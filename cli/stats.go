@@ -31,9 +31,7 @@ func DisplayStats(summary *core.DailySummary) {
 	header := fmt.Sprintf("Stats: %s", summary.Date)
 	ui.PrintSectionHeader(header)
 
-	if summary.RangeMessage != "" {
-		fmt.Printf("  %s%s%s\n\n", ui.Dim, summary.RangeMessage, ui.Reset)
-	}
+
 
 	if summary.AppCount == 0 {
 		fmt.Println("  No data recorded for this period.")

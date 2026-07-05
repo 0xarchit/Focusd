@@ -52,7 +52,6 @@ func (m *Model) triggerFocusButton() (Model, tea.Cmd) {
 		if err := core.StopPomodoro(); err != nil {
 			m.addToast(fmt.Sprintf("Failed to %s timer: %v", action, err), toastError)
 		} else {
-			m.focusPaused = false
 			m.addToast(msg, toastType)
 		}
 	}

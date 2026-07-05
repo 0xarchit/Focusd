@@ -28,7 +28,7 @@ var (
 func getUserConfigPath() (string, error) {
 	appData := os.Getenv("APPDATA")
 	if appData == "" {
-		return "", nil
+		return "", fmt.Errorf("APPDATA environment variable is empty")
 	}
 	return filepath.Join(appData, "focusd", "config.json"), nil
 }
@@ -82,11 +82,7 @@ func loadFromDiskLocked() {
 	}
 }
 
-func SaveUserConfig() error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	return saveUserConfigLocked()
-}
+
 
 func saveUserConfigLocked() error {
 	if userConfig == nil {
@@ -131,12 +127,6 @@ func IsWhitelisted(exeName string) bool {
 	return false
 }
 
-func ReloadUserConfig() {
-	configMu.Lock()
-	defer configMu.Unlock()
-	userConfig = nil
-	loadFromDiskLocked()
-}
 
 func GetBreakReminderEnabled() bool {
 	loadFromDisk()

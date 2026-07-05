@@ -58,6 +58,9 @@ type Tracker struct {
 func NewTracker() *Tracker {
 	ctx, cancel := context.WithCancel(context.Background())
 	pollSeconds := storage.GetTrackingIntervalSeconds()
+	if pollSeconds < 1 {
+		pollSeconds = 1
+	}
 	return &Tracker{
 		pollInterval:  time.Duration(pollSeconds) * time.Second,
 		ctx:           ctx,
@@ -196,7 +199,11 @@ func (t *Tracker) Stop() {
 
 func (t *Tracker) recoverOrphanedSession() {
 	recovered, err := storage.RecoverActiveSession()
-	if err != nil || recovered == nil {
+	if err != nil {
+		log.Printf("ERROR: failed to recover active session from storage: %v", err)
+		return
+	}
+	if recovered == nil {
 		return
 	}
 	if err := storage.InsertSession(recovered); err != nil {
@@ -224,7 +231,9 @@ func (t *Tracker) persistActiveSession() {
 		LastSeen:    time.Now(),
 		Date:        t.currentSession.Date,
 	}
-	storage.SaveActiveSession(record)
+	if err := storage.SaveActiveSession(record); err != nil {
+		log.Printf("ERROR: failed to save active session: %v", err)
+	}
 }
 
 func (t *Tracker) poll() {

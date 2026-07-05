@@ -52,6 +52,10 @@ func savePomodoroState(state *PomodoroState) error {
 		return err
 	}
 
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+
 	tempPath := path + ".tmp"
 	if err := os.WriteFile(tempPath, data, 0600); err != nil {
 		return err
@@ -119,6 +123,8 @@ func CheckPomodoroAndNotify() {
 		ShowNotification("Pomodoro Complete!", "Great work! Take a break.")
 		state.Notified = true
 		state.Active = false
-		savePomodoroState(state)
+		if err := savePomodoroState(state); err != nil {
+			log.Printf("ERROR: failed to save pomodoro state: %v", err)
+		}
 	}
 }

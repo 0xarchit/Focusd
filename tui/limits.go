@@ -87,9 +87,9 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 					n, err := strconv.Atoi(key)
 					if err == nil {
 						if m.limitForm.Field == 1 {
-							m.limitForm.Hours = (m.limitForm.Hours*10 + n) % 25
+							m.limitForm.Hours = min(24, m.limitForm.Hours*10+n)
 						} else {
-							m.limitForm.Minutes = (m.limitForm.Minutes*10 + n) % 60
+							m.limitForm.Minutes = min(59, m.limitForm.Minutes*10+n)
 						}
 					}
 				}
@@ -140,7 +140,7 @@ func (m *Model) renderLimits(width, height int) string {
 
 	headerPlain := padRight("App", col1W) + padLeft("Limit", col2W) + padLeft("Used", col3W) + padLeft("Remaining", col4W) + "   Status"
 	lines = append(lines, boldStyle.Render(headerPlain))
-	lines = append(lines, mutedStyle.Render(fill(maxW-4, "─")))
+	lines = append(lines, mutedStyle.Render(strings.Repeat("─", max(0, maxW-4))))
 
 	visibleRows := max(3, height-10)
 	if m.limitForm.Visible {

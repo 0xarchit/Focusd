@@ -47,10 +47,14 @@ func PrintHeader() {
 
 func PrintSectionHeader(title string) {
 	fmt.Println()
+	repeatLen := 40 - len(title)
+	if repeatLen < 0 {
+		repeatLen = 0
+	}
 	fmt.Printf("   %s%s%s %s %s%s%s\n",
 		Yellow, Arrow, Reset,
 		Bold+title+Reset,
-		Gray, strings.Repeat("─", 40-len(title)), Reset)
+		Gray, strings.Repeat("─", repeatLen), Reset)
 	fmt.Println()
 }
 

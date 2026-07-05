@@ -11,95 +11,27 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func (m *Model) statsVisibleUsageRows() int {
+func (m *Model) statsVisibleRows(isBrowser bool) int {
 	inner := m.width - 2
 	contentHeight := m.contentHeight()
 	if inner >= 120 {
 		return max(3, min(10, contentHeight-15))
 	}
 	if contentHeight < 30 {
-		if m.panelFocus == 2 || m.panelFocus == 3 {
+		hide := m.panelFocus != 2
+		if !isBrowser {
+			hide = m.panelFocus == 2 || m.panelFocus == 3
+		}
+		if hide {
 			return 0
 		}
 		return max(4, contentHeight-12)
 	}
 	return max(3, min(6, (contentHeight-15)/2))
-}
-
-func (m *Model) statsVisibleBrowserRows() int {
-	inner := m.width - 2
-	contentHeight := m.contentHeight()
-	if inner >= 120 {
-		return max(3, min(10, contentHeight-15))
-	}
-	if contentHeight < 30 {
-		if m.panelFocus != 2 {
-			return 0
-		}
-		return max(4, contentHeight-12)
-	}
-	return max(3, min(6, (contentHeight-15)/2))
-}
-
-func (m *Model) statsPanelAt(x, y int) int {
-	if m.width <= 0 || m.height <= 0 {
-		return -1
-	}
-	inner := m.width - 2
-	if inner <= 0 {
-		return -1
-	}
-	contentHeight := m.contentHeight()
-	contentX := 1
-	contentY := lipgloss.Height(m.renderHeader()) + lipgloss.Height(m.renderTabs()) + 1
-	if x < contentX || x >= contentX+inner {
-		return -1
-	}
-	if y < contentY {
-		return -1
-	}
-	relY := y - contentY
-	rangePanel := panelWithHover("TIME RANGE", "", inner, "\n"+m.renderRangeSelector(inner-4)+"\n", m.panelFocus == 0, false)
-	rangeH := lipgloss.Height(rangePanel)
-	if relY < rangeH {
-		return 0
-	}
-	curY := rangeH
-	if inner >= 120 {
-		tableRows := max(3, min(10, contentHeight-15))
-		tbl := panelWithHover("APPLICATION BREAKDOWN", "", (inner-2)/2, "\n"+m.renderUsageBreakdown((inner-2)/2, tableRows)+"\n", m.panelFocus == 1, false)
-		tblH := lipgloss.Height(tbl)
-		if relY < curY+tblH {
-			if x < contentX+inner/2 {
-				return 1
-			}
-			return 2
-		}
-		return 3
-	}
-	if m.panelFocus == 0 || m.panelFocus == 1 {
-		tbl := panelWithHover("APPLICATION BREAKDOWN", "", inner, "\n"+m.renderUsageBreakdown(inner, m.statsVisibleUsageRows())+"\n", m.panelFocus == 1, false)
-		tblH := lipgloss.Height(tbl)
-		if relY < curY+tblH {
-			return 1
-		}
-		curY += tblH
-	} else if m.panelFocus == 2 {
-		tbl := panelWithHover("BROWSER USAGE", "", inner, "\n"+m.renderBrowserUsage(inner, m.statsVisibleBrowserRows())+"\n", m.panelFocus == 2, false)
-		tblH := lipgloss.Height(tbl)
-		if relY < curY+tblH {
-			return 2
-		}
-		curY += tblH
-	}
-	return 3
 }
 
 func (m Model) loadStatsCmd() tea.Cmd {
-	if m.statsRange == 3 {
-		return loadCustomStats(m.statsCustomFrom, m.statsCustomTo)
-	}
-	return loadStats(m.statsRange)
+	return loadStats(m.statsRange, m.statsCustomFrom, m.statsCustomTo)
 }
 
 func (m Model) handleCustomRangeModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
@@ -108,7 +40,6 @@ func (m Model) handleCustomRangeModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	switch key {
 	case "esc":
 		m.modal = modal{}
-		m.statsCustomEditing = false
 	case "tab", "shift+tab", "left", "right", "h", "l":
 		m.statsCustomField = (m.statsCustomField + 1) % 2
 	case "backspace":
@@ -131,7 +62,6 @@ func (m Model) handleCustomRangeModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		m.statsCustomFrom = from
 		m.statsCustomTo = to
-		m.statsCustomEditing = false
 		m.modal = modal{}
 		m.refreshing = true
 		return m, m.loadStatsCmd()
@@ -172,7 +102,6 @@ func (m Model) handleStatsKey(key string) (Model, tea.Cmd) {
 			m.statsCustomDraftFrom = m.statsCustomFrom
 			m.statsCustomDraftTo = m.statsCustomTo
 			m.statsCustomField = 0
-			m.statsCustomEditing = true
 			m.modal = modal{
 				Active:  true,
 				Title:   "CUSTOM RANGE",
@@ -195,7 +124,7 @@ func (m Model) handleStatsKey(key string) (Model, tea.Cmd) {
 			appsLen := len(m.sortedStatsApps())
 			if appsLen > 0 {
 				m.statsSelected = min(m.statsSelected+1, appsLen-1)
-				visibleRows := m.statsVisibleUsageRows()
+				visibleRows := m.statsVisibleRows(false)
 				if m.statsSelected >= m.statsUsageOffset+visibleRows {
 					m.statsUsageOffset = clampScrollOffset(m.statsSelected-visibleRows+1, visibleRows, appsLen)
 				}
@@ -204,7 +133,7 @@ func (m Model) handleStatsKey(key string) (Model, tea.Cmd) {
 			browserLen := len(m.stats.Browsers)
 			if browserLen > 0 {
 				m.browserSelected = min(m.browserSelected+1, browserLen-1)
-				visibleRows := m.statsVisibleBrowserRows()
+				visibleRows := m.statsVisibleRows(true)
 				if m.browserSelected >= m.statsBrowserOffset+visibleRows {
 					m.statsBrowserOffset = clampScrollOffset(m.browserSelected-visibleRows+1, visibleRows, browserLen)
 				}
@@ -234,7 +163,7 @@ func (m Model) handleStatsKey(key string) (Model, tea.Cmd) {
 		case 1:
 			appsLen := len(m.sortedStatsApps())
 			if appsLen > 0 {
-				visibleRows := m.statsVisibleUsageRows()
+				visibleRows := m.statsVisibleRows(false)
 				m.statsSelected = min(m.statsSelected+visibleRows, appsLen-1)
 				if m.statsSelected >= m.statsUsageOffset+visibleRows {
 					m.statsUsageOffset = clampScrollOffset(m.statsSelected-visibleRows+1, visibleRows, appsLen)
@@ -243,7 +172,7 @@ func (m Model) handleStatsKey(key string) (Model, tea.Cmd) {
 		case 2:
 			browserLen := len(m.stats.Browsers)
 			if browserLen > 0 {
-				visibleRows := m.statsVisibleBrowserRows()
+				visibleRows := m.statsVisibleRows(true)
 				m.browserSelected = min(m.browserSelected+visibleRows, browserLen-1)
 				if m.browserSelected >= m.statsBrowserOffset+visibleRows {
 					m.statsBrowserOffset = clampScrollOffset(m.browserSelected-visibleRows+1, visibleRows, browserLen)
@@ -255,7 +184,7 @@ func (m Model) handleStatsKey(key string) (Model, tea.Cmd) {
 		case 1:
 			appsLen := len(m.sortedStatsApps())
 			if appsLen > 0 {
-				visibleRows := m.statsVisibleUsageRows()
+				visibleRows := m.statsVisibleRows(false)
 				m.statsSelected = max(0, m.statsSelected-visibleRows)
 				if m.statsSelected < m.statsUsageOffset {
 					m.statsUsageOffset = max(0, m.statsSelected)
@@ -264,7 +193,7 @@ func (m Model) handleStatsKey(key string) (Model, tea.Cmd) {
 		case 2:
 			browserLen := len(m.stats.Browsers)
 			if browserLen > 0 {
-				visibleRows := m.statsVisibleBrowserRows()
+				visibleRows := m.statsVisibleRows(true)
 				m.browserSelected = max(0, m.browserSelected-visibleRows)
 				if m.browserSelected < m.statsBrowserOffset {
 					m.statsBrowserOffset = max(0, m.browserSelected)
@@ -275,17 +204,15 @@ func (m Model) handleStatsKey(key string) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func validDateInput(value string) bool {
-	_, err := time.Parse("2006-01-02", value)
-	return err == nil
-}
-
 func validateCustomRange(from, to string) (string, string, error) {
-	if !validDateInput(from) || !validDateInput(to) {
+	fromTime, err := time.Parse("2006-01-02", from)
+	if err != nil {
 		return "", "", fmt.Errorf("Invalid date format. Use YYYY-MM-DD")
 	}
-	fromTime, _ := time.Parse("2006-01-02", from)
-	toTime, _ := time.Parse("2006-01-02", to)
+	toTime, err := time.Parse("2006-01-02", to)
+	if err != nil {
+		return "", "", fmt.Errorf("Invalid date format. Use YYYY-MM-DD")
+	}
 	if fromTime.After(toTime) {
 		return "", "", fmt.Errorf("From date must be before To date")
 	}
@@ -332,8 +259,8 @@ func (m *Model) renderStats(width, height int) string {
 			ID: "panel-2", Kind: "panel",
 		})
 
-		usageRows := m.statsVisibleUsageRows()
-		browserRows := m.statsVisibleBrowserRows()
+		usageRows := m.statsVisibleRows(false)
+		browserRows := m.statsVisibleRows(true)
 		appsPanel := panelWithHover("APPLICATION BREAKDOWN", "", leftW, "\n"+m.renderUsageBreakdown(leftW, usageRows)+"\n", m.panelFocus == 1, m.hoveredPanel == 1)
 		browsersPanel := panelWithHover("BROWSER USAGE", "", rightW, "\n"+m.renderBrowserUsage(rightW, browserRows)+"\n", m.panelFocus == 2, m.hoveredPanel == 2)
 		middleRow = lipgloss.JoinHorizontal(lipgloss.Top, appsPanel, " ", browsersPanel)
@@ -344,14 +271,14 @@ func (m *Model) renderStats(width, height int) string {
 				X1: 1, Y1: topY, X2: inner + 1, Y2: topY + middleHeight,
 				ID: "panel-1", Kind: "panel",
 			})
-			usageRows := m.statsVisibleUsageRows()
+			usageRows := m.statsVisibleRows(false)
 			middleRow = panelWithHover("APPLICATION BREAKDOWN", "", inner, "\n"+m.renderUsageBreakdown(inner, usageRows)+"\n", m.panelFocus == 1, m.hoveredPanel == 1)
 		} else {
 			m.clickableRegions = append(m.clickableRegions, ClickableRegion{
 				X1: 1, Y1: topY, X2: inner + 1, Y2: topY + middleHeight,
 				ID: "panel-2", Kind: "panel",
 			})
-			browserRows := m.statsVisibleBrowserRows()
+			browserRows := m.statsVisibleRows(true)
 			middleRow = panelWithHover("BROWSER USAGE", "", inner, "\n"+m.renderBrowserUsage(inner, browserRows)+"\n", m.panelFocus == 2, m.hoveredPanel == 2)
 		}
 	}
@@ -419,7 +346,7 @@ func (m *Model) renderUsageBreakdown(width, visibleRows int) string {
 
 	headerPlain := padRight("Application", max(8, width-32)) + padLeft("Time", 8) + padLeft("Opens", 8)
 	header := boldStyle.Render(fitLine(headerPlain, width-4))
-	lines = append(lines, header, mutedStyle.Render(fill(max(1, width-4), "─")))
+	lines = append(lines, header, mutedStyle.Render(strings.Repeat("─", max(0, width-4))))
 
 	if len(sorted) > 0 {
 		start := m.statsUsageOffset
@@ -463,7 +390,7 @@ func (m *Model) renderUsageBreakdown(width, visibleRows int) string {
 func (m *Model) renderBrowserUsage(width, visibleRows int) string {
 	var lines []string
 	titleW := max(8, width-16)
-	lines = append(lines, boldStyle.Render(fitLine(padRight("Tab Title", titleW)+padLeft("Time", 10), width-4)), mutedStyle.Render(fill(max(1, width-4), "─")))
+	lines = append(lines, boldStyle.Render(fitLine(padRight("Tab Title", titleW)+padLeft("Time", 10), width-4)), mutedStyle.Render(strings.Repeat("─", max(0, width-4))))
 
 	if len(m.stats.Browsers) > 0 {
 		start := m.statsBrowserOffset

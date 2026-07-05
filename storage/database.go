@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -59,7 +60,11 @@ func Init() error {
 	q.Add("_pragma", "auto_vacuum(INCREMENTAL)")
 	q.Add("_pragma", "cache_size(-1000)")
 	q.Add("_pragma", "temp_store(MEMORY)")
-	dsn := fmt.Sprintf("file:%s?%s", filepath.ToSlash(dbPath), q.Encode())
+	escapedPath := filepath.ToSlash(dbPath)
+	escapedPath = strings.ReplaceAll(escapedPath, " ", "%20")
+	escapedPath = strings.ReplaceAll(escapedPath, "?", "%3F")
+	escapedPath = strings.ReplaceAll(escapedPath, "#", "%23")
+	dsn := fmt.Sprintf("file:%s?%s", escapedPath, q.Encode())
 
 	var lastErr error
 	db, lastErr = sql.Open("sqlite", dsn)
@@ -73,7 +78,7 @@ func Init() error {
 		return fmt.Errorf("failed to ping database: %w", pingErr)
 	}
 
-	db.SetMaxOpenConns(10)
+	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
 

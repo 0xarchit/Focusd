@@ -221,9 +221,3 @@ func truncate(s string, width int) string {
 	return runewidth.Truncate(s, width, "…")
 }
 
-func fill(width int, ch string) string {
-	if width <= 0 {
-		return ""
-	}
-	return strings.Repeat(ch, width)
-}
