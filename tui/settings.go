@@ -285,7 +285,7 @@ func exportData(jsonOut bool) (string, error) {
 	}
 	if jsonOut {
 		path := filepath.Join(exportDir, "focusd_export.json")
-		apps, err := storage.GetAllAppStats()
+		apps, err := storage.GetAppStatsInRange("", "")
 		if err != nil {
 			return "", err
 		}
@@ -296,7 +296,7 @@ func exportData(jsonOut bool) (string, error) {
 		return path, os.WriteFile(path, b, 0644)
 	}
 	path := filepath.Join(exportDir, "focusd_export.csv")
-	apps, err := storage.GetAllAppStats()
+	apps, err := storage.GetAppStatsInRange("", "")
 	if err != nil {
 		return "", err
 	}

@@ -216,12 +216,8 @@ func (t *Tracker) recoverOrphanedSession() {
 	if recovered == nil {
 		return
 	}
-	if err := storage.InsertSession(recovered); err != nil {
-		log.Printf("ERROR: failed to recover orphaned session (insert): %v", err)
-		return
-	}
-	if err := storage.UpdateAppDaily(recovered.Date, recovered.AppName, recovered.ExeName, recovered.DurationSecs); err != nil {
-		log.Printf("ERROR: failed to recover orphaned session (daily): %v", err)
+	if err := storage.InsertSessionWithDaily(recovered, ""); err != nil {
+		log.Printf("ERROR: failed to recover orphaned session: %v", err)
 	}
 	storage.ClearActiveSession()
 }
@@ -317,7 +313,6 @@ func (t *Tracker) flushPendingSessions() {
 	t.pendingSessions = nil
 	t.mu.Unlock()
 
-	var failed []*storage.Session
 	for _, s := range sessions {
 		cleanBrowserTitle := ""
 		if system.IsBrowser(s.ExeName) {
@@ -325,18 +320,7 @@ func (t *Tracker) flushPendingSessions() {
 		}
 		if err := storage.InsertSessionWithDaily(s, cleanBrowserTitle); err != nil {
 			log.Printf("ERROR: failed to insert session with daily: %v", err)
-			s.RetryCount++
-			if s.RetryCount <= 5 {
-				failed = append(failed, s)
-			} else {
-				log.Printf("WARN: discarding session %s (%s) after 5 failed insertion retries: %v", s.AppName, s.ExeName, err)
-			}
 		}
-	}
-	if len(failed) > 0 {
-		t.mu.Lock()
-		t.pendingSessions = append(failed, t.pendingSessions...)
-		t.mu.Unlock()
 	}
 }
 

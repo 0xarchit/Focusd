@@ -16,12 +16,12 @@ type DailySummary struct {
 }
 
 func GetDailySummary(date string) (*DailySummary, error) {
-	apps, err := storage.GetAppStatsForDate(date)
+	apps, err := storage.GetAppStatsInRange(date, date)
 	if err != nil {
 		return nil, err
 	}
 
-	sites, err := storage.GetBrowserStatsForDate(date)
+	sites, err := storage.GetBrowserStatsInRange(date, date)
 	if err != nil {
 		log.Printf("WARN: failed to load browser stats for %s: %v", date, err)
 	}

@@ -300,7 +300,7 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	for i := historyDays - 1; i >= 0; i-- {
 		d := historyEnd.AddDate(0, 0, -i)
 		date := d.Format("2006-01-02")
-		dayApps, err := storage.GetAppStatsForDate(date)
+		dayApps, err := storage.GetAppStatsInRange(date, date)
 		if err == nil {
 			total := 0
 			for _, s := range dayApps {
