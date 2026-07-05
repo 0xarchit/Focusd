@@ -226,6 +226,26 @@ func (m *Model) renderHourlyPanel(width, height int) string {
 	}
 	lines = append(lines, "   "+mutedStyle.Render(hoursText))
 
+	// Add legend for usability, splitting into 2 lines on narrow panels
+	if width >= 52 {
+		legend := "Legend: " + mutedStyle.Render("·") + " 0m  " +
+			cyanStyle.Render("░") + " <15m  " +
+			cyanStyle.Render("▒") + " <30m  " +
+			cyanStyle.Render("▓") + " <45m  " +
+			cyanStyle.Render("█") + " >=45m"
+		lines = append(lines, "")
+		lines = append(lines, "   "+legend)
+	} else if width >= 38 {
+		legend1 := "Legend: " + mutedStyle.Render("·") + " 0m  " +
+			cyanStyle.Render("░") + " <15m  " +
+			cyanStyle.Render("▒") + " <30m"
+		legend2 := "        " + cyanStyle.Render("▓") + " <45m  " +
+			cyanStyle.Render("█") + " >=45m"
+		lines = append(lines, "")
+		lines = append(lines, "   "+legend1)
+		lines = append(lines, "   "+legend2)
+	}
+
 	extraLines := max(0, height-2-len(lines)-2)
 	for i := 0; i < extraLines; i++ {
 		lines = append(lines, "")
