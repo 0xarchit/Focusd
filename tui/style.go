@@ -192,22 +192,25 @@ func clampScrollOffset(offset, visible, total int) int {
 	return offset
 }
 
-func pad(s string, width int, left bool) string {
+func padLeft(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
 	if lipgloss.Width(s) > width {
 		return truncate(s, width)
 	}
-	p := strings.Repeat(" ", width-lipgloss.Width(s))
-	if left {
-		return p + s
-	}
-	return s + p
+	return strings.Repeat(" ", width-lipgloss.Width(s)) + s
 }
 
-func padLeft(s string, width int) string { return pad(s, width, true) }
-func padRight(s string, width int) string { return pad(s, width, false) }
+func padRight(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) > width {
+		return truncate(s, width)
+	}
+	return s + strings.Repeat(" ", width-lipgloss.Width(s))
+}
 
 func center(s string, width int) string {
 	if lipgloss.Width(s) >= width {

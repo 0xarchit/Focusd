@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-func RunRetentionStatus() {
+func runRetentionStatus() {
 	if err := storage.Init(); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
 		os.Exit(1)
@@ -22,7 +22,7 @@ func RunRetentionStatus() {
 		storage.MinRetentionDays, storage.MaxRetentionDays, storage.DefaultRetentionDays)
 }
 
-func RunRetentionSet(daysStr string) {
+func runRetentionSet(daysStr string) {
 	if err := storage.Init(); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
 		os.Exit(1)
@@ -35,13 +35,14 @@ func RunRetentionSet(daysStr string) {
 		os.Exit(1)
 	}
 
-	if err := SetRetentionLogic(days); err != nil {
-		ui.PrintError(err.Error())
+	if err := storage.SetRetentionDays(days); err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to save retention days: %v", err))
 		os.Exit(1)
 	}
+	ui.PrintOK(fmt.Sprintf("Retention set to %d days.", days))
 }
 
-func RunRetentionReset() {
+func runRetentionReset() {
 	if err := storage.Init(); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
 		os.Exit(1)

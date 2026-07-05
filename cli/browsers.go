@@ -7,27 +7,27 @@ import (
 	"os"
 )
 
-func HandleBrowsersCommand(args []string) {
+func handleBrowsersCommand(args []string) {
 	if len(args) < 3 {
-		RunBrowserList()
+		runBrowserList()
 		return
 	}
 
 	switch args[2] {
 	case "list":
-		RunBrowserList()
+		runBrowserList()
 	case "add":
 		if len(args) < 4 {
 			fmt.Println("Usage: focusd browser add <exe_name>")
 			os.Exit(1)
 		}
-		RunBrowserAdd(args[3])
+		runBrowserAdd(args[3])
 	case "remove":
 		if len(args) < 4 {
 			fmt.Println("Usage: focusd browser remove <exe_name>")
 			os.Exit(1)
 		}
-		RunBrowserRemove(args[3])
+		runBrowserRemove(args[3])
 	default:
 		fmt.Printf("Unknown browser command: %s\n", args[2])
 		fmt.Println("Available: list, add, remove")
@@ -35,7 +35,7 @@ func HandleBrowsersCommand(args []string) {
 	}
 }
 
-func RunBrowserList() {
+func runBrowserList() {
 	ui.PrintSectionHeader("Browser Configuration")
 
 	customs := system.GetCustomBrowsersList()
@@ -54,7 +54,7 @@ func RunBrowserList() {
 	fmt.Println()
 }
 
-func RunBrowserAdd(exeName string) {
+func runBrowserAdd(exeName string) {
 	if err := system.AddCustomBrowser(exeName); err != nil {
 		ui.PrintError(err.Error())
 		os.Exit(1)
@@ -62,7 +62,7 @@ func RunBrowserAdd(exeName string) {
 	ui.PrintOK(fmt.Sprintf("Added '%s' to browser list.", exeName))
 }
 
-func RunBrowserRemove(exeName string) {
+func runBrowserRemove(exeName string) {
 	if err := system.RemoveCustomBrowser(exeName); err != nil {
 		ui.PrintError(err.Error())
 		os.Exit(1)

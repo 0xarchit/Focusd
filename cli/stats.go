@@ -8,14 +8,14 @@ import (
 	"os"
 )
 
-func RunStats() {
+func runStats() {
 	if err := storage.Init(); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
 		os.Exit(1)
 	}
 	defer storage.Close()
 
-	RequestDaemonFlush()
+	core.SendIPCCmd("flush")
 
 	today := storage.Today()
 	summary, err := core.GetDailySummary(today)
@@ -24,14 +24,12 @@ func RunStats() {
 		return
 	}
 
-	DisplayStats(summary)
+	displayStats(summary)
 }
 
-func DisplayStats(summary *core.DailySummary) {
+func displayStats(summary *core.DailySummary) {
 	header := fmt.Sprintf("Stats: %s", summary.Date)
 	ui.PrintSectionHeader(header)
-
-
 
 	if summary.AppCount == 0 {
 		fmt.Println("  No data recorded for this period.")
@@ -45,12 +43,12 @@ func DisplayStats(summary *core.DailySummary) {
 
 	ui.PrintSectionHeader("Top Apps")
 	if len(summary.TopApps) == 0 {
-		fmt.Println("  No app data.")
+		fmt.Println("  No app data recorded.")
 	} else {
 		columns := []ui.TableColumn{
 			{Header: "App", Width: 53},
 			{Header: "Time", Width: 12},
-			{Header: "Opens", Width: 8},
+			{Header: "Visits", Width: 8},
 		}
 		var rows [][]string
 		for _, app := range summary.TopApps {
@@ -88,9 +86,9 @@ func DisplayStats(summary *core.DailySummary) {
 		}
 		fmt.Println()
 	} else if len(summary.TopSites) > 0 {
-		ui.PrintSectionHeader("Top Browsing")
+		ui.PrintSectionHeader("Top Sites")
 		columns := []ui.TableColumn{
-			{Header: "Site / Title", Width: 53},
+			{Header: "Site", Width: 53},
 			{Header: "Time", Width: 12},
 			{Header: "Visits", Width: 8},
 		}

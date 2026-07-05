@@ -19,17 +19,16 @@ var (
 )
 
 const (
-	PROCESS_QUERY_INFORMATION = 0x0400
-	PROCESS_VM_READ           = 0x0010
+	processQueryInformation = 0x0400
+	processVMRead           = 0x0010
 )
 
-type WindowInfo struct {
+type windowInfo struct {
 	Title   string
 	ExeName string
-	PID     uint32
 }
 
-func GetForegroundWindowInfo() (*WindowInfo, error) {
+func GetForegroundWindowInfo() (*windowInfo, error) {
 	hwnd, _, _ := procGetForegroundWindow.Call()
 	if hwnd == 0 {
 		return nil, nil
@@ -48,10 +47,9 @@ func GetForegroundWindowInfo() (*WindowInfo, error) {
 		exeName = getProcessName(pid)
 	}
 
-	return &WindowInfo{
+	return &windowInfo{
 		Title:   title,
 		ExeName: exeName,
-		PID:     pid,
 	}, nil
 }
 
@@ -68,7 +66,7 @@ func getWindowText(hwnd uintptr) string {
 
 func getProcessName(pid uint32) string {
 	handle, _, _ := procOpenProcess.Call(
-		PROCESS_QUERY_INFORMATION|PROCESS_VM_READ,
+		processQueryInformation|processVMRead,
 		0,
 		uintptr(pid),
 	)

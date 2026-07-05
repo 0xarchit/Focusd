@@ -2,39 +2,30 @@ package cli
 
 import (
 	"fmt"
-	"focusd/storage"
 	"focusd/system"
 	"focusd/ui"
 	"os"
 )
 
-func RunPathEnable() {
-	if err := storage.Init(); err != nil {
-		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
+func runPathEnable() {
+	if err := system.EnablePath(); err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to add to PATH: %v", err))
 		os.Exit(1)
 	}
-	defer storage.Close()
-
-	if err := EnablePathLogic(); err != nil {
-		ui.PrintError(err.Error())
-		os.Exit(1)
-	}
+	ui.PrintOK("Added to user PATH.")
+	ui.PrintWarn("Restart your terminal for changes to take effect.")
 }
 
-func RunPathDisable() {
-	if err := storage.Init(); err != nil {
-		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
+func runPathDisable() {
+	if err := system.DisablePath(); err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to remove from PATH: %v", err))
 		os.Exit(1)
 	}
-	defer storage.Close()
-
-	if err := DisablePathLogic(); err != nil {
-		ui.PrintError(err.Error())
-		os.Exit(1)
-	}
+	ui.PrintOK("Removed from user PATH.")
+	ui.PrintWarn("Restart your terminal for changes to take effect.")
 }
 
-func RunPathStatus() {
+func runPathStatus() {
 	enabled, err := system.GetPathEnabled()
 	if err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to check PATH status: %v", err))

@@ -10,17 +10,17 @@ import (
 	"time"
 )
 
-func RunStart() {
+func runStart() {
 	if err := storage.Init(); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
 		os.Exit(1)
 	}
 	defer storage.Close()
 
-	StartDaemonProcess()
+	startDaemonProcess()
 }
 
-func StartDaemonProcess() {
+func startDaemonProcess() {
 	if system.GetProcessCount(system.DaemonProcessName) >= 1 {
 		ui.PrintInfo("focusd is already running.")
 		return
@@ -40,7 +40,7 @@ func StartDaemonProcess() {
 	fmt.Println("Use 'focusd stop' to stop tracking.")
 }
 
-func RunStop() {
+func runStop() {
 	if system.GetProcessCount(system.DaemonProcessName) < 1 {
 		ui.PrintInfo("focusd is not running.")
 		return
@@ -56,10 +56,6 @@ func RunStop() {
 	} else {
 		ui.PrintOK("focusd stopped (forced)")
 	}
-}
-
-func RequestDaemonFlush() bool {
-	return core.SendIPCCmd("flush")
 }
 
 func RunDaemon() {

@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func PrintHelp() {
+func printHelp() {
 	fmt.Println()
 	fmt.Println("focusd - Privacy-first digital wellbeing tracker")
 	fmt.Printf("Version %s\n", system.Version)
@@ -40,13 +40,13 @@ func PrintHelp() {
 	fmt.Println()
 }
 
-func PrintVersion() {
+func printVersion() {
 	fmt.Printf("focusd version %s\n", system.Version)
 }
 
 func Run(args []string) {
 	if len(args) < 2 {
-		RunInteractiveMenu()
+		runInteractiveMenu()
 		return
 	}
 
@@ -54,27 +54,27 @@ func Run(args []string) {
 
 	switch command {
 	case "update":
-		RunUpdate()
+		runUpdate()
 	case "focus":
-		RunFocus(args)
+		runFocus(args)
 	case "stop-timer":
-		RunStopTimer()
+		runStopTimer()
 	case "limit":
-		RunLimits(args)
+		runLimits(args)
 	case "start":
-		RunStart()
+		runStart()
 	case "stop":
-		RunStop()
+		runStop()
 	case "--daemon":
 		RunDaemon()
 	case "status", "s":
-		RunStatus()
+		runStatus()
 	case "stats", "st":
-		RunStats()
+		runStats()
 	case "pause", "p":
-		RunPause()
+		runPause()
 	case "resume", "r":
-		RunResume()
+		runResume()
 	case "retention", "ret":
 		handleRetention(args)
 	case "autostart", "auto":
@@ -82,11 +82,11 @@ func Run(args []string) {
 	case "path":
 		handlePath(args)
 	case "browser":
-		HandleBrowsersCommand(args)
+		handleBrowsersCommand(args)
 	case "help", "-h", "--help", "h":
-		PrintHelp()
+		printHelp()
 	case "version", "-v", "--version":
-		PrintVersion()
+		printVersion()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		fmt.Println("Run 'focusd help' for usage information.")
@@ -94,46 +94,63 @@ func Run(args []string) {
 	}
 }
 
-func handleSubcommand(name string, args []string, defaultFn func(), commands map[string]func()) {
+// Switch-based command dispatching is preferred here over map-based lookup
+// to keep argument index parsing simple, static, and extremely transparent
+// without needing extra struct wrapping or interface reflection.
+func handleRetention(args []string) {
 	if len(args) < 3 {
-		defaultFn()
+		runRetentionStatus()
 		return
 	}
-	sub := args[2]
-	if fn, ok := commands[sub]; ok {
-		fn()
-	} else {
-		fmt.Printf("Unknown %s command: %s\n", name, sub)
+	switch args[2] {
+	case "status":
+		runRetentionStatus()
+	case "set":
+		if len(args) < 4 {
+			fmt.Println("Usage: focusd retention set <days>")
+			os.Exit(1)
+		}
+		runRetentionSet(args[3])
+	case "reset":
+		runRetentionReset()
+	default:
+		fmt.Printf("Unknown retention command: %s\n", args[2])
 		os.Exit(1)
 	}
 }
 
-func handleRetention(args []string) {
-	handleSubcommand("retention", args, RunRetentionStatus, map[string]func(){
-		"status": RunRetentionStatus,
-		"set": func() {
-			if len(args) < 4 {
-				fmt.Println("Usage: focusd retention set <days>")
-				os.Exit(1)
-			}
-			RunRetentionSet(args[3])
-		},
-		"reset": RunRetentionReset,
-	})
-}
-
 func handleAutostart(args []string) {
-	handleSubcommand("autostart", args, RunAutostartStatus, map[string]func(){
-		"enable":  RunAutostartEnable,
-		"disable": RunAutostartDisable,
-		"status":  RunAutostartStatus,
-	})
+	if len(args) < 3 {
+		runAutostartStatus()
+		return
+	}
+	switch args[2] {
+	case "enable":
+		runAutostartEnable()
+	case "disable":
+		runAutostartDisable()
+	case "status":
+		runAutostartStatus()
+	default:
+		fmt.Printf("Unknown autostart command: %s\n", args[2])
+		os.Exit(1)
+	}
 }
 
 func handlePath(args []string) {
-	handleSubcommand("path", args, RunPathStatus, map[string]func(){
-		"enable":  RunPathEnable,
-		"disable": RunPathDisable,
-		"status":  RunPathStatus,
-	})
+	if len(args) < 3 {
+		runPathStatus()
+		return
+	}
+	switch args[2] {
+	case "enable":
+		runPathEnable()
+	case "disable":
+		runPathDisable()
+	case "status":
+		runPathStatus()
+	default:
+		fmt.Printf("Unknown path command: %s\n", args[2])
+		os.Exit(1)
+	}
 }

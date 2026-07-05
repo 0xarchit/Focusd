@@ -18,12 +18,11 @@ var (
 )
 
 const (
-	MB_OK              = 0x00000000
-	MB_OKCANCEL        = 0x00000001
-	MB_ICONINFORMATION = 0x00000040
-	MB_ICONWARNING     = 0x00000030
-	MB_SETFOREGROUND   = 0x00010000
-	IDOK               = 1
+	mbOKCancel        = 0x00000001
+	mbIconInformation = 0x00000040
+	mbIconWarning     = 0x00000030
+	mbSetForeground   = 0x00010000
+	idOK              = 1
 )
 
 func show(title, message string, flags uintptr, callback func(ret uintptr)) {
@@ -40,13 +39,19 @@ func show(title, message string, flags uintptr, callback func(ret uintptr)) {
 	go func() {
 		defer atomic.StoreInt32(&activeInstances, 0)
 
-		titlePtr, _ := syscall.UTF16PtrFromString(title)
-		messagePtr, _ := syscall.UTF16PtrFromString(message)
+		titlePtr, err := syscall.UTF16PtrFromString(title)
+		if err != nil {
+			return
+		}
+		messagePtr, err := syscall.UTF16PtrFromString(message)
+		if err != nil {
+			return
+		}
 		ret, _, _ := procMessageBoxW.Call(
 			0,
 			uintptr(unsafe.Pointer(messagePtr)),
 			uintptr(unsafe.Pointer(titlePtr)),
-			flags|MB_SETFOREGROUND,
+			flags|mbSetForeground,
 		)
 		if callback != nil {
 			callback(ret)
@@ -54,15 +59,15 @@ func show(title, message string, flags uintptr, callback func(ret uintptr)) {
 	}()
 }
 
-func ShowNotification(title, message string) {
-	show(title, message, MB_OK|MB_ICONINFORMATION, nil)
+func showNotification(title, message string) {
+	show(title, message, mbIconInformation, nil)
 }
 
-func ShowNotificationWithAction(title, message string, callback func(disable bool)) {
+func showNotificationWithAction(title, message string, callback func(disable bool)) {
 	fullMessage := message + "\n\n[OK] Disable this reminder\n[Cancel] Just close"
-	show(title, fullMessage, MB_OKCANCEL|MB_ICONWARNING, func(ret uintptr) {
+	show(title, fullMessage, mbOKCancel|mbIconWarning, func(ret uintptr) {
 		if callback != nil {
-			callback(ret == IDOK)
+			callback(ret == idOK)
 		}
 	})
 }

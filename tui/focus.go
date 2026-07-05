@@ -99,7 +99,7 @@ func (m *Model) renderFocus(width, height int) string {
 	for i, b := range buttons {
 		label := "[ " + b + " ]"
 		btnW := lipgloss.Width(label)
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{
 			X1: btnStartX, Y1: btnRowY, X2: btnStartX + btnW, Y2: btnRowY + 1,
 			ID: fmt.Sprintf("focus-btn-%d", i), Kind: "button",
 		})
@@ -132,9 +132,9 @@ func (m *Model) renderFocus(width, height int) string {
 		"",
 		buttonsLine,
 		"",
-		fmt.Sprintf("Duration: [ %02d ] min      Break: [ 05 ] min", m.focusDuration),
+		fmt.Sprintf("Duration: [ %02d ] min      Break: [ %02d ] min", m.focusDuration, system.GetBreakReminderMinutes()),
 	)
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{
 		X1: 1, Y1: 5, X2: width - 1, Y2: height - 1,
 		ID: "panel-0", Kind: "panel",
 	})

@@ -2,39 +2,30 @@ package cli
 
 import (
 	"fmt"
-	"focusd/storage"
 	"focusd/system"
 	"focusd/ui"
 	"os"
 )
 
-func RunAutostartEnable() {
-	if err := storage.Init(); err != nil {
-		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
+func runAutostartEnable() {
+	if err := system.EnableAutoStart(); err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to enable auto-start: %v", err))
 		os.Exit(1)
 	}
-	defer storage.Close()
-
-	if err := EnableAutostartLogic(); err != nil {
-		ui.PrintError(err.Error())
-		os.Exit(1)
-	}
+	ui.PrintOK("Auto-start enabled.")
+	fmt.Println("focusd will start automatically on Windows boot.")
+	fmt.Println("Visible in Task Manager → Startup tab.")
 }
 
-func RunAutostartDisable() {
-	if err := storage.Init(); err != nil {
-		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
+func runAutostartDisable() {
+	if err := system.DisableAutoStart(); err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to disable auto-start: %v", err))
 		os.Exit(1)
 	}
-	defer storage.Close()
-
-	if err := DisableAutostartLogic(); err != nil {
-		ui.PrintError(err.Error())
-		os.Exit(1)
-	}
+	ui.PrintOK("Auto-start disabled.")
 }
 
-func RunAutostartStatus() {
+func runAutostartStatus() {
 	enabled, path, err := system.GetAutoStartEnabled()
 	if err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to check auto-start status: %v", err))

@@ -2,13 +2,17 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
-const DefaultPomodoroMinutes = 25
+var pomodoroMu sync.Mutex
+
+const defaultPomodoroMinutes = 25
 
 type PomodoroState struct {
 	Active    bool      `json:"active"`
@@ -26,7 +30,7 @@ func getPomodoroPath() string {
 }
 
 func loadPomodoroStateFresh() *PomodoroState {
-	state := &PomodoroState{Duration: DefaultPomodoroMinutes}
+	state := &PomodoroState{Duration: defaultPomodoroMinutes}
 	path := getPomodoroPath()
 	if path == "" {
 		return state
@@ -65,8 +69,16 @@ func savePomodoroState(state *PomodoroState) error {
 }
 
 func StartPomodoro(minutes int) error {
+	pomodoroMu.Lock()
+	defer pomodoroMu.Unlock()
+
+	existing := loadPomodoroStateFresh()
+	if existing.Active {
+		return fmt.Errorf("pomodoro already active")
+	}
+
 	if minutes <= 0 {
-		minutes = DefaultPomodoroMinutes
+		minutes = defaultPomodoroMinutes
 	}
 
 	state := &PomodoroState{
@@ -80,16 +92,20 @@ func StartPomodoro(minutes int) error {
 }
 
 func StopPomodoro() error {
+	pomodoroMu.Lock()
+	defer pomodoroMu.Unlock()
 	state := &PomodoroState{
 		Active:    false,
 		StartTime: time.Time{},
-		Duration:  DefaultPomodoroMinutes,
+		Duration:  defaultPomodoroMinutes,
 		Notified:  false,
 	}
 	return savePomodoroState(state)
 }
 
 func GetPomodoroStatus() (active bool, remaining time.Duration, total int) {
+	pomodoroMu.Lock()
+	defer pomodoroMu.Unlock()
 	state := loadPomodoroStateFresh()
 	if !state.Active {
 		return false, 0, 0
@@ -106,13 +122,12 @@ func GetPomodoroStatus() (active bool, remaining time.Duration, total int) {
 	return true, remaining, state.Duration
 }
 
-func CheckPomodoroAndNotify() {
-	state := loadPomodoroStateFresh()
-	if !state.Active {
-		return
-	}
+func checkPomodoroAndNotify() {
+	pomodoroMu.Lock()
+	defer pomodoroMu.Unlock()
 
-	if state.Notified {
+	state := loadPomodoroStateFresh()
+	if !state.Active || state.Notified {
 		return
 	}
 
@@ -120,7 +135,7 @@ func CheckPomodoroAndNotify() {
 	totalDuration := time.Duration(state.Duration) * time.Minute
 
 	if elapsed >= totalDuration {
-		ShowNotification("Pomodoro Complete!", "Great work! Take a break.")
+		showNotification("Pomodoro Complete!", "Great work! Take a break.")
 		state.Notified = true
 		state.Active = false
 		if err := savePomodoroState(state); err != nil {

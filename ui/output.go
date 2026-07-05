@@ -3,45 +3,47 @@ package ui
 import (
 	"fmt"
 	"strings"
+
+	"github.com/mattn/go-runewidth"
 )
 
 const (
 	Reset = "\033[0m"
-	Bold  = "\033[1m"
+	bold  = "\033[1m"
 	Dim   = "\033[2m"
 
-	Red    = "\033[31m"
+	red    = "\033[31m"
 	Green  = "\033[32m"
-	Yellow = "\033[33m"
-	Blue   = "\033[34m"
+	yellow = "\033[33m"
+	blue   = "\033[34m"
 	Cyan   = "\033[36m"
-	White  = "\033[37m"
-	Gray   = "\033[90m"
+	white  = "\033[37m"
+	gray   = "\033[90m"
 )
 
 const (
-	BoxHorizontal   = "─"
-	BoxVertical     = "│"
-	BoxTopLeft      = "┌"
-	BoxTopRight     = "┐"
-	BoxBottomLeft   = "└"
-	BoxBottomRight  = "┘"
-	BoxMiddleLeft   = "├"
-	BoxMiddleRight  = "┤"
-	BoxCross        = "┼"
-	BoxTopMiddle    = "┬"
-	BoxBottomMiddle = "┴"
+	boxHorizontal   = "─"
+	boxVertical     = "│"
+	boxTopLeft      = "┌"
+	boxTopRight     = "┐"
+	boxBottomLeft   = "└"
+	boxBottomRight  = "┘"
+	boxMiddleLeft   = "├"
+	boxMiddleRight  = "┤"
+	boxCross        = "┼"
+	boxTopMiddle    = "┬"
+	boxBottomMiddle = "┴"
 
-	Arrow     = "❯❯❯"
-	CheckMark = "✓"
-	CrossMark = "✗"
-	Circle    = "○"
+	arrow     = "❯❯❯"
+	checkMark = "✓"
+	crossMark = "✗"
+	circle    = "○"
 )
 
 func PrintHeader() {
 	fmt.Println()
-	fmt.Printf("   %s%s%s focusd %s\n", Yellow, Arrow, Reset, Dim+"Local Focus Daemon"+Reset)
-	fmt.Printf("   %s%s%s\n", Gray, strings.Repeat("─", 50), Reset)
+	fmt.Printf("   %s%s%s focusd %s\n", yellow, arrow, Reset, Dim+"Local Focus Daemon"+Reset)
+	fmt.Printf("   %s%s%s\n", gray, strings.Repeat("─", 50), Reset)
 	fmt.Println()
 }
 
@@ -52,34 +54,34 @@ func PrintSectionHeader(title string) {
 		repeatLen = 0
 	}
 	fmt.Printf("   %s%s%s %s %s%s%s\n",
-		Yellow, Arrow, Reset,
-		Bold+title+Reset,
-		Gray, strings.Repeat("─", repeatLen), Reset)
+		yellow, arrow, Reset,
+		bold+title+Reset,
+		gray, strings.Repeat("─", repeatLen), Reset)
 	fmt.Println()
 }
 
 func PrintOK(msg string) {
-	fmt.Printf("   %s%s%s %s%s%s\n", Green, CheckMark, Reset, Green, msg, Reset)
+	fmt.Printf("   %s%s%s %s%s%s\n", Green, checkMark, Reset, Green, msg, Reset)
 }
 
 func PrintInfo(msg string) {
-	fmt.Printf("   %s%s%s %s\n", Blue, Circle, Reset, msg)
+	fmt.Printf("   %s%s%s %s\n", blue, circle, Reset, msg)
 }
 
 func PrintWarn(msg string) {
-	fmt.Printf("   %s%s WARNING%s %s\n", Yellow, "⚠", Reset, msg)
+	fmt.Printf("   %s%s WARNING%s %s\n", yellow, "⚠", Reset, msg)
 }
 
 func PrintError(msg string) {
-	fmt.Printf("   %s%s%s %s%s%s\n", Red, CrossMark, Reset, Red, msg, Reset)
+	fmt.Printf("   %s%s%s %s%s%s\n", red, crossMark, Reset, red, msg, Reset)
 }
 
 func PrintStatus(label, value string, active bool) {
-	color := Gray
+	c := gray
 	if active {
-		color = Green
+		c = Green
 	}
-	fmt.Printf("   %s%-15s%s %s%s%s\n", Dim, label, Reset, color, value, Reset)
+	fmt.Printf("   %s%-15s%s %s%s%s\n", Dim, label, Reset, c, value, Reset)
 }
 
 func FormatDuration(seconds int) string {
@@ -114,49 +116,49 @@ type TableColumn struct {
 }
 
 func PrintTable(columns []TableColumn, rows [][]string) {
-	printTableLine(columns, BoxTopLeft, BoxTopMiddle, BoxTopRight)
+	printTableLine(columns, boxTopLeft, boxTopMiddle, boxTopRight)
 	printTableHeader(columns)
-	printTableLine(columns, BoxMiddleLeft, BoxCross, BoxMiddleRight)
+	printTableLine(columns, boxMiddleLeft, boxCross, boxMiddleRight)
 
 	for i, row := range rows {
 		printTableRowStyled(columns, row, i == 0)
 	}
 
-	printTableLine(columns, BoxBottomLeft, BoxBottomMiddle, BoxBottomRight)
+	printTableLine(columns, boxBottomLeft, boxBottomMiddle, boxBottomRight)
 }
 
 func printTableHeader(columns []TableColumn) {
-	fmt.Print(Gray + BoxVertical + Reset)
+	fmt.Print(gray + boxVertical + Reset)
 	for _, col := range columns {
-		fmt.Printf(" %s%s%-*s%s %s%s%s", Bold, Yellow, col.Width, col.Header, Reset, Gray, BoxVertical, Reset)
+		fmt.Printf(" %s%s%-*s%s %s%s%s", bold, yellow, col.Width, col.Header, Reset, gray, boxVertical, Reset)
 	}
 	fmt.Println()
 }
 
 func printTableRowStyled(columns []TableColumn, values []string, first bool) {
-	fmt.Print(Gray + BoxVertical + Reset)
+	fmt.Print(gray + boxVertical + Reset)
 	for i, col := range columns {
 		val := ""
 		if i < len(values) {
 			val = values[i]
 		}
 		val = TruncateString(val, col.Width)
-		color := White
+		c := white
 		if first && i == 0 {
-			color = Green
+			c = Green
 		}
 		if i > 0 {
-			color = Cyan
+			c = Cyan
 		}
-		fmt.Printf(" %s%-*s%s %s%s%s", color, col.Width, val, Reset, Gray, BoxVertical, Reset)
+		fmt.Printf(" %s%-*s%s %s%s%s", c, col.Width, val, Reset, gray, boxVertical, Reset)
 	}
 	fmt.Println()
 }
 
 func printTableLine(columns []TableColumn, left, middle, right string) {
-	fmt.Print(Gray + left)
+	fmt.Print(gray + left)
 	for i, col := range columns {
-		fmt.Print(strings.Repeat(BoxHorizontal, col.Width+2))
+		fmt.Print(strings.Repeat(boxHorizontal, col.Width+2))
 		if i < len(columns)-1 {
 			fmt.Print(middle)
 		}
@@ -165,12 +167,5 @@ func printTableLine(columns []TableColumn, left, middle, right string) {
 }
 
 func TruncateString(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	if maxLen <= 3 {
-		return string(runes[:maxLen])
-	}
-	return string(runes[:maxLen-3]) + "..."
+	return runewidth.Truncate(s, maxLen, "...")
 }

@@ -1,16 +1,18 @@
 package storage
 
 import (
+	"log"
 	"time"
 )
 
-func EnforceRetention() error {
+func EnforceRetention() {
 	days := GetRetentionDays()
 	cutoff := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
 
 	tx, err := db.Begin()
 	if err != nil {
-		return err
+		log.Printf("WARN: EnforceRetention begin tx: %v", err)
+		return
 	}
 	defer tx.Rollback()
 
@@ -21,16 +23,19 @@ func EnforceRetention() error {
 	}
 	for _, q := range queries {
 		if _, err := tx.Exec(q, cutoff); err != nil {
-			return err
+			log.Printf("WARN: EnforceRetention exec: %v", err)
+			return
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return err
+		log.Printf("WARN: EnforceRetention commit: %v", err)
+		return
 	}
 
-	_, err = db.Exec("PRAGMA incremental_vacuum")
-	return err
+	if _, err := db.Exec("PRAGMA incremental_vacuum"); err != nil {
+		log.Printf("WARN: incremental_vacuum failed: %v", err)
+	}
 }
 
 func ClearAllTrackingData() error {

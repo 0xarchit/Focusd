@@ -7,11 +7,9 @@ import (
 )
 
 const (
-	ConfigKeyRetentionDays    = "retention_days"
-	ConfigKeyAutostart        = "autostart_enabled"
-	ConfigKeyPathEnabled      = "path_enabled"
-	ConfigKeyPaused           = "tracking_paused"
-	ConfigKeyTrackingInterval = "tracking_interval_seconds"
+	configKeyRetentionDays    = "retention_days"
+	configKeyPaused           = "tracking_paused"
+	configKeyTrackingInterval = "tracking_interval_seconds"
 
 	DefaultRetentionDays = 7
 	MaxRetentionDays     = 30
@@ -22,7 +20,7 @@ const (
 	MaxTrackingIntervalSeconds     = 60
 )
 
-func GetConfig(key string) (string, error) {
+func getConfig(key string) (string, error) {
 	if db == nil {
 		return "", fmt.Errorf("database not initialized")
 	}
@@ -34,7 +32,7 @@ func GetConfig(key string) (string, error) {
 	return value, nil
 }
 
-func SetConfig(key, value string) error {
+func setConfig(key, value string) error {
 	if db == nil {
 		return fmt.Errorf("database not initialized")
 	}
@@ -46,7 +44,7 @@ func SetConfig(key, value string) error {
 }
 
 func GetRetentionDays() int {
-	value, err := GetConfig(ConfigKeyRetentionDays)
+	value, err := getConfig(configKeyRetentionDays)
 	if err != nil {
 		return DefaultRetentionDays
 	}
@@ -64,20 +62,20 @@ func SetRetentionDays(days int) error {
 	if days > MaxRetentionDays {
 		days = MaxRetentionDays
 	}
-	return SetConfig(ConfigKeyRetentionDays, strconv.Itoa(days))
+	return setConfig(configKeyRetentionDays, strconv.Itoa(days))
 }
 
 func IsPaused() bool {
-	value, err := GetConfig(ConfigKeyPaused)
+	value, err := getConfig(configKeyPaused)
 	return err == nil && value == "true"
 }
 
 func SetPaused(paused bool) error {
-	return SetConfig(ConfigKeyPaused, strconv.FormatBool(paused))
+	return setConfig(configKeyPaused, strconv.FormatBool(paused))
 }
 
 func GetTrackingIntervalSeconds() int {
-	value, err := GetConfig(ConfigKeyTrackingInterval)
+	value, err := getConfig(configKeyTrackingInterval)
 	if err != nil {
 		return DefaultTrackingIntervalSeconds
 	}

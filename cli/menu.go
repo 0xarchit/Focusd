@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-func RunInteractiveMenu() {
+func runInteractiveMenu() {
 	if err := storage.Init(); err != nil {
 		fmt.Printf("Failed to initialize: %v\n", err)
 		os.Exit(1)

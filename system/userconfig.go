@@ -48,10 +48,6 @@ func defaultUserConfig() *UserConfig {
 func loadFromDisk() {
 	configMu.Lock()
 	defer configMu.Unlock()
-	loadFromDiskLocked()
-}
-
-func loadFromDiskLocked() {
 	if userConfig != nil {
 		return
 	}
@@ -146,10 +142,9 @@ func SetBreakReminder(enabled bool, minutes int) error {
 	loadFromDisk()
 	configMu.Lock()
 	defer configMu.Unlock()
-	config := userConfig
-	config.BreakReminderEnabled = enabled
+	userConfig.BreakReminderEnabled = enabled
 	if minutes > 0 {
-		config.BreakReminderMinutes = minutes
+		userConfig.BreakReminderMinutes = minutes
 	}
 	return saveUserConfigLocked()
 }
@@ -158,41 +153,26 @@ func GetAppTimeLimits() map[string]int {
 	loadFromDisk()
 	configMu.RLock()
 	defer configMu.RUnlock()
-	config := userConfig
-	if config.AppTimeLimits == nil {
-		return nil
+	limits := make(map[string]int, len(userConfig.AppTimeLimits))
+	for k, v := range userConfig.AppTimeLimits {
+		limits[k] = v
 	}
-	cloned := make(map[string]int, len(config.AppTimeLimits))
-	for k, v := range config.AppTimeLimits {
-		cloned[k] = v
-	}
-	return cloned
+	return limits
 }
 
 func SetAppTimeLimit(exeName string, minutes int) error {
 	loadFromDisk()
 	configMu.Lock()
 	defer configMu.Unlock()
-	config := userConfig
 	exeName = strings.ToLower(strings.TrimSpace(exeName))
 	if !strings.HasSuffix(exeName, ".exe") {
 		exeName += ".exe"
 	}
 	if minutes <= 0 {
-		delete(config.AppTimeLimits, exeName)
+		delete(userConfig.AppTimeLimits, exeName)
 	} else {
-		config.AppTimeLimits[exeName] = minutes
+		userConfig.AppTimeLimits[exeName] = minutes
 	}
-	return saveUserConfigLocked()
-}
-
-func RemoveAppTimeLimit(exeName string) error {
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
-	config := userConfig
-	exeName = strings.ToLower(strings.TrimSpace(exeName))
-	delete(config.AppTimeLimits, exeName)
 	return saveUserConfigLocked()
 }
 
@@ -207,8 +187,7 @@ func SetPomodoroMinutes(minutes int) error {
 	loadFromDisk()
 	configMu.Lock()
 	defer configMu.Unlock()
-	config := userConfig
-	config.PomodoroMinutes = minutes
+	userConfig.PomodoroMinutes = minutes
 	return saveUserConfigLocked()
 }
 
@@ -223,6 +202,7 @@ var defaultBrowsers = map[string]bool{
 	"chrome.exe":    true,
 	"firefox.exe":   true,
 	"msedge.exe":    true,
+	"edge.exe":      true,
 	"brave.exe":     true,
 	"opera.exe":     true,
 	"vivaldi.exe":   true,
@@ -278,9 +258,8 @@ func AddCustomBrowser(exeName string) error {
 	loadFromDisk()
 	configMu.Lock()
 	defer configMu.Unlock()
-	config := userConfig
 
-	for _, b := range config.CustomBrowsers {
+	for _, b := range userConfig.CustomBrowsers {
 		if b == exeName {
 			return fmt.Errorf("%s is already in custom list", exeName)
 		}
@@ -290,7 +269,7 @@ func AddCustomBrowser(exeName string) error {
 		return fmt.Errorf("%s is already a default browser", exeName)
 	}
 
-	config.CustomBrowsers = append(config.CustomBrowsers, exeName)
+	userConfig.CustomBrowsers = append(userConfig.CustomBrowsers, exeName)
 	return saveUserConfigLocked()
 }
 
@@ -300,11 +279,13 @@ func RemoveCustomBrowser(exeName string) error {
 	loadFromDisk()
 	configMu.Lock()
 	defer configMu.Unlock()
-	config := userConfig
 
+	if !strings.HasSuffix(exeName, ".exe") {
+		exeName += ".exe"
+	}
 	found := false
 	var newList []string
-	for _, b := range config.CustomBrowsers {
+	for _, b := range userConfig.CustomBrowsers {
 		if b == exeName {
 			found = true
 			continue
@@ -316,6 +297,6 @@ func RemoveCustomBrowser(exeName string) error {
 		return fmt.Errorf("%s not found in custom list (cannot remove default browsers)", exeName)
 	}
 
-	config.CustomBrowsers = newList
+	userConfig.CustomBrowsers = newList
 	return saveUserConfigLocked()
 }

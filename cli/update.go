@@ -20,7 +20,7 @@ import (
 
 var httpClient = &http.Client{Timeout: 15 * time.Second}
 
-func RunUpdate() {
+func runUpdate() {
 	ui.PrintHeader()
 	fmt.Printf("Current Version: %s\n", system.Version)
 	fmt.Println("Checking for updates...")
@@ -52,7 +52,9 @@ func RunUpdate() {
 	daemonWasRunning := system.GetProcessCount(system.DaemonProcessName) >= 1
 	if daemonWasRunning {
 		ui.PrintStatus("Stopping focusd daemon...", "", false)
-		system.KillOtherInstances(system.DaemonProcessName)
+		if err := system.KillOtherInstances(system.DaemonProcessName); err != nil {
+			ui.PrintWarn(fmt.Sprintf("Could not stop daemon: %v", err))
+		}
 		time.Sleep(500 * time.Millisecond)
 	}
 
@@ -64,6 +66,7 @@ func RunUpdate() {
 				log.Printf("WARN: failed to restart daemon after update: %v", err)
 			}
 		}
+		os.Exit(1)
 	}
 
 	os.Exit(0)
@@ -128,12 +131,16 @@ func fetchChecksum(version string) (string, error) {
 }
 
 func calculateFileHash(filePath string) (string, error) {
-	data, err := os.ReadFile(filePath)
+	f, err := os.Open(filePath)
 	if err != nil {
 		return "", err
 	}
-	hash := sha256.Sum256(data)
-	return hex.EncodeToString(hash[:]), nil
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func performUpdate(version string) (err error) {
@@ -149,8 +156,8 @@ func performUpdate(version string) (err error) {
 	tmpPath := tmpFile.Name()
 
 	defer func() {
+		tmpFile.Close()
 		if err != nil {
-			tmpFile.Close()
 			os.Remove(tmpPath)
 		}
 	}()
@@ -173,17 +180,16 @@ func performUpdate(version string) (err error) {
 	ui.PrintStatus("Verifying checksum...", "", false)
 	expectedHash, err := fetchChecksum(version)
 	if err != nil {
-		ui.PrintWarn(fmt.Sprintf("Checksum verification skipped: %v", err))
-	} else {
-		actualHash, err := calculateFileHash(tmpPath)
-		if err != nil {
-			return fmt.Errorf("failed to calculate hash: %w", err)
-		}
-		if actualHash != expectedHash {
-			return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actualHash)
-		}
-		ui.PrintOK("Checksum verified")
+		return fmt.Errorf("cannot verify update integrity: %w", err)
 	}
+	actualHash, err := calculateFileHash(tmpPath)
+	if err != nil {
+		return fmt.Errorf("failed to calculate hash: %w", err)
+	}
+	if actualHash != expectedHash {
+		return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actualHash)
+	}
+	ui.PrintOK("Checksum verified")
 
 	ui.PrintStatus("Installing...", "", false)
 

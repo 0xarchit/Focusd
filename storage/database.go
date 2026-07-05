@@ -38,7 +38,10 @@ func Init() error {
 		db.Close()
 		db = nil
 	}
+	return initDB()
+}
 
+func initDB() error {
 	dataDir, err := getDataDir()
 	if err != nil {
 		return err

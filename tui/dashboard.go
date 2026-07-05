@@ -72,17 +72,17 @@ func (m *Model) renderDashboard(width, height int) string {
 	}
 
 	topY := 5
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: topY, X2: leftW, Y2: topY + topHeight, ID: "panel-0", Kind: "panel"})
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: leftW + 2, Y1: topY, X2: leftW + 2 + midW, Y2: topY + topHeight, ID: "panel-1", Kind: "panel"})
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: leftW + midW + 4, Y1: topY, X2: width - 1, Y2: topY + topHeight, ID: "panel-2", Kind: "panel"})
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: topY, X2: leftW, Y2: topY + topHeight, ID: "panel-0", Kind: "panel"})
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: leftW + 2, Y1: topY, X2: leftW + 2 + midW, Y2: topY + topHeight, ID: "panel-1", Kind: "panel"})
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: leftW + midW + 4, Y1: topY, X2: width - 1, Y2: topY + topHeight, ID: "panel-2", Kind: "panel"})
 
 	bottomY := topY + topHeight + 1
 	if width < 100 {
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY, X2: width - 1, Y2: bottomY + weeklyH, ID: "panel-3", Kind: "panel"})
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY + weeklyH + 1, X2: width - 1, Y2: bottomY + weeklyH + 1 + quickH, ID: "panel-4", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: bottomY, X2: width - 1, Y2: bottomY + weeklyH, ID: "panel-3", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: bottomY + weeklyH + 1, X2: width - 1, Y2: bottomY + weeklyH + 1 + quickH, ID: "panel-4", Kind: "panel"})
 	} else {
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY, X2: weeklyW, Y2: bottomY + bottomHeight, ID: "panel-3", Kind: "panel"})
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: weeklyW + 2, Y1: bottomY, X2: width - 1, Y2: bottomY + bottomHeight, ID: "panel-4", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: bottomY, X2: weeklyW, Y2: bottomY + bottomHeight, ID: "panel-3", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: weeklyW + 2, Y1: bottomY, X2: width - 1, Y2: bottomY + bottomHeight, ID: "panel-4", Kind: "panel"})
 	}
 
 	todayPanel := m.renderTodayPanel(leftW, topHeight)

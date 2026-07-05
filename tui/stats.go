@@ -236,7 +236,7 @@ func (m *Model) renderStats(width, height int) string {
 		contentHeight = 6
 	}
 
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{
 		X1: 1, Y1: 5, X2: inner + 1, Y2: 5 + topH,
 		ID: "panel-0", Kind: "panel",
 	})
@@ -250,11 +250,11 @@ func (m *Model) renderStats(width, height int) string {
 		rightW := inner - 2 - leftW
 		middleHeight = (contentHeight * 60) / 100
 
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{
 			X1: 1, Y1: topY, X2: leftW + 1, Y2: topY + middleHeight,
 			ID: "panel-1", Kind: "panel",
 		})
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{
 			X1: leftW + 3, Y1: topY, X2: width - 1, Y2: topY + middleHeight,
 			ID: "panel-2", Kind: "panel",
 		})
@@ -267,14 +267,14 @@ func (m *Model) renderStats(width, height int) string {
 	} else {
 		middleHeight = contentHeight - 6
 		if m.panelFocus == 0 || m.panelFocus == 1 {
-			m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+			m.clickableRegions = append(m.clickableRegions, clickableRegion{
 				X1: 1, Y1: topY, X2: inner + 1, Y2: topY + middleHeight,
 				ID: "panel-1", Kind: "panel",
 			})
 			usageRows := m.statsVisibleRows(false)
 			middleRow = panelWithHover("APPLICATION BREAKDOWN", "", inner, "\n"+m.renderUsageBreakdown(inner, usageRows)+"\n", m.panelFocus == 1, m.hoveredPanel == 1)
 		} else {
-			m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+			m.clickableRegions = append(m.clickableRegions, clickableRegion{
 				X1: 1, Y1: topY, X2: inner + 1, Y2: topY + middleHeight,
 				ID: "panel-2", Kind: "panel",
 			})
@@ -288,7 +288,7 @@ func (m *Model) renderStats(width, height int) string {
 	if historyHeight < 3 {
 		historyHeight = 3
 	}
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{
 		X1: 1, Y1: historyY, X2: inner + 1, Y2: height - 1,
 		ID: "panel-3", Kind: "panel",
 	})
@@ -315,7 +315,7 @@ func (m *Model) renderRangeSelector(width int) string {
 
 	for i, r := range ranges {
 		startX := startOffset + offsets[i]
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{
 			X1: startX, Y1: 8, X2: startX + btnWidths[i], Y2: 9,
 			ID: fmt.Sprintf("range-%d", i), Kind: "button",
 		})
@@ -502,6 +502,17 @@ func (m *Model) renderCustomRangeModal() string {
 }
 
 func (m *Model) sortedStatsApps() []appUsage {
+	var firstItems string
+	if len(m.stats.Apps) > 0 {
+		firstItems = m.stats.Apps[0].Name + fmt.Sprintf("-%d-%d", m.stats.Apps[0].Duration, m.stats.Apps[0].Opens)
+	}
+	if len(m.stats.Apps) > 1 {
+		firstItems += m.stats.Apps[1].Name + fmt.Sprintf("-%d-%d", m.stats.Apps[1].Duration, m.stats.Apps[1].Opens)
+	}
+	key := fmt.Sprintf("%d-%d-%t-%d-%s", len(m.stats.Apps), m.statsSort, m.statsAsc, m.stats.Total, firstItems)
+	if m.sortedAppsCache != nil && m.sortedAppsCacheKey == key {
+		return m.sortedAppsCache
+	}
 	apps := append([]appUsage(nil), m.stats.Apps...)
 	sort.Slice(apps, func(i, j int) bool {
 		a, b := i, j
@@ -518,5 +529,7 @@ func (m *Model) sortedStatsApps() []appUsage {
 		}
 		return false
 	})
+	m.sortedAppsCache = apps
+	m.sortedAppsCacheKey = key
 	return apps
 }

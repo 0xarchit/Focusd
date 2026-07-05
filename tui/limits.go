@@ -61,7 +61,7 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 							originalMins = val
 							hasOriginal = true
 						}
-						if err := system.RemoveAppTimeLimit(m.limitForm.OriginalApp); err != nil {
+						if err := system.SetAppTimeLimit(m.limitForm.OriginalApp, 0); err != nil {
 							m.addToast("Failed to rename limit: "+err.Error(), toastError)
 							return *m, nil
 						}
@@ -115,7 +115,7 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 		rows := m.limitRows()
 		if len(rows) > 0 {
 			appName := rows[m.limitsSelected].Name
-			if err := system.RemoveAppTimeLimit(appName); err != nil {
+			if err := system.SetAppTimeLimit(appName, 0); err != nil {
 				m.addToast("Failed to delete limit: "+err.Error(), toastError)
 				return *m, nil
 			}
@@ -201,7 +201,7 @@ func (m *Model) renderLimits(width, height int) string {
 	if m.limitForm.Visible {
 		tableY2 = 5 + height - 9
 	}
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{
 		X1: 1, Y1: 5, X2: width - 1, Y2: tableY2,
 		ID: "panel-0", Kind: "panel",
 	})
@@ -227,7 +227,7 @@ func (m *Model) renderLimits(width, height int) string {
 	}
 
 	formY := 5 + height - 8
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{
 		X1: 1, Y1: formY, X2: width - 1, Y2: height - 1,
 		ID: "panel-1", Kind: "panel",
 	})
@@ -239,7 +239,7 @@ func (m *Model) limitRows() []limitRow {
 	limits := system.GetAppTimeLimits()
 	rows := make([]limitRow, 0, len(limits))
 	for app, mins := range limits {
-		rows = append(rows, limitRow{Name: app, LimitMinutes: mins, UsedSeconds: storage.GetAppUsageTodayMinutes(app) * 60})
+		rows = append(rows, limitRow{Name: app, LimitMinutes: mins, UsedSeconds: storage.GetAppUsageTodaySeconds(app)})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
 	return rows

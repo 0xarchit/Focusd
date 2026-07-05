@@ -6,7 +6,7 @@ import (
 	"focusd/ui"
 )
 
-func RunPause() {
+func runPause() {
 	if storage.IsPaused() {
 		ui.PrintInfo("Tracking is already paused.")
 		return
@@ -21,7 +21,7 @@ func RunPause() {
 	fmt.Println("Run 'focusd resume' to resume tracking.")
 }
 
-func RunResume() {
+func runResume() {
 	if !storage.IsPaused() {
 		ui.PrintInfo("Tracking is already active.")
 		return

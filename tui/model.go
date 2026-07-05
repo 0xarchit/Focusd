@@ -5,6 +5,7 @@ import (
 	"focusd/core"
 	"focusd/storage"
 	"focusd/system"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -48,7 +49,6 @@ type tuiData struct {
 	YesterdayTotal int
 	ActiveApps     int
 	LimitsHit      int
-	DBPath         string
 }
 
 type dashboardLoadedMsg tuiData
@@ -88,7 +88,6 @@ type modal struct {
 	Message  string
 	Required string
 	Input    string
-	Danger   bool
 	Error    string
 }
 
@@ -136,10 +135,13 @@ type Model struct {
 
 	hoveredElement   string
 	hoveredPanel     int
-	clickableRegions []ClickableRegion
+	clickableRegions []clickableRegion
+
+	sortedAppsCache    []appUsage
+	sortedAppsCacheKey string
 }
 
-type ClickableRegion struct {
+type clickableRegion struct {
 	X1, Y1, X2, Y2 int
 	ID             string
 	Kind           string
@@ -235,7 +237,10 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	today := storage.Today()
 	var data tuiData
 
-	apps, _ := aggregateAppStats(startDate, endDate)
+	apps, err := aggregateAppStats(startDate, endDate)
+	if err != nil {
+		log.Printf("WARN: failed to load app stats: %v", err)
+	}
 	for _, s := range apps {
 		name := s.ExeName
 		if name == "" {
@@ -246,7 +251,10 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	}
 	data.ActiveApps = len(data.Apps)
 
-	browsers, _ := aggregateBrowserStats(startDate, endDate)
+	browsers, err := aggregateBrowserStats(startDate, endDate)
+	if err != nil {
+		log.Printf("WARN: failed to load browser stats: %v", err)
+	}
 	for _, s := range browsers {
 		data.Browsers = append(data.Browsers, appUsage{Name: s.AppName, Duration: s.TotalDurationSecs, Opens: s.OpenCount})
 	}
@@ -308,22 +316,16 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 		}
 	}
 
-	if dbPath, err := storage.GetDBPath(); err == nil {
-		data.DBPath = dbPath
-	}
 	return data
 }
 
 func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error) {
-	stats, err := storage.GetAllAppStats()
+	stats, err := storage.GetAppStatsInRange(startDate, endDate)
 	if err != nil {
 		return nil, err
 	}
 	combined := map[string]storage.AppDailyStat{}
 	for _, s := range stats {
-		if s.Date < startDate || s.Date > endDate {
-			continue
-		}
 		key := s.ExeName
 		if key == "" {
 			key = s.AppName
@@ -348,15 +350,12 @@ func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error
 }
 
 func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, error) {
-	stats, err := storage.GetAllBrowserStats()
+	stats, err := storage.GetBrowserStatsInRange(startDate, endDate)
 	if err != nil {
 		return nil, err
 	}
 	combined := map[string]storage.AppDailyStat{}
 	for _, s := range stats {
-		if s.Date < startDate || s.Date > endDate {
-			continue
-		}
 		key := s.AppName
 		item := combined[key]
 		if item.AppName == "" {
@@ -405,6 +404,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshing = false
 	case statsLoadedMsg:
 		m.stats = tuiData(msg)
+		m.sortedAppsCache = nil
 		m.statsSelected = min(m.statsSelected, max(0, len(m.stats.Apps)-1))
 		m.browserSelected = min(m.browserSelected, max(0, len(m.stats.Browsers)-1))
 		m.statsUsageOffset = min(m.statsUsageOffset, max(0, len(m.stats.Apps)-1))
@@ -471,8 +471,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.panelFocus = (m.panelFocus + m.panelCount() - 1) % m.panelCount()
 		return m, nil
 	case "r":
-		m.refreshing = true
-		return m, flushCmd()
+		// 'r' is reserved for resetting the pomodoro timer on the Focus tab,
+		// so we only trigger a database flush/refresh on other tabs.
+		if m.activeTab != tabFocus {
+			m.refreshing = true
+			return m, flushCmd()
+		}
 	}
 
 	switch m.activeTab {
@@ -512,6 +516,7 @@ func (m Model) handleModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 					m.addToast("Tracking data wiped", toastSuccess)
 					m.dashboard = tuiData{}
 					m.stats = tuiData{}
+					m.sortedAppsCache = nil
 					m.dashSelected = 0
 					m.limitsSelected = 0
 					m.statsSelected = 0
@@ -696,7 +701,7 @@ func (m *Model) renderTabs() string {
 	startX := leftMargin + 2
 	for i := range tabNames {
 		w := tabWidths[i]
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{
 			X1:   startX,
 			Y1:   2,
 			X2:   startX + w,
@@ -727,7 +732,7 @@ func (m *Model) renderFooter() string {
 		case tabStats:
 			pairs = append([]string{"←→ Range", "Enter Edit Custom Range", "s Sort", "r Refresh"}, pairs...)
 		case tabFocus:
-			pairs = append([]string{"s Start", "p Pause", "x Stop", "r Reset"}, pairs...)
+			pairs = append([]string{"s Start", "x Stop", "r Reset"}, pairs...)
 		case tabLimits:
 			pairs = append([]string{"n New", "e Edit", "d Delete", "Enter Save"}, pairs...)
 		case tabSettings:
@@ -900,7 +905,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
 	m.hoveredElement = ""
 	m.hoveredPanel = -1
 
-	var hoveredRegion *ClickableRegion
+	var hoveredRegion *clickableRegion
 	for _, region := range m.clickableRegions {
 		if msg.X >= region.X1 && msg.X < region.X2 && msg.Y >= region.Y1 && msg.Y < region.Y2 {
 			hoveredRegion = &region

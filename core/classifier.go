@@ -27,7 +27,7 @@ func stripNotificationCount(title string) string {
 	return strings.TrimSpace(notificationRegex.ReplaceAllString(title, ""))
 }
 
-func CleanWindowTitle(rawTitle, exeName string) string {
+func cleanWindowTitle(rawTitle, exeName string) string {
 	if rawTitle == "" {
 		return "Unknown Tab"
 	}

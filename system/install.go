@@ -10,7 +10,7 @@ import (
 
 const DaemonProcessName = "focusd_daemon.exe"
 
-func GetInstallDir() string {
+func getInstallDir() string {
 	appData := os.Getenv("APPDATA")
 	if appData == "" {
 		return ""
@@ -18,30 +18,22 @@ func GetInstallDir() string {
 	return filepath.Join(appData, "focusd")
 }
 
-func GetInstalledExePath() string {
-	installDir := GetInstallDir()
-	if installDir == "" {
-		return ""
-	}
-	return filepath.Join(installDir, "focusd.exe")
-}
-
-func GetInstalledDaemonPath() string {
-	installDir := GetInstallDir()
+func getInstalledDaemonPath() string {
+	installDir := getInstallDir()
 	if installDir == "" {
 		return ""
 	}
 	return filepath.Join(installDir, "focusd_daemon.exe")
 }
 
-func InstallExes() error {
+func installExes() error {
 	src, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get current executable: %w", err)
 	}
 	src, _ = filepath.Abs(src)
 
-	installDir := GetInstallDir()
+	installDir := getInstallDir()
 	if installDir == "" {
 		return fmt.Errorf("APPDATA environment variable not set")
 	}
@@ -90,8 +82,14 @@ func installFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
 
 	_, err = io.Copy(dstFile, srcFile)
-	return err
+	if closeErr := dstFile.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		os.Remove(dst)
+		return err
+	}
+	return nil
 }

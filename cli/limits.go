@@ -7,7 +7,7 @@ import (
 	"strconv"
 )
 
-func RunLimits(args []string) {
+func runLimits(args []string) {
 	if len(args) < 3 {
 		showLimits()
 		return

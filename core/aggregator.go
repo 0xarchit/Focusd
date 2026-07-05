@@ -12,7 +12,7 @@ type DailySummary struct {
 	AppCount     int
 	TopApps      []storage.AppDailyStat
 	TopSites     []storage.AppDailyStat
-	GroupedSites []GroupedBrowserStat
+	GroupedSites []groupedBrowserStat
 }
 
 func GetDailySummary(date string) (*DailySummary, error) {
@@ -53,7 +53,7 @@ func GetDailySummary(date string) (*DailySummary, error) {
 		summary.TopSites = sites
 	}
 
-	summary.GroupedSites = GroupBrowserStats(sites)
+	summary.GroupedSites = groupBrowserStats(sites)
 
 	return summary, nil
 }

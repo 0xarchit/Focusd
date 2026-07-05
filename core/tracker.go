@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"focusd/storage"
@@ -15,10 +16,10 @@ import (
 	"time"
 )
 
-const IPCAddress = "127.0.0.1:48321"
+const ipcAddress = "127.0.0.1:48321"
 
 func SendIPCCmd(cmd string) bool {
-	conn, err := net.DialTimeout("tcp", IPCAddress, 1*time.Second)
+	conn, err := net.DialTimeout("tcp", ipcAddress, 1*time.Second)
 	if err != nil {
 		return false
 	}
@@ -28,17 +29,16 @@ func SendIPCCmd(cmd string) bool {
 		return false
 	}
 
-	_, err = conn.Write([]byte(cmd))
+	_, err = conn.Write([]byte(cmd + "\n"))
 	if err != nil {
 		return false
 	}
 
-	buf := make([]byte, 16)
-	n, err := conn.Read(buf)
-	return err == nil && string(buf[:n]) == "ok"
+	response, err := bufio.NewReader(conn).ReadString('\n')
+	return err == nil && strings.TrimSpace(response) == "ok"
 }
 
-type ActiveSession struct {
+type activeSession struct {
 	AppName     string
 	ExeName     string
 	WindowTitle string
@@ -48,7 +48,7 @@ type ActiveSession struct {
 
 type Tracker struct {
 	mu              sync.Mutex
-	currentSession  *ActiveSession
+	currentSession  *activeSession
 	pollInterval    time.Duration
 	pendingSessions []*storage.Session
 	ctx             context.Context
@@ -79,7 +79,7 @@ func (t *Tracker) Start() {
 
 	t.recoverOrphanedSession()
 
-	go t.startIPCOnport()
+	go t.startIPCOnPort()
 
 	pollTicker := time.NewTicker(t.pollInterval)
 	persistTicker := time.NewTicker(5 * time.Minute)
@@ -108,20 +108,25 @@ func (t *Tracker) Start() {
 			return
 		case <-pollTicker.C:
 			if storage.IsPaused() {
+				t.flushCurrentSession()
+				stateMu.Lock()
 				continuousUseStart = time.Time{}
+				stateMu.Unlock()
 				continue
 			}
 			t.poll()
+			stateMu.Lock()
 			if continuousUseStart.IsZero() {
 				continuousUseStart = time.Now()
 			}
+			stateMu.Unlock()
 		case <-persistTicker.C:
 			t.flushPendingSessions()
 			t.persistActiveSession()
 		case <-retentionTicker.C:
 			storage.EnforceRetention()
 		case <-focusTicker.C:
-			CheckPomodoroAndNotify()
+			checkPomodoroAndNotify()
 
 			today := storage.Today()
 			now := time.Now()
@@ -129,12 +134,17 @@ func (t *Tracker) Start() {
 
 			stateMu.Lock()
 			breakSnoozed := !breakSnoozedUntil.IsZero() && now.Before(breakSnoozedUntil)
+			continuousUseActive := !continuousUseStart.IsZero()
+			var elapsed time.Duration
+			if continuousUseActive {
+				elapsed = time.Since(continuousUseStart)
+			}
 			stateMu.Unlock()
 
-			if system.GetBreakReminderEnabled() && !breakSnoozed && !continuousUseStart.IsZero() {
+			if system.GetBreakReminderEnabled() && !breakSnoozed && continuousUseActive {
 				mins := system.GetBreakReminderMinutes()
-				if time.Since(continuousUseStart) >= time.Duration(mins)*time.Minute {
-					ShowNotificationWithAction("Break Reminder",
+				if elapsed >= time.Duration(mins)*time.Minute {
+					showNotificationWithAction("Break Reminder",
 						fmt.Sprintf("You've been working for %d min. Take a break!", mins),
 						func(disable bool) {
 							stateMu.Lock()
@@ -176,7 +186,7 @@ func (t *Tracker) Start() {
 						todayUsage := storage.GetAppUsageTodayMinutes(sessionExe)
 						if todayUsage >= limit {
 							exeCopy := sessionExe
-							ShowNotificationWithAction("App Time Limit",
+							showNotificationWithAction("App Time Limit",
 								sessionAppName+" has exceeded daily limit!",
 								func(disable bool) {
 									if disable {
@@ -208,10 +218,12 @@ func (t *Tracker) recoverOrphanedSession() {
 	}
 	if err := storage.InsertSession(recovered); err != nil {
 		log.Printf("ERROR: failed to recover orphaned session (insert): %v", err)
+		return
 	}
 	if err := storage.UpdateAppDaily(recovered.Date, recovered.AppName, recovered.ExeName, recovered.DurationSecs); err != nil {
 		log.Printf("ERROR: failed to recover orphaned session (daily): %v", err)
 	}
+	storage.ClearActiveSession()
 }
 
 func (t *Tracker) persistActiveSession() {
@@ -258,7 +270,7 @@ func (t *Tracker) poll() {
 		t.closeCurrentSession()
 	}
 
-	t.currentSession = &ActiveSession{
+	t.currentSession = &activeSession{
 		AppName:     appName,
 		ExeName:     info.ExeName,
 		WindowTitle: info.Title,
@@ -305,20 +317,21 @@ func (t *Tracker) flushPendingSessions() {
 	t.pendingSessions = nil
 	t.mu.Unlock()
 
+	var failed []*storage.Session
 	for _, s := range sessions {
-		if err := storage.InsertSession(s); err != nil {
-			log.Printf("ERROR: failed to insert session: %v", err)
-		}
-		if err := storage.UpdateAppDaily(s.Date, s.AppName, s.ExeName, s.DurationSecs); err != nil {
-			log.Printf("ERROR: failed to update app daily stats: %v", err)
-		}
-
+		cleanBrowserTitle := ""
 		if system.IsBrowser(s.ExeName) {
-			cleanTitle := CleanWindowTitle(s.WindowTitle, s.ExeName)
-			if err := storage.UpdateBrowserDaily(s.Date, cleanTitle, s.DurationSecs); err != nil {
-				log.Printf("ERROR: failed to update browser daily stats: %v", err)
-			}
+			cleanBrowserTitle = cleanWindowTitle(s.WindowTitle, s.ExeName)
 		}
+		if err := storage.InsertSessionWithDaily(s, cleanBrowserTitle); err != nil {
+			log.Printf("ERROR: failed to insert session with daily: %v", err)
+			failed = append(failed, s)
+		}
+	}
+	if len(failed) > 0 {
+		t.mu.Lock()
+		t.pendingSessions = append(failed, t.pendingSessions...)
+		t.mu.Unlock()
 	}
 }
 
@@ -365,13 +378,13 @@ func getAppName(exeName string) string {
 		return first
 	}
 
-	return name
+	return exeName
 }
 
-func (t *Tracker) startIPCOnport() {
-	listener, err := net.Listen("tcp", IPCAddress)
+func (t *Tracker) startIPCOnPort() {
+	listener, err := net.Listen("tcp", ipcAddress)
 	if err != nil {
-		log.Printf("ERROR: IPC listener failed to bind on %s: %v", IPCAddress, err)
+		log.Printf("ERROR: IPC listener failed to bind on %s: %v", ipcAddress, err)
 		return
 	}
 	defer listener.Close()
@@ -397,24 +410,34 @@ func (t *Tracker) startIPCOnport() {
 
 func (t *Tracker) handleIPCConnection(conn net.Conn) {
 	defer conn.Close()
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	buf := make([]byte, 1024)
-	n, err := conn.Read(buf)
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		log.Printf("WARN: IPC set deadline failed: %v", err)
+		return
+	}
+	reader := bufio.NewReader(conn)
+	cmd, err := reader.ReadString('\n')
 	if err != nil {
 		log.Printf("WARN: IPC connection read failed: %v", err)
 		return
 	}
 
-	cmd := string(buf[:n])
+	cmd = strings.TrimSpace(cmd)
 	switch cmd {
 	case "stop":
-		conn.Write([]byte("ok"))
+		t.flushCurrentSession()
+		t.flushPendingSessions()
+		t.persistActiveSession()
+		if _, err := conn.Write([]byte("ok\n")); err != nil {
+			log.Printf("WARN: IPC write failed: %v", err)
+		}
 		t.Stop()
 	case "flush":
 		t.flushCurrentSession()
 		t.flushPendingSessions()
 		t.persistActiveSession()
-		conn.Write([]byte("ok"))
+		if _, err := conn.Write([]byte("ok\n")); err != nil {
+			log.Printf("WARN: IPC write failed: %v", err)
+		}
 	default:
 		log.Printf("WARN: Unknown IPC command received: %q", cmd)
 	}

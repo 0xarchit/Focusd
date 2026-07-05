@@ -131,7 +131,7 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			}
 		case 8:
 			m.modal = modal{
-				Active: true, Title: "WIPE DATA", Required: "DELETE", Danger: true,
+				Active: true, Title: "WIPE DATA", Required: "DELETE",
 				Message: "This will delete all tracking data and cannot be undone.",
 			}
 		}
@@ -152,11 +152,8 @@ func (m *Model) renderSettings(width, height int) string {
 	auto, _, _ := system.GetAutoStartEnabled()
 	paused := storage.IsPaused()
 	focusAlerts := system.GetBreakReminderEnabled()
-	browsers := append([]string{"chrome.exe", "firefox.exe", "edge.exe"}, system.GetCustomBrowsersList()...)
-	dbPath := m.dashboard.DBPath
-	if dbPath == "" {
-		dbPath, _ = storage.GetDBPath()
-	}
+	browsers := append([]string{"chrome.exe", "firefox.exe", "msedge.exe"}, system.GetCustomBrowsersList()...)
+	dbPath, _ := storage.GetDBPath()
 	inner := max(20, width-6)
 	browserValue := truncate(strings.Join(browsers, "   "), max(12, inner-42)) + "   " + buttonText("+ Add Browser")
 	if m.settingsAddingBrowser {
@@ -220,7 +217,7 @@ func (m *Model) renderSettings(width, height int) string {
 		bodyLines = window
 	}
 
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{
 		X1: 1, Y1: 5, X2: width - 1, Y2: height - 1,
 		ID: "panel-0", Kind: "panel",
 	})
@@ -261,9 +258,11 @@ func buttonText(label string) string {
 }
 
 func openDBFolder() {
-	if dbPath, err := storage.GetDBPath(); err == nil {
-		exec.Command("explorer.exe", filepath.Dir(dbPath)).Start()
+	dbPath, err := storage.GetDBPath()
+	if err != nil {
+		return
 	}
+	exec.Command("explorer.exe", filepath.Dir(dbPath)).Start()
 }
 
 func launchGitHubUpdate() error {
@@ -276,10 +275,11 @@ func launchGitHubUpdate() error {
 }
 
 func exportData(jsonOut bool) (string, error) {
-	exportDir := "."
-	if userProfile := os.Getenv("USERPROFILE"); userProfile != "" {
-		exportDir = filepath.Join(userProfile, "Desktop")
+	userProfile := os.Getenv("USERPROFILE")
+	if userProfile == "" {
+		return "", fmt.Errorf("USERPROFILE not set")
 	}
+	exportDir := filepath.Join(userProfile, "Desktop")
 	if jsonOut {
 		path := filepath.Join(exportDir, "focusd_export.json")
 		apps, err := storage.GetAllAppStats()

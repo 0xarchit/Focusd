@@ -64,7 +64,7 @@ func TestCloseCurrentSession(t *testing.T) {
 		t.Errorf("expected 0 pending sessions, got %d", len(tracker.pendingSessions))
 	}
 
-	tracker.currentSession = &ActiveSession{
+	tracker.currentSession = &activeSession{
 		AppName:   "TestApp",
 		ExeName:   "test.exe",
 		StartTime: time.Now(),
@@ -78,7 +78,7 @@ func TestCloseCurrentSession(t *testing.T) {
 		t.Error("expected currentSession to be nil after close")
 	}
 
-	tracker.currentSession = &ActiveSession{
+	tracker.currentSession = &activeSession{
 		AppName:   "TestApp",
 		ExeName:   "test.exe",
 		StartTime: time.Now().Add(-2 * time.Second),
