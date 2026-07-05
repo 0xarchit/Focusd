@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	TH32CS_SNAPPROCESS = 0x00000002
-	MAX_PATH           = 260
-	PROCESS_TERMINATE  = 0x0001
+	th32cs_snapprocess = 0x00000002
+	maxPath            = 260
+	processTerminate   = 0x0001
 )
 
-type PROCESSENTRY32W struct {
+type processentry32w struct {
 	Size              uint32
 	CntUsage          uint32
 	ProcessID         uint32
@@ -24,7 +24,7 @@ type PROCESSENTRY32W struct {
 	ParentProcessID   uint32
 	PriorityClassBase int32
 	Flags             uint32
-	ExeFile           [MAX_PATH]uint16
+	ExeFile           [maxPath]uint16
 }
 
 var (
@@ -35,21 +35,21 @@ var (
 )
 
 func getProcessSnapshot() (syscall.Handle, error) {
-	ret, _, err := procCreateToolhelp32.Call(uintptr(TH32CS_SNAPPROCESS), 0)
+	ret, _, err := procCreateToolhelp32.Call(uintptr(th32cs_snapprocess), 0)
 	if ret == uintptr(syscall.InvalidHandle) {
 		return syscall.InvalidHandle, err
 	}
 	return syscall.Handle(ret), nil
 }
 
-func iterateProcesses(callback func(pe *PROCESSENTRY32W) bool) error {
+func iterateProcesses(callback func(pe *processentry32w) bool) error {
 	snapshot, err := getProcessSnapshot()
 	if err != nil {
 		return err
 	}
 	defer procCloseHandle.Call(uintptr(snapshot))
 
-	var pe PROCESSENTRY32W
+	var pe processentry32w
 	pe.Size = uint32(unsafe.Sizeof(pe))
 
 	ret, _, _ := procProcess32FirstW.Call(uintptr(snapshot), uintptr(unsafe.Pointer(&pe)))
@@ -69,13 +69,13 @@ func iterateProcesses(callback func(pe *PROCESSENTRY32W) bool) error {
 	return nil
 }
 
-func processName(pe *PROCESSENTRY32W) string {
+func processName(pe *processentry32w) string {
 	return syscall.UTF16ToString(pe.ExeFile[:])
 }
 
 func GetProcessCount(name string) int {
 	count := 0
-	iterateProcesses(func(pe *PROCESSENTRY32W) bool {
+	iterateProcesses(func(pe *processentry32w) bool {
 		if strings.EqualFold(processName(pe), name) {
 			count++
 		}
@@ -85,7 +85,7 @@ func GetProcessCount(name string) int {
 }
 
 func terminateProcessByPID(pid uint32) error {
-	handle, _, _ := procOpenProcess.Call(uintptr(PROCESS_TERMINATE), 0, uintptr(pid))
+	handle, _, _ := procOpenProcess.Call(uintptr(processTerminate), 0, uintptr(pid))
 	if handle == 0 {
 		return fmt.Errorf("failed to open process %d", pid)
 	}
@@ -100,7 +100,7 @@ func terminateProcessByPID(pid uint32) error {
 
 func KillProcess(name string) error {
 	var lastErr error
-	iterateProcesses(func(pe *PROCESSENTRY32W) bool {
+	iterateProcesses(func(pe *processentry32w) bool {
 		if strings.EqualFold(processName(pe), name) {
 			if err := terminateProcessByPID(pe.ProcessID); err != nil {
 				lastErr = err
@@ -114,7 +114,7 @@ func KillProcess(name string) error {
 func KillOtherInstances(name string) error {
 	myPID := uint32(os.Getpid())
 	var lastErr error
-	iterateProcesses(func(pe *PROCESSENTRY32W) bool {
+	iterateProcesses(func(pe *processentry32w) bool {
 		if strings.EqualFold(processName(pe), name) && pe.ProcessID != myPID {
 			if err := terminateProcessByPID(pe.ProcessID); err != nil {
 				lastErr = err

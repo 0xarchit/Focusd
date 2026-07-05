@@ -105,7 +105,7 @@ var defaultBrowserTitles = map[string]bool{
 	"vivaldi":         true,
 }
 
-func ExtractAppCategory(title string) string {
+func extractAppCategory(title string) string {
 	if title == "" {
 		return ""
 	}
@@ -134,26 +134,26 @@ func ExtractAppCategory(title string) string {
 	return ""
 }
 
-type GroupedBrowserStat struct {
+type groupedBrowserStat struct {
 	Category   string
 	TotalSecs  int
-	SubEntries []SubEntry
+	SubEntries []subEntry
 }
 
-type SubEntry struct {
+type subEntry struct {
 	Title    string
 	Duration int
 }
 
-func GroupBrowserStats(stats []storage.AppDailyStat) []GroupedBrowserStat {
-	groups := make(map[string]*GroupedBrowserStat)
+func groupBrowserStats(stats []storage.AppDailyStat) []groupedBrowserStat {
+	groups := make(map[string]*groupedBrowserStat)
 	var order []string
 
 	for _, stat := range stats {
 		title := stat.AppName
 		duration := stat.TotalDurationSecs
 
-		category := ExtractAppCategory(title)
+		category := extractAppCategory(title)
 
 		if category == "" {
 			category = title
@@ -163,20 +163,20 @@ func GroupBrowserStats(stats []storage.AppDailyStat) []GroupedBrowserStat {
 			g.TotalSecs += duration
 			if category != title {
 				cleanTitle := cleanTitleForDisplay(title)
-				g.SubEntries = append(g.SubEntries, SubEntry{
+				g.SubEntries = append(g.SubEntries, subEntry{
 					Title:    cleanTitle,
 					Duration: duration,
 				})
 			}
 		} else {
 			order = append(order, category)
-			g := &GroupedBrowserStat{
+			g := &groupedBrowserStat{
 				Category:  category,
 				TotalSecs: duration,
 			}
 			if category != title {
 				cleanTitle := cleanTitleForDisplay(title)
-				g.SubEntries = []SubEntry{{
+				g.SubEntries = []subEntry{{
 					Title:    cleanTitle,
 					Duration: duration,
 				}}
@@ -185,7 +185,7 @@ func GroupBrowserStats(stats []storage.AppDailyStat) []GroupedBrowserStat {
 		}
 	}
 
-	result := make([]GroupedBrowserStat, 0, len(order))
+	result := make([]groupedBrowserStat, 0, len(order))
 	for _, cat := range order {
 		result = append(result, *groups[cat])
 	}

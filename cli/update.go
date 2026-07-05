@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -20,7 +21,7 @@ import (
 
 var httpClient = &http.Client{Timeout: 15 * time.Second}
 
-func RunUpdate() {
+func runUpdate() {
 	ui.PrintHeader()
 	fmt.Printf("Current Version: %s\n", system.Version)
 	fmt.Println("Checking for updates...")
@@ -39,8 +40,12 @@ func RunUpdate() {
 	ui.PrintInfo(fmt.Sprintf("New version available: %s", latestVer))
 	fmt.Print("Do you want to update? [y/N]: ")
 
-	var response string
-	fmt.Scanln(&response)
+	reader := bufio.NewReader(os.Stdin)
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to read input: %v", err))
+		return
+	}
 	if strings.ToLower(strings.TrimSpace(response)) != "y" {
 		fmt.Println("Update cancelled.")
 		return
@@ -49,7 +54,9 @@ func RunUpdate() {
 	daemonWasRunning := system.GetProcessCount(system.DaemonProcessName) >= 1
 	if daemonWasRunning {
 		ui.PrintStatus("Stopping focusd daemon...", "", false)
-		system.KillOtherInstances(system.DaemonProcessName)
+		if err := system.KillOtherInstances(system.DaemonProcessName); err != nil {
+			ui.PrintWarn(fmt.Sprintf("Could not stop daemon: %v", err))
+		}
 		time.Sleep(500 * time.Millisecond)
 	}
 
@@ -57,18 +64,14 @@ func RunUpdate() {
 		ui.PrintError(fmt.Sprintf("Update failed: %v", err))
 		if daemonWasRunning {
 			ui.PrintInfo("Attempting to restart daemon...")
-			restartDaemon()
+			if _, err := system.StartDaemon(); err != nil {
+				log.Printf("WARN: failed to restart daemon after update: %v", err)
+			}
 		}
-		return
+		os.Exit(1)
 	}
 
 	os.Exit(0)
-}
-
-func restartDaemon() {
-	if _, err := system.StartDaemon(); err != nil {
-		log.Printf("WARN: failed to restart daemon after update: %v", err)
-	}
 }
 
 func fetchLatestVersion() (string, error) {
@@ -135,7 +138,6 @@ func calculateFileHash(filePath string) (string, error) {
 		return "", err
 	}
 	defer f.Close()
-
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err
@@ -143,7 +145,7 @@ func calculateFileHash(filePath string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func performUpdate(version string) error {
+func performUpdate(version string) (err error) {
 	ui.PrintStatus("Downloading update...", "0%", false)
 
 	downloadURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s/focusd_setup.exe",
@@ -155,23 +157,24 @@ func performUpdate(version string) error {
 	}
 	tmpPath := tmpFile.Name()
 
+	defer func() {
+		tmpFile.Close()
+		if err != nil {
+			os.Remove(tmpPath)
+		}
+	}()
+
 	resp, err := httpClient.Get(downloadURL)
 	if err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
 		return fmt.Errorf("download failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		tmpFile.Close()
-		os.Remove(tmpPath)
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+	if _, err = io.Copy(tmpFile, resp.Body); err != nil {
 		return fmt.Errorf("write failed: %w", err)
 	}
 	tmpFile.Close()
@@ -179,41 +182,34 @@ func performUpdate(version string) error {
 	ui.PrintStatus("Verifying checksum...", "", false)
 	expectedHash, err := fetchChecksum(version)
 	if err != nil {
-		ui.PrintWarn(fmt.Sprintf("Checksum verification skipped: %v", err))
-	} else {
-		actualHash, err := calculateFileHash(tmpPath)
-		if err != nil {
-			os.Remove(tmpPath)
-			return fmt.Errorf("failed to calculate hash: %w", err)
-		}
-		if actualHash != expectedHash {
-			os.Remove(tmpPath)
-			return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actualHash)
-		}
-		ui.PrintOK("Checksum verified")
+		return fmt.Errorf("cannot verify update integrity: %w", err)
 	}
+	actualHash, err := calculateFileHash(tmpPath)
+	if err != nil {
+		return fmt.Errorf("failed to calculate hash: %w", err)
+	}
+	if actualHash != expectedHash {
+		return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actualHash)
+	}
+	ui.PrintOK("Checksum verified")
 
 	ui.PrintStatus("Installing...", "", false)
 
 	verbPtr, err := syscall.UTF16PtrFromString("runas")
 	if err != nil {
-		os.Remove(tmpPath)
 		return err
 	}
 	pathPtr, err := syscall.UTF16PtrFromString(tmpPath)
 	if err != nil {
-		os.Remove(tmpPath)
 		return err
 	}
 	argsPtr, err := syscall.UTF16PtrFromString("/S")
 	if err != nil {
-		os.Remove(tmpPath)
 		return err
 	}
 
 	err = windows.ShellExecute(0, verbPtr, pathPtr, argsPtr, nil, windows.SW_HIDE)
 	if err != nil {
-		os.Remove(tmpPath)
 		return fmt.Errorf("failed to start installer with elevation: %w", err)
 	}
 

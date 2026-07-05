@@ -12,6 +12,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+type limitRow struct {
+	Name         string
+	LimitMinutes int
+	UsedSeconds  int
+}
+
 func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 	if m.limitForm.Visible {
 		switch key {
@@ -55,7 +61,7 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 							originalMins = val
 							hasOriginal = true
 						}
-						if err := system.RemoveAppTimeLimit(m.limitForm.OriginalApp); err != nil {
+						if err := system.SetAppTimeLimit(m.limitForm.OriginalApp, 0); err != nil {
 							m.addToast("Failed to rename limit: "+err.Error(), toastError)
 							return *m, nil
 						}
@@ -81,9 +87,9 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 					n, err := strconv.Atoi(key)
 					if err == nil {
 						if m.limitForm.Field == 1 {
-							m.limitForm.Hours = (m.limitForm.Hours*10 + n) % 25
+							m.limitForm.Hours = min(24, m.limitForm.Hours*10+n)
 						} else {
-							m.limitForm.Minutes = (m.limitForm.Minutes*10 + n) % 60
+							m.limitForm.Minutes = min(59, m.limitForm.Minutes*10+n)
 						}
 					}
 				}
@@ -103,13 +109,13 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 		rows := m.limitRows()
 		if len(rows) > 0 {
 			row := rows[m.limitsSelected]
-			m.limitForm = limitForm{Visible: true, Editing: true, App: row.Name, OriginalApp: row.Name, Hours: row.Opens / 60, Minutes: row.Opens % 60}
+			m.limitForm = limitForm{Visible: true, Editing: true, App: row.Name, OriginalApp: row.Name, Hours: row.LimitMinutes / 60, Minutes: row.LimitMinutes % 60}
 		}
 	case "d":
 		rows := m.limitRows()
 		if len(rows) > 0 {
 			appName := rows[m.limitsSelected].Name
-			if err := system.RemoveAppTimeLimit(appName); err != nil {
+			if err := system.SetAppTimeLimit(appName, 0); err != nil {
 				m.addToast("Failed to delete limit: "+err.Error(), toastError)
 				return *m, nil
 			}
@@ -122,7 +128,7 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 
 func (m *Model) renderLimits(width, height int) string {
 	rows := m.limitRows()
-	warnAt := storage.GetWarningThresholdPercent()
+	warnAt := 80
 	maxW := width - 2
 	var lines []string
 
@@ -134,7 +140,7 @@ func (m *Model) renderLimits(width, height int) string {
 
 	headerPlain := padRight("App", col1W) + padLeft("Limit", col2W) + padLeft("Used", col3W) + padLeft("Remaining", col4W) + "   Status"
 	lines = append(lines, boldStyle.Render(headerPlain))
-	lines = append(lines, mutedStyle.Render(fill(maxW-4, "─")))
+	lines = append(lines, mutedStyle.Render(strings.Repeat("─", max(0, maxW-4))))
 
 	visibleRows := max(3, height-10)
 	if m.limitForm.Visible {
@@ -145,8 +151,8 @@ func (m *Model) renderLimits(width, height int) string {
 	end := min(len(rows), start+visibleRows)
 	for i := start; i < end; i++ {
 		r := rows[i]
-		limitSecs := r.Opens * 60
-		used := r.Duration
+		limitSecs := r.LimitMinutes * 60
+		used := r.UsedSeconds
 		remaining := max(0, limitSecs-used)
 		pct := 0
 		if limitSecs > 0 {
@@ -162,11 +168,23 @@ func (m *Model) renderLimits(width, height int) string {
 			status = "⚠ WARNING"
 		}
 
+		barWidth := max(4, col5W-12)
+		filled := 0
+		if pct > 0 {
+			filled = pct * barWidth / 100
+			if filled == 0 {
+				filled = 1
+			}
+			if filled > barWidth {
+				filled = barWidth
+			}
+		}
+		barStr := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 		line := padRight(truncate(r.Name, col1W), col1W) +
 			padLeft(formatDuration(limitSecs), col2W) +
 			padLeft(formatDuration(used), col3W) +
 			padLeft(formatDuration(remaining), col4W) + "  " +
-			style.Render(bar(pct, 100, max(4, col5W-12), "█")) + "  " + style.Render(status)
+			style.Render(barStr) + "  " + style.Render(status)
 		if pct >= 95 {
 			line = dangerRowStyle.Render(padRight(line, maxW-2))
 		} else if i == m.limitsSelected && !m.limitForm.Visible {
@@ -183,7 +201,7 @@ func (m *Model) renderLimits(width, height int) string {
 	if m.limitForm.Visible {
 		tableY2 = 5 + height - 9
 	}
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{
 		X1: 1, Y1: 5, X2: width - 1, Y2: tableY2,
 		ID: "panel-0", Kind: "panel",
 	})
@@ -209,7 +227,7 @@ func (m *Model) renderLimits(width, height int) string {
 	}
 
 	formY := 5 + height - 8
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{
 		X1: 1, Y1: formY, X2: width - 1, Y2: height - 1,
 		ID: "panel-1", Kind: "panel",
 	})
@@ -217,11 +235,11 @@ func (m *Model) renderLimits(width, height int) string {
 	return lipgloss.JoinVertical(lipgloss.Left, table, panelWithHover(formTitle, "", maxW, "\n"+strings.Join(fields, "\n")+"\n", m.panelFocus == 1, m.hoveredPanel == 1))
 }
 
-func (m *Model) limitRows() []appUsage {
+func (m *Model) limitRows() []limitRow {
 	limits := system.GetAppTimeLimits()
-	rows := make([]appUsage, 0, len(limits))
+	rows := make([]limitRow, 0, len(limits))
 	for app, mins := range limits {
-		rows = append(rows, appUsage{Name: app, Opens: mins, Duration: storage.GetAppUsageTodayMinutes(app) * 60})
+		rows = append(rows, limitRow{Name: app, LimitMinutes: mins, UsedSeconds: storage.GetAppUsageTodaySeconds(app)})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
 	return rows

@@ -64,7 +64,7 @@ func TestCloseCurrentSession(t *testing.T) {
 		t.Errorf("expected 0 pending sessions, got %d", len(tracker.pendingSessions))
 	}
 
-	tracker.currentSession = &ActiveSession{
+	tracker.currentSession = &activeSession{
 		AppName:   "TestApp",
 		ExeName:   "test.exe",
 		StartTime: time.Now(),
@@ -78,7 +78,7 @@ func TestCloseCurrentSession(t *testing.T) {
 		t.Error("expected currentSession to be nil after close")
 	}
 
-	tracker.currentSession = &ActiveSession{
+	tracker.currentSession = &activeSession{
 		AppName:   "TestApp",
 		ExeName:   "test.exe",
 		StartTime: time.Now().Add(-2 * time.Second),
@@ -123,7 +123,7 @@ func TestFlushPendingSessions(t *testing.T) {
 		t.Errorf("pending sessions should be cleared, got %d", len(tracker.pendingSessions))
 	}
 
-	sessions, _, err := storage.GetSessionsPaginated(10, 0, storage.Today(), storage.Today())
+	sessions, err := storage.GetSessionsPaginated(10, 0, storage.Today(), storage.Today())
 	if err != nil {
 		t.Fatalf("failed to retrieve sessions: %v", err)
 	}

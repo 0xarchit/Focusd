@@ -10,14 +10,14 @@ import (
 	"time"
 )
 
-func RunStatus() {
+func runStatus() {
 	if err := storage.Init(); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
 		os.Exit(1)
 	}
 	defer storage.Close()
 
-	RequestDaemonFlush()
+	core.SendIPCCmd("flush")
 
 	ui.PrintHeader()
 

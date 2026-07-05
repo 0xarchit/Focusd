@@ -2,11 +2,13 @@ package system
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type UserConfig struct {
@@ -15,20 +17,20 @@ type UserConfig struct {
 	BreakReminderMinutes  int            `json:"break_reminder_minutes"`
 	AppTimeLimits         map[string]int `json:"app_time_limits"`
 	PomodoroMinutes       int            `json:"pomodoro_minutes"`
-	Password              string         `json:"password"`
 	SnoozeDurationMinutes int            `json:"snooze_duration_minutes"`
-	SmartGroupingEnabled  bool           `json:"smart_grouping_enabled"`
+	CustomBrowsers        []string       `json:"custom_browsers"`
 }
 
 var (
-	userConfig *UserConfig
-	configMu   sync.RWMutex
+	userConfig  *UserConfig
+	configMu    sync.RWMutex
+	lastModTime time.Time
 )
 
 func getUserConfigPath() (string, error) {
 	appData := os.Getenv("APPDATA")
 	if appData == "" {
-		return "", nil
+		return "", fmt.Errorf("APPDATA environment variable is empty")
 	}
 	return filepath.Join(appData, "focusd", "config.json"), nil
 }
@@ -40,64 +42,71 @@ func defaultUserConfig() *UserConfig {
 		BreakReminderMinutes:  60,
 		AppTimeLimits:         make(map[string]int),
 		PomodoroMinutes:       25,
-		Password:              "",
 		SnoozeDurationMinutes: 60,
-		SmartGroupingEnabled:  true,
+		CustomBrowsers:        []string{},
 	}
 }
 
-func ensureLoaded() {
-	configMu.RLock()
-	if userConfig != nil {
-		configMu.RUnlock()
+
+func loadFromDisk() {
+	configMu.Lock()
+	defer configMu.Unlock()
+
+	configPath, err := getUserConfigPath()
+	if err != nil || configPath == "" {
+		if userConfig == nil {
+			userConfig = defaultUserConfig()
+		}
 		return
 	}
-	configMu.RUnlock()
 
-	configMu.Lock()
-	defer configMu.Unlock()
+	fi, err := os.Stat(configPath)
+	if err != nil {
+		if userConfig == nil {
+			userConfig = defaultUserConfig()
+		}
+		return
+	}
+
+	if userConfig != nil && !fi.ModTime().After(lastModTime) {
+		return
+	}
+
+	lastModTime = fi.ModTime()
 	if userConfig == nil {
 		userConfig = defaultUserConfig()
+	}
 
-		configPath, err := getUserConfigPath()
-		if err == nil && configPath != "" {
-			data, err := os.ReadFile(configPath)
-			if err == nil {
-				if err := json.Unmarshal(data, userConfig); err != nil {
-					log.Printf("WARN: failed to parse user config %s: %v", configPath, err)
-				}
-			}
-		}
-		if userConfig.AppTimeLimits == nil {
-			userConfig.AppTimeLimits = make(map[string]int)
+	if data, err := os.ReadFile(configPath); err == nil {
+		var temp UserConfig
+		if err := json.Unmarshal(data, &temp); err == nil {
+			userConfig.WhitelistApps = temp.WhitelistApps
+			userConfig.BreakReminderEnabled = temp.BreakReminderEnabled
+			userConfig.BreakReminderMinutes = temp.BreakReminderMinutes
+			userConfig.AppTimeLimits = temp.AppTimeLimits
+			userConfig.PomodoroMinutes = temp.PomodoroMinutes
+			userConfig.SnoozeDurationMinutes = temp.SnoozeDurationMinutes
+			userConfig.CustomBrowsers = temp.CustomBrowsers
+		} else {
+			log.Printf("WARN: failed to parse user config %s: %v", configPath, err)
 		}
 	}
-}
 
-func loadUserConfigLocked() *UserConfig {
-	if userConfig == nil {
-		userConfig = defaultUserConfig()
-
-		configPath, err := getUserConfigPath()
-		if err == nil && configPath != "" {
-			data, err := os.ReadFile(configPath)
-			if err == nil {
-				if err := json.Unmarshal(data, userConfig); err != nil {
-					log.Printf("WARN: failed to parse user config %s: %v", configPath, err)
-				}
-			}
-		}
-		if userConfig.AppTimeLimits == nil {
-			userConfig.AppTimeLimits = make(map[string]int)
-		}
+	if userConfig.AppTimeLimits == nil {
+		userConfig.AppTimeLimits = make(map[string]int)
 	}
-	return userConfig
-}
-
-func SaveUserConfig() error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	return saveUserConfigLocked()
+	if userConfig.CustomBrowsers == nil {
+		userConfig.CustomBrowsers = []string{}
+	}
+	if userConfig.BreakReminderMinutes < 1 {
+		userConfig.BreakReminderMinutes = 60
+	}
+	if userConfig.PomodoroMinutes < 1 {
+		userConfig.PomodoroMinutes = 25
+	}
+	if userConfig.SnoozeDurationMinutes < 1 {
+		userConfig.SnoozeDurationMinutes = 60
+	}
 }
 
 func saveUserConfigLocked() error {
@@ -111,7 +120,9 @@ func saveUserConfigLocked() error {
 	}
 
 	dataDir := filepath.Dir(configPath)
-	os.MkdirAll(dataDir, 0700)
+	if err := os.MkdirAll(dataDir, 0700); err != nil {
+		return err
+	}
 
 	data, err := json.MarshalIndent(userConfig, "", "  ")
 	if err != nil {
@@ -123,63 +134,18 @@ func saveUserConfigLocked() error {
 		return err
 	}
 
-	return os.Rename(tempPath, configPath)
-}
-
-func GetWhitelistApps() []string {
-	ensureLoaded()
-	configMu.RLock()
-	defer configMu.RUnlock()
-	config := userConfig
-	if config.WhitelistApps == nil {
-		return nil
-	}
-	cloned := make([]string, len(config.WhitelistApps))
-	copy(cloned, config.WhitelistApps)
-	return cloned
-}
-
-func AddWhitelistApp(exeName string) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	config := loadUserConfigLocked()
-
-	exeName = strings.ToLower(strings.TrimSpace(exeName))
-	if exeName == "" {
-		return nil
+	if err := os.Rename(tempPath, configPath); err != nil {
+		return err
 	}
 
-	if !strings.HasSuffix(exeName, ".exe") {
-		exeName += ".exe"
+	if fi, err := os.Stat(configPath); err == nil {
+		lastModTime = fi.ModTime()
 	}
-
-	for _, a := range config.WhitelistApps {
-		if strings.EqualFold(a, exeName) {
-			return nil
-		}
-	}
-
-	config.WhitelistApps = append(config.WhitelistApps, exeName)
-	return saveUserConfigLocked()
-}
-
-func RemoveWhitelistApp(exeName string) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	config := loadUserConfigLocked()
-
-	var updated []string
-	for _, a := range config.WhitelistApps {
-		if !strings.EqualFold(a, exeName) {
-			updated = append(updated, a)
-		}
-	}
-	config.WhitelistApps = updated
-	return saveUserConfigLocked()
+	return nil
 }
 
 func IsWhitelisted(exeName string) bool {
-	ensureLoaded()
+	loadFromDisk()
 	configMu.RLock()
 	defer configMu.RUnlock()
 	config := userConfig
@@ -193,168 +159,180 @@ func IsWhitelisted(exeName string) bool {
 	return false
 }
 
-func ReloadUserConfig() {
-	configMu.Lock()
-	defer configMu.Unlock()
-	userConfig = nil
-	loadUserConfigLocked()
-}
 
 func GetBreakReminderEnabled() bool {
-	ensureLoaded()
+	loadFromDisk()
 	configMu.RLock()
 	defer configMu.RUnlock()
 	return userConfig.BreakReminderEnabled
 }
 
 func GetBreakReminderMinutes() int {
-	ensureLoaded()
+	loadFromDisk()
 	configMu.RLock()
 	defer configMu.RUnlock()
-	mins := userConfig.BreakReminderMinutes
-	if mins < 1 {
-		return 60
-	}
-	return mins
+	return userConfig.BreakReminderMinutes
 }
 
 func SetBreakReminder(enabled bool, minutes int) error {
+	loadFromDisk()
 	configMu.Lock()
 	defer configMu.Unlock()
-	config := loadUserConfigLocked()
-	config.BreakReminderEnabled = enabled
+	userConfig.BreakReminderEnabled = enabled
 	if minutes > 0 {
-		config.BreakReminderMinutes = minutes
+		userConfig.BreakReminderMinutes = minutes
 	}
 	return saveUserConfigLocked()
 }
 
 func GetAppTimeLimits() map[string]int {
-	ensureLoaded()
+	loadFromDisk()
 	configMu.RLock()
 	defer configMu.RUnlock()
-	config := userConfig
-	if config.AppTimeLimits == nil {
-		return nil
+	limits := make(map[string]int, len(userConfig.AppTimeLimits))
+	for k, v := range userConfig.AppTimeLimits {
+		limits[k] = v
 	}
-	cloned := make(map[string]int, len(config.AppTimeLimits))
-	for k, v := range config.AppTimeLimits {
-		cloned[k] = v
-	}
-	return cloned
+	return limits
 }
 
 func SetAppTimeLimit(exeName string, minutes int) error {
+	loadFromDisk()
 	configMu.Lock()
 	defer configMu.Unlock()
-	config := loadUserConfigLocked()
 	exeName = strings.ToLower(strings.TrimSpace(exeName))
 	if !strings.HasSuffix(exeName, ".exe") {
 		exeName += ".exe"
 	}
 	if minutes <= 0 {
-		delete(config.AppTimeLimits, exeName)
+		delete(userConfig.AppTimeLimits, exeName)
 	} else {
-		config.AppTimeLimits[exeName] = minutes
+		userConfig.AppTimeLimits[exeName] = minutes
 	}
-	return saveUserConfigLocked()
-}
-
-func RemoveAppTimeLimit(exeName string) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	config := loadUserConfigLocked()
-	exeName = strings.ToLower(strings.TrimSpace(exeName))
-	delete(config.AppTimeLimits, exeName)
 	return saveUserConfigLocked()
 }
 
 func GetPomodoroMinutes() int {
-	ensureLoaded()
+	loadFromDisk()
 	configMu.RLock()
 	defer configMu.RUnlock()
-	mins := userConfig.PomodoroMinutes
-	if mins < 1 {
-		return 25
-	}
-	return mins
+	return userConfig.PomodoroMinutes
 }
 
 func SetPomodoroMinutes(minutes int) error {
+	loadFromDisk()
 	configMu.Lock()
 	defer configMu.Unlock()
-	config := loadUserConfigLocked()
-	config.PomodoroMinutes = minutes
-	return saveUserConfigLocked()
-}
-
-func GetPassword() string {
-	ensureLoaded()
-	configMu.RLock()
-	defer configMu.RUnlock()
-	return userConfig.Password
-}
-
-func SetPassword(password string) error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	config := loadUserConfigLocked()
-	config.Password = password
-	return saveUserConfigLocked()
-}
-
-func IsPasswordEnabled() bool {
-	ensureLoaded()
-	configMu.RLock()
-	defer configMu.RUnlock()
-	return userConfig.Password != ""
-}
-
-func CheckPassword(input string) bool {
-	ensureLoaded()
-	configMu.RLock()
-	defer configMu.RUnlock()
-	return userConfig.Password == input
-}
-
-func ClearPassword() error {
-	configMu.Lock()
-	defer configMu.Unlock()
-	config := loadUserConfigLocked()
-	config.Password = ""
+	userConfig.PomodoroMinutes = minutes
 	return saveUserConfigLocked()
 }
 
 func GetSnoozeDurationMinutes() int {
-	ensureLoaded()
+	loadFromDisk()
 	configMu.RLock()
 	defer configMu.RUnlock()
-	mins := userConfig.SnoozeDurationMinutes
-	if mins < 1 {
-		return 60
-	}
-	return mins
+	return userConfig.SnoozeDurationMinutes
 }
 
-func SetSnoozeDurationMinutes(minutes int) error {
+var defaultBrowsers = map[string]bool{
+	"chrome.exe":    true,
+	"firefox.exe":   true,
+	"msedge.exe":    true,
+	"edge.exe":      true,
+	"brave.exe":     true,
+	"opera.exe":     true,
+	"vivaldi.exe":   true,
+	"waterfox.exe":  true,
+	"arc.exe":       true,
+	"iexplore.exe":  true,
+	"safari.exe":    true,
+	"whale.exe":     true,
+	"yandex.exe":    true,
+	"thorium.exe":   true,
+	"librewolf.exe": true,
+	"chromium.exe":  true,
+	"floorp.exe":    true,
+	"zen.exe":       true,
+}
+
+func IsBrowser(exeName string) bool {
+	loadFromDisk()
+	configMu.RLock()
+	defer configMu.RUnlock()
+
+	exeLower := strings.ToLower(exeName)
+	if defaultBrowsers[exeLower] {
+		return true
+	}
+	for _, cb := range userConfig.CustomBrowsers {
+		if strings.ToLower(cb) == exeLower {
+			return true
+		}
+	}
+	return false
+}
+
+func GetCustomBrowsersList() []string {
+	loadFromDisk()
+	configMu.RLock()
+	defer configMu.RUnlock()
+
+	res := make([]string, len(userConfig.CustomBrowsers))
+	copy(res, userConfig.CustomBrowsers)
+	return res
+}
+
+func AddCustomBrowser(exeName string) error {
+	exeName = strings.ToLower(strings.TrimSpace(exeName))
+	if exeName == "" {
+		return fmt.Errorf("invalid browser name")
+	}
+	if !strings.HasSuffix(exeName, ".exe") {
+		exeName += ".exe"
+	}
+
+	loadFromDisk()
 	configMu.Lock()
 	defer configMu.Unlock()
-	config := loadUserConfigLocked()
-	config.SnoozeDurationMinutes = minutes
+
+	for _, b := range userConfig.CustomBrowsers {
+		if b == exeName {
+			return fmt.Errorf("%s is already in custom list", exeName)
+		}
+	}
+
+	if defaultBrowsers[exeName] {
+		return fmt.Errorf("%s is already a default browser", exeName)
+	}
+
+	userConfig.CustomBrowsers = append(userConfig.CustomBrowsers, exeName)
 	return saveUserConfigLocked()
 }
 
-func GetSmartGroupingEnabled() bool {
-	ensureLoaded()
-	configMu.RLock()
-	defer configMu.RUnlock()
-	return userConfig.SmartGroupingEnabled
-}
+func RemoveCustomBrowser(exeName string) error {
+	exeName = strings.ToLower(strings.TrimSpace(exeName))
 
-func SetSmartGroupingEnabled(enabled bool) error {
+	loadFromDisk()
 	configMu.Lock()
 	defer configMu.Unlock()
-	config := loadUserConfigLocked()
-	config.SmartGroupingEnabled = enabled
+
+	if !strings.HasSuffix(exeName, ".exe") {
+		exeName += ".exe"
+	}
+	found := false
+	var newList []string
+	for _, b := range userConfig.CustomBrowsers {
+		if b == exeName {
+			found = true
+			continue
+		}
+		newList = append(newList, b)
+	}
+
+	if !found {
+		return fmt.Errorf("%s not found in custom list (cannot remove default browsers)", exeName)
+	}
+
+	userConfig.CustomBrowsers = newList
 	return saveUserConfigLocked()
 }

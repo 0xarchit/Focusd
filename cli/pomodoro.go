@@ -7,7 +7,7 @@ import (
 	"strconv"
 )
 
-func RunFocus(args []string) {
+func runFocus(args []string) {
 	minutes := 25
 	if len(args) > 2 {
 		if m, err := strconv.Atoi(args[2]); err == nil && m > 0 {
@@ -25,7 +25,7 @@ func RunFocus(args []string) {
 	fmt.Println("You will be notified when it completes.")
 }
 
-func RunStopTimer() {
+func runStopTimer() {
 	if err := core.StopPomodoro(); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to stop timer: %v", err))
 		return

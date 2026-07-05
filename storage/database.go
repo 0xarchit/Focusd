@@ -13,7 +13,7 @@ import (
 
 var db *sql.DB
 
-func GetDataDir() (string, error) {
+func getDataDir() (string, error) {
 	appData := os.Getenv("APPDATA")
 	if appData == "" {
 		return "", fmt.Errorf("APPDATA environment variable not set")
@@ -22,7 +22,7 @@ func GetDataDir() (string, error) {
 }
 
 func GetDBPath() (string, error) {
-	dataDir, err := GetDataDir()
+	dataDir, err := getDataDir()
 	if err != nil {
 		return "", err
 	}
@@ -37,8 +37,11 @@ func Init() error {
 		db.Close()
 		db = nil
 	}
+	return initDB()
+}
 
-	dataDir, err := GetDataDir()
+func initDB() error {
+	dataDir, err := getDataDir()
 	if err != nil {
 		return err
 	}
@@ -58,30 +61,32 @@ func Init() error {
 	q.Add("_pragma", "synchronous(NORMAL)")
 	q.Add("_pragma", "auto_vacuum(INCREMENTAL)")
 	q.Add("_pragma", "cache_size(-1000)")
-	q.Add("_pragma", "mmap_size(0)")
 	q.Add("_pragma", "temp_store(MEMORY)")
-	dsn := fmt.Sprintf("file:%s?%s", filepath.ToSlash(dbPath), q.Encode())
+
+	uPath := filepath.ToSlash(dbPath)
+	if len(uPath) > 0 && uPath[0] != '/' {
+		uPath = "/" + uPath
+	}
+	u := &url.URL{
+		Scheme:   "file",
+		Path:     uPath,
+		RawQuery: q.Encode(),
+	}
+	dsn := u.String()
 
 	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		db, lastErr = sql.Open("sqlite", dsn)
-		if lastErr == nil {
-			if pingErr := db.Ping(); pingErr == nil {
-				break
-			} else {
-				lastErr = pingErr
-				db.Close()
-				db = nil
-			}
-		}
-		time.Sleep(time.Duration(100*(attempt+1)) * time.Millisecond)
-	}
+	db, lastErr = sql.Open("sqlite", dsn)
 	if lastErr != nil {
 		db = nil
-		return fmt.Errorf("failed to open database after retries: %w", lastErr)
+		return fmt.Errorf("failed to open database: %w", lastErr)
+	}
+	if pingErr := db.Ping(); pingErr != nil {
+		db.Close()
+		db = nil
+		return fmt.Errorf("failed to ping database: %w", pingErr)
 	}
 
-	db.SetMaxOpenConns(10)
+	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
@@ -151,10 +156,6 @@ func createSchema() error {
 	return err
 }
 
-func GetDB() *sql.DB {
-	return db
-}
-
 func Close() error {
 	if db != nil {
 		err := db.Close()
@@ -162,20 +163,6 @@ func Close() error {
 		return err
 	}
 	return nil
-}
-
-func DeleteAllData() error {
-	dataDir, err := GetDataDir()
-	if err != nil {
-		return err
-	}
-
-	if db != nil {
-		db.Close()
-		db = nil
-	}
-
-	return os.RemoveAll(dataDir)
 }
 
 func Today() string {

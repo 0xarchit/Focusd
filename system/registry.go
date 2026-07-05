@@ -17,7 +17,7 @@ const (
 
 const startupShortcutName = "Focus Daemon.lnk"
 
-func GetStartupLinkPath() string {
+func getStartupLinkPath() string {
 	appData := os.Getenv("APPDATA")
 	if appData == "" {
 		return ""
@@ -34,7 +34,7 @@ func GetAutoStartEnabled() (bool, string, error) {
 		}
 	}
 
-	linkPath := GetStartupLinkPath()
+	linkPath := getStartupLinkPath()
 	if linkPath != "" {
 		if _, err := os.Stat(linkPath); err == nil {
 			return true, "Startup Folder: " + linkPath, nil
@@ -45,18 +45,18 @@ func GetAutoStartEnabled() (bool, string, error) {
 }
 
 func EnableAutoStart() error {
-	if err := InstallExes(); err != nil {
+	if err := installExes(); err != nil {
 		return fmt.Errorf("failed to install: %w", err)
 	}
 
-	linkPath := GetStartupLinkPath()
+	linkPath := getStartupLinkPath()
 	if linkPath != "" {
 		if err := os.Remove(linkPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove legacy startup shortcut: %w", err)
 		}
 	}
 
-	daemonPath := GetInstalledDaemonPath()
+	daemonPath := getInstalledDaemonPath()
 	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
 	if err != nil {
 		return fmt.Errorf("failed to open registry run key: %w", err)
@@ -72,16 +72,16 @@ func EnableAutoStart() error {
 }
 
 func DisableAutoStart() error {
-	linkPath := GetStartupLinkPath()
+	linkPath := getStartupLinkPath()
 	if linkPath != "" {
 		if err := os.Remove(linkPath); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove legacy startup shortcut: %w", err)
 		}
 	}
-	return DisableRegistryAutoStart()
+	return disableRegistryAutoStart()
 }
 
-func DisableRegistryAutoStart() error {
+func disableRegistryAutoStart() error {
 	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
 	if err != nil {
 		return nil
@@ -95,7 +95,7 @@ func DisableRegistryAutoStart() error {
 }
 
 func GetPathEnabled() (bool, error) {
-	exeDir := GetInstallDir()
+	exeDir := getInstallDir()
 	if exeDir == "" {
 		return false, nil
 	}
@@ -122,11 +122,11 @@ func GetPathEnabled() (bool, error) {
 
 func EnablePath() error {
 
-	if err := InstallExes(); err != nil {
+	if err := installExes(); err != nil {
 		return fmt.Errorf("failed to install/update binary: %w", err)
 	}
 
-	exeDir := GetInstallDir()
+	exeDir := getInstallDir()
 	if exeDir == "" {
 		return fmt.Errorf("install directory not available")
 	}
@@ -158,7 +158,7 @@ func EnablePath() error {
 }
 
 func DisablePath() error {
-	exeDir := GetInstallDir()
+	exeDir := getInstallDir()
 	if exeDir == "" {
 		return fmt.Errorf("install directory not available")
 	}
@@ -196,6 +196,10 @@ func DisablePath() error {
 
 	if !found {
 		return nil
+	}
+
+	if len(newPaths) == 0 {
+		return key.SetStringValue("Path", "")
 	}
 
 	newPath := strings.Join(newPaths, ";")

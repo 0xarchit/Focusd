@@ -46,7 +46,7 @@ func (m Model) handleDashboardKey(key string) (Model, tea.Cmd) {
 }
 
 func (m *Model) renderDashboard(width, height int) string {
-	inner := width - 2
+	inner := width
 
 	topHeight := (height * 55) / 100
 	bottomHeight := height - topHeight
@@ -55,36 +55,34 @@ func (m *Model) renderDashboard(width, height int) string {
 	midW := (inner * 45) / 100
 	rightW := inner - leftW - midW - 2
 
+	weeklyH := (bottomHeight * 70) / 100
+	quickH := bottomHeight - weeklyH - 1
+	weeklyW := (inner * 70) / 100
+	quickW := inner - weeklyW - 1
+
 	var bottomPart string
 	if width < 100 {
-		weeklyH := (bottomHeight * 70) / 100
-		quickH := bottomHeight - weeklyH - 1
 		weeklyPanel := m.renderWeeklyPanel(inner, weeklyH)
 		quickPanel := m.renderQuickActionsPanel(inner, quickH)
 		bottomPart = lipgloss.JoinVertical(lipgloss.Left, weeklyPanel, "", quickPanel)
 	} else {
-		weeklyW := (inner * 70) / 100
-		quickW := inner - weeklyW - 1
 		weeklyPanel := m.renderWeeklyPanel(weeklyW, bottomHeight)
 		quickPanel := m.renderQuickActionsPanel(quickW, bottomHeight)
 		bottomPart = lipgloss.JoinHorizontal(lipgloss.Top, weeklyPanel, " ", quickPanel)
 	}
 
 	topY := 5
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: topY, X2: leftW, Y2: topY + topHeight, ID: "panel-0", Kind: "panel"})
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: leftW + 2, Y1: topY, X2: leftW + 2 + midW, Y2: topY + topHeight, ID: "panel-1", Kind: "panel"})
-	m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: leftW + midW + 4, Y1: topY, X2: width - 1, Y2: topY + topHeight, ID: "panel-2", Kind: "panel"})
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: topY, X2: leftW, Y2: topY + topHeight, ID: "panel-0", Kind: "panel"})
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: leftW + 2, Y1: topY, X2: leftW + 2 + midW, Y2: topY + topHeight, ID: "panel-1", Kind: "panel"})
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: leftW + midW + 4, Y1: topY, X2: width - 1, Y2: topY + topHeight, ID: "panel-2", Kind: "panel"})
 
 	bottomY := topY + topHeight + 1
 	if width < 100 {
-		weeklyH := (bottomHeight * 70) / 100
-		quickH := bottomHeight - weeklyH - 1
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY, X2: width - 1, Y2: bottomY + weeklyH, ID: "panel-3", Kind: "panel"})
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY + weeklyH + 1, X2: width - 1, Y2: bottomY + weeklyH + 1 + quickH, ID: "panel-4", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: bottomY, X2: width - 1, Y2: bottomY + weeklyH, ID: "panel-3", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: bottomY + weeklyH + 1, X2: width - 1, Y2: bottomY + weeklyH + 1 + quickH, ID: "panel-4", Kind: "panel"})
 	} else {
-		weeklyW := (inner * 70) / 100
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY, X2: weeklyW, Y2: bottomY + bottomHeight, ID: "panel-3", Kind: "panel"})
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: weeklyW + 2, Y1: bottomY, X2: width - 1, Y2: bottomY + bottomHeight, ID: "panel-4", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: bottomY, X2: weeklyW, Y2: bottomY + bottomHeight, ID: "panel-3", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: weeklyW + 2, Y1: bottomY, X2: width - 1, Y2: bottomY + bottomHeight, ID: "panel-4", Kind: "panel"})
 	}
 
 	todayPanel := m.renderTodayPanel(leftW, topHeight)
@@ -105,19 +103,19 @@ func (m *Model) renderTodayPanel(width, height int) string {
 	var trendText string
 	if m.dashboard.YesterdayTotal == 0 {
 		if m.dashboard.Total > 0 {
-			trendText = mutedStyle.Render("N/A (first day)")
+			trendText = mutedStyle.Render("N/A")
 		} else {
-			trendText = mutedStyle.Render("0% (no change)")
+			trendText = mutedStyle.Render("0%")
 		}
 	} else {
 		diff := m.dashboard.Total - m.dashboard.YesterdayTotal
 		pct := int(float64(diff) / float64(m.dashboard.YesterdayTotal) * 100)
 		if pct > 0 {
-			trendText = redStyle.Render(fmt.Sprintf("▲ %d%% (increased)", pct))
+			trendText = redStyle.Render(fmt.Sprintf("▲ %d%%", pct))
 		} else if pct < 0 {
-			trendText = greenStyle.Render(fmt.Sprintf("▼ %d%% (decreased)", -pct))
+			trendText = greenStyle.Render(fmt.Sprintf("▼ %d%%", -pct))
 		} else {
-			trendText = mutedStyle.Render("0% (no change)")
+			trendText = mutedStyle.Render("0%")
 		}
 	}
 	rows = append(rows, rowKV("Vs Yesterday", trendText, width-4))
@@ -155,10 +153,21 @@ func (m *Model) renderTopAppsPanel(width, height int) string {
 				warn = amberStyle.Render("⚠ ")
 			}
 			nameW := max(10, width-24)
+			filled := 0
+			if maxDuration > 0 {
+				filled = a.Duration * 3 / maxDuration
+				if filled == 0 && a.Duration > 0 {
+					filled = 1
+				}
+				if filled > 3 {
+					filled = 3
+				}
+			}
+			barStr := strings.Repeat("█", filled) + strings.Repeat("░", 3-filled)
 			line := mutedStyle.Render(fmt.Sprintf("%2d. ", idx+1)) + warn +
 				padRight(truncate(a.Name, nameW), nameW) +
 				padLeft(formatDuration(a.Duration), 8) + "  " +
-				cyanStyle.Render(bar(a.Duration, maxDuration, 3, "█"))
+				cyanStyle.Render(barStr)
 
 			if idx == m.dashSelected && m.panelFocus == 1 {
 				line = selectedRowStyle.Render(padRight(line, width-2))
@@ -210,11 +219,32 @@ func (m *Model) renderHourlyPanel(width, height int) string {
 	prefix := "   "
 	suffix := "   "
 	lines = append(lines, prefix+strings.Join(blocks, "")+suffix)
-	hoursText := "00" + strings.Repeat(" ", blockWidth*6-2) + "06" + strings.Repeat(" ", blockWidth*6-2) + "12" + strings.Repeat(" ", blockWidth*6-2) + "18" + strings.Repeat(" ", blockWidth*6-2) + "23"
+	gap := strings.Repeat(" ", blockWidth*6-2)
+	hoursText := "00" + gap + "06" + gap + "12" + gap + "18" + gap + "23"
 	if len(hoursText) > width-6 {
 		hoursText = truncate(hoursText, width-6)
 	}
 	lines = append(lines, "   "+mutedStyle.Render(hoursText))
+
+	// Add legend for usability, splitting into 2 lines on narrow panels
+	if width >= 52 {
+		legend := "Legend: " + mutedStyle.Render("·") + " 0m  " +
+			cyanStyle.Render("░") + " <15m  " +
+			cyanStyle.Render("▒") + " <30m  " +
+			cyanStyle.Render("▓") + " <45m  " +
+			cyanStyle.Render("█") + " >=45m"
+		lines = append(lines, "")
+		lines = append(lines, "   "+legend)
+	} else if width >= 38 {
+		legend1 := "Legend: " + mutedStyle.Render("·") + " 0m  " +
+			cyanStyle.Render("░") + " <15m  " +
+			cyanStyle.Render("▒") + " <30m"
+		legend2 := "        " + cyanStyle.Render("▓") + " <45m  " +
+			cyanStyle.Render("█") + " >=45m"
+		lines = append(lines, "")
+		lines = append(lines, "   "+legend1)
+		lines = append(lines, "   "+legend2)
+	}
 
 	extraLines := max(0, height-2-len(lines)-2)
 	for i := 0; i < extraLines; i++ {
@@ -232,7 +262,7 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 		}
 	}
 
-	maxRows := max(1, height-4)
+	maxRows := max(1, height-4-2) // Subtract 2 for headers
 	visibleDays := m.dashboard.Days
 	if len(visibleDays) > maxRows {
 		visibleDays = visibleDays[len(visibleDays)-maxRows:]
@@ -241,6 +271,12 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 	if len(visibleDays) == 0 {
 		lines = append(lines, mutedStyle.Render("No historical weekly trends yet."))
 	} else {
+		// Aligned Headers
+		barWidth := max(5, width-29)
+		headerLine := boldStyle.Render(padRight("DAY", 6) + padRight("DATE", 12) + padRight("WEEKLY TREND", barWidth) + " " + padLeft("DURATION", 8))
+		lines = append(lines, headerLine)
+		lines = append(lines, mutedStyle.Render(strings.Repeat("─", width-4)))
+
 		for _, day := range visibleDays {
 			labelStyle := mutedStyle
 			if day.Today {
@@ -248,10 +284,20 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 			} else if day.Weekend {
 				labelStyle = amberStyle
 			}
-			barWidth := max(5, width-20)
+			filled := 0
+			if maxVal > 0 {
+				filled = day.Duration * barWidth / maxVal
+				if filled == 0 && day.Duration > 0 {
+					filled = 1
+				}
+				if filled > barWidth {
+					filled = barWidth
+				}
+			}
+			barStr := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 			line := labelStyle.Render(padRight(day.Label, 6)) +
 				padRight(day.Date, 12) +
-				cyanStyle.Render(bar(day.Duration, maxVal, barWidth, "█")) + " " +
+				cyanStyle.Render(barStr) + " " +
 				padLeft(formatDuration(day.Duration), 8)
 			lines = append(lines, line)
 		}
@@ -264,13 +310,13 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 func (m *Model) renderQuickActionsPanel(width, height int) string {
 	pauseLabel := "[p] Pause Tracking"
 	if storage.IsPaused() {
-		pauseLabel = "[p] Resume Tracking"
+		pauseLabel = "[p] Resume"
 	}
 	actions := []string{
-		"[s] Start Focus Session",
+		"[s] Start Focus",
 		"[n] Add App Limit",
 		pauseLabel,
-		"[q] Quit Application",
+		"[q] Quit App",
 	}
 	var lines []string
 	lines = append(lines, "")

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"focusd/storage"
@@ -15,10 +16,10 @@ import (
 	"time"
 )
 
-const IPCAddress = "127.0.0.1:48321"
+const ipcAddress = "127.0.0.1:48321"
 
 func SendIPCCmd(cmd string) bool {
-	conn, err := net.DialTimeout("tcp", IPCAddress, 1*time.Second)
+	conn, err := net.DialTimeout("tcp", ipcAddress, 1*time.Second)
 	if err != nil {
 		return false
 	}
@@ -28,17 +29,16 @@ func SendIPCCmd(cmd string) bool {
 		return false
 	}
 
-	_, err = conn.Write([]byte(cmd))
+	_, err = conn.Write([]byte(cmd + "\n"))
 	if err != nil {
 		return false
 	}
 
-	buf := make([]byte, 16)
-	n, err := conn.Read(buf)
-	return err == nil && string(buf[:n]) == "ok"
+	response, err := bufio.NewReader(conn).ReadString('\n')
+	return err == nil && strings.TrimSpace(response) == "ok"
 }
 
-type ActiveSession struct {
+type activeSession struct {
 	AppName     string
 	ExeName     string
 	WindowTitle string
@@ -48,9 +48,8 @@ type ActiveSession struct {
 
 type Tracker struct {
 	mu              sync.Mutex
-	currentSession  *ActiveSession
+	currentSession  *activeSession
 	pollInterval    time.Duration
-	batchInterval   time.Duration
 	pendingSessions []*storage.Session
 	ctx             context.Context
 	cancel          context.CancelFunc
@@ -59,9 +58,11 @@ type Tracker struct {
 func NewTracker() *Tracker {
 	ctx, cancel := context.WithCancel(context.Background())
 	pollSeconds := storage.GetTrackingIntervalSeconds()
+	if pollSeconds < 1 {
+		pollSeconds = 1
+	}
 	return &Tracker{
 		pollInterval:  time.Duration(pollSeconds) * time.Second,
-		batchInterval: 5 * time.Minute,
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -78,15 +79,13 @@ func (t *Tracker) Start() {
 
 	t.recoverOrphanedSession()
 
-	go t.startIPCOnport()
+	go t.startIPCOnPort()
 
 	pollTicker := time.NewTicker(t.pollInterval)
-	batchTicker := time.NewTicker(t.batchInterval)
 	persistTicker := time.NewTicker(5 * time.Minute)
 	retentionTicker := time.NewTicker(1 * time.Hour)
 	focusTicker := time.NewTicker(5 * time.Second)
 	defer pollTicker.Stop()
-	defer batchTicker.Stop()
 	defer persistTicker.Stop()
 	defer retentionTicker.Stop()
 	defer focusTicker.Stop()
@@ -109,21 +108,25 @@ func (t *Tracker) Start() {
 			return
 		case <-pollTicker.C:
 			if storage.IsPaused() {
+				t.flushCurrentSession()
+				stateMu.Lock()
 				continuousUseStart = time.Time{}
+				stateMu.Unlock()
 				continue
 			}
 			t.poll()
+			stateMu.Lock()
 			if continuousUseStart.IsZero() {
 				continuousUseStart = time.Now()
 			}
-		case <-batchTicker.C:
-			t.flushPendingSessions()
+			stateMu.Unlock()
 		case <-persistTicker.C:
+			t.flushPendingSessions()
 			t.persistActiveSession()
 		case <-retentionTicker.C:
 			storage.EnforceRetention()
 		case <-focusTicker.C:
-			CheckPomodoroAndNotify()
+			checkPomodoroAndNotify()
 
 			today := storage.Today()
 			now := time.Now()
@@ -131,12 +134,17 @@ func (t *Tracker) Start() {
 
 			stateMu.Lock()
 			breakSnoozed := !breakSnoozedUntil.IsZero() && now.Before(breakSnoozedUntil)
+			continuousUseActive := !continuousUseStart.IsZero()
+			var elapsed time.Duration
+			if continuousUseActive {
+				elapsed = time.Since(continuousUseStart)
+			}
 			stateMu.Unlock()
 
-			if system.GetBreakReminderEnabled() && !breakSnoozed && !continuousUseStart.IsZero() {
+			if system.GetBreakReminderEnabled() && !breakSnoozed && continuousUseActive {
 				mins := system.GetBreakReminderMinutes()
-				if time.Since(continuousUseStart) >= time.Duration(mins)*time.Minute {
-					ShowNotificationWithAction("Break Reminder",
+				if elapsed >= time.Duration(mins)*time.Minute {
+					showNotificationWithAction("Break Reminder",
 						fmt.Sprintf("You've been working for %d min. Take a break!", mins),
 						func(disable bool) {
 							stateMu.Lock()
@@ -167,22 +175,17 @@ func (t *Tracker) Start() {
 			t.mu.Unlock()
 
 			if len(limits) > 0 && sessionExe != "" {
-				currentExe := sessionExe
-				currentAppName := sessionAppName
-
-				if currentExe != prevSessionApp {
-					prevSessionApp = currentExe
-
+				if sessionExe != prevSessionApp {
 					stateMu.Lock()
-					appSnoozed := !disabledLimitApps[currentExe].IsZero() && now.Before(disabledLimitApps[currentExe])
+					appSnoozed := !disabledLimitApps[sessionExe].IsZero() && now.Before(disabledLimitApps[sessionExe])
 					stateMu.Unlock()
 
-					if limit, ok := limits[currentExe]; ok && !appSnoozed {
-						todayUsage := storage.GetAppUsageTodayMinutes(currentExe)
+					if limit, ok := limits[sessionExe]; ok && !appSnoozed {
+						todayUsage := storage.GetAppUsageTodayMinutes(sessionExe)
 						if todayUsage >= limit {
-							exeCopy := currentExe
-							ShowNotificationWithAction("App Time Limit",
-								currentAppName+" has exceeded daily limit!",
+							exeCopy := sessionExe
+							shown := showNotificationWithAction("App Time Limit",
+								sessionAppName+" has exceeded daily limit!",
 								func(disable bool) {
 									if disable {
 										stateMu.Lock()
@@ -190,6 +193,9 @@ func (t *Tracker) Start() {
 										stateMu.Unlock()
 									}
 								})
+							if shown {
+								prevSessionApp = sessionExe
+							}
 						}
 					}
 				}
@@ -204,15 +210,17 @@ func (t *Tracker) Stop() {
 
 func (t *Tracker) recoverOrphanedSession() {
 	recovered, err := storage.RecoverActiveSession()
-	if err != nil || recovered == nil {
+	if err != nil {
+		log.Printf("ERROR: failed to recover active session from storage: %v", err)
 		return
 	}
-	if err := storage.InsertSession(recovered); err != nil {
-		log.Printf("ERROR: failed to recover orphaned session (insert): %v", err)
+	if recovered == nil {
+		return
 	}
-	if err := storage.UpdateAppDaily(recovered.Date, recovered.AppName, recovered.ExeName, recovered.DurationSecs); err != nil {
-		log.Printf("ERROR: failed to recover orphaned session (daily): %v", err)
+	if err := storage.InsertSessionWithDaily(recovered, ""); err != nil {
+		log.Printf("ERROR: failed to recover orphaned session: %v", err)
 	}
+	storage.ClearActiveSession()
 }
 
 func (t *Tracker) persistActiveSession() {
@@ -232,7 +240,9 @@ func (t *Tracker) persistActiveSession() {
 		LastSeen:    time.Now(),
 		Date:        t.currentSession.Date,
 	}
-	storage.SaveActiveSession(record)
+	if err := storage.SaveActiveSession(record); err != nil {
+		log.Printf("ERROR: failed to save active session: %v", err)
+	}
 }
 
 func (t *Tracker) poll() {
@@ -251,26 +261,23 @@ func (t *Tracker) poll() {
 	defer t.mu.Unlock()
 
 	if t.currentSession != nil {
-		if t.isSameSession(info.ExeName) {
+		isSameExe := t.currentSession.ExeName == info.ExeName
+		isBrowser := system.IsBrowser(info.ExeName)
+		isSameTitle := t.currentSession.WindowTitle == info.Title
+
+		if isSameExe && (!isBrowser || isSameTitle) {
 			return
 		}
 		t.closeCurrentSession()
 	}
 
-	t.currentSession = &ActiveSession{
+	t.currentSession = &activeSession{
 		AppName:     appName,
 		ExeName:     info.ExeName,
 		WindowTitle: info.Title,
 		StartTime:   time.Now(),
 		Date:        storage.Today(),
 	}
-}
-
-func (t *Tracker) isSameSession(exeName string) bool {
-	if t.currentSession == nil {
-		return false
-	}
-	return t.currentSession.ExeName == exeName
 }
 
 func (t *Tracker) closeCurrentSession() {
@@ -312,18 +319,12 @@ func (t *Tracker) flushPendingSessions() {
 	t.mu.Unlock()
 
 	for _, s := range sessions {
-		if err := storage.InsertSession(s); err != nil {
-			log.Printf("ERROR: failed to insert session: %v", err)
+		cleanBrowserTitle := ""
+		if system.IsBrowser(s.ExeName) {
+			cleanBrowserTitle = cleanWindowTitle(s.WindowTitle, s.ExeName)
 		}
-		if err := storage.UpdateAppDaily(s.Date, s.AppName, s.ExeName, s.DurationSecs); err != nil {
-			log.Printf("ERROR: failed to update app daily stats: %v", err)
-		}
-
-		if storage.IsBrowser(s.ExeName) {
-			cleanTitle := CleanWindowTitle(s.WindowTitle, s.ExeName)
-			if err := storage.UpdateBrowserDaily(s.Date, cleanTitle, s.DurationSecs); err != nil {
-				log.Printf("ERROR: failed to update browser daily stats: %v", err)
-			}
+		if err := storage.InsertSessionWithDaily(s, cleanBrowserTitle); err != nil {
+			log.Printf("ERROR: failed to insert session with daily: %v", err)
 		}
 	}
 }
@@ -341,11 +342,8 @@ var nameMap = map[string]string{
 	"sublime_text":    "Sublime Text",
 	"atom":            "Atom",
 	"explorer":        "File Explorer",
-	"Discord":         "Discord",
-	"Spotify":         "Spotify",
 	"slack":           "Slack",
 	"Teams":           "Microsoft Teams",
-	"Zoom":            "Zoom",
 	"WINWORD":         "Microsoft Word",
 	"EXCEL":           "Microsoft Excel",
 	"POWERPNT":        "PowerPoint",
@@ -374,13 +372,13 @@ func getAppName(exeName string) string {
 		return first
 	}
 
-	return name
+	return exeName
 }
 
-func (t *Tracker) startIPCOnport() {
-	listener, err := net.Listen("tcp", IPCAddress)
+func (t *Tracker) startIPCOnPort() {
+	listener, err := net.Listen("tcp", ipcAddress)
 	if err != nil {
-		log.Printf("ERROR: IPC listener failed to bind on %s: %v", IPCAddress, err)
+		log.Printf("ERROR: IPC listener failed to bind on %s: %v", ipcAddress, err)
 		return
 	}
 	defer listener.Close()
@@ -406,24 +404,34 @@ func (t *Tracker) startIPCOnport() {
 
 func (t *Tracker) handleIPCConnection(conn net.Conn) {
 	defer conn.Close()
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	buf := make([]byte, 1024)
-	n, err := conn.Read(buf)
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		log.Printf("WARN: IPC set deadline failed: %v", err)
+		return
+	}
+	reader := bufio.NewReader(conn)
+	cmd, err := reader.ReadString('\n')
 	if err != nil {
 		log.Printf("WARN: IPC connection read failed: %v", err)
 		return
 	}
 
-	cmd := string(buf[:n])
+	cmd = strings.TrimSpace(cmd)
 	switch cmd {
 	case "stop":
-		conn.Write([]byte("ok"))
+		t.flushCurrentSession()
+		t.flushPendingSessions()
+		t.persistActiveSession()
+		if _, err := conn.Write([]byte("ok\n")); err != nil {
+			log.Printf("WARN: IPC write failed: %v", err)
+		}
 		t.Stop()
 	case "flush":
 		t.flushCurrentSession()
 		t.flushPendingSessions()
 		t.persistActiveSession()
-		conn.Write([]byte("ok"))
+		if _, err := conn.Write([]byte("ok\n")); err != nil {
+			log.Printf("WARN: IPC write failed: %v", err)
+		}
 	default:
 		log.Printf("WARN: Unknown IPC command received: %q", cmd)
 	}

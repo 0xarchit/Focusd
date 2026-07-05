@@ -5,6 +5,7 @@ import (
 	"focusd/core"
 	"focusd/storage"
 	"focusd/system"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 const (
@@ -26,7 +28,6 @@ var tabNames = []string{"DASHBOARD", "STATS", "FOCUS", "LIMITS", "SETTINGS"}
 
 type appUsage struct {
 	Name     string
-	Exe      string
 	Duration int
 	Opens    int
 }
@@ -48,8 +49,6 @@ type tuiData struct {
 	YesterdayTotal int
 	ActiveApps     int
 	LimitsHit      int
-	DBPath         string
-	Err            error
 }
 
 type dashboardLoadedMsg tuiData
@@ -89,7 +88,6 @@ type modal struct {
 	Message  string
 	Required string
 	Input    string
-	Danger   bool
 	Error    string
 }
 
@@ -111,7 +109,6 @@ type Model struct {
 	statsRange           int
 	statsSort            int
 	statsAsc             bool
-	statsCustomEditing   bool
 	statsCustomFrom      string
 	statsCustomTo        string
 	statsCustomDraftFrom string
@@ -129,8 +126,6 @@ type Model struct {
 	settingsExportSelected  int
 	focusButton             int
 	focusDuration           int
-	focusBreak              int
-	focusPaused             bool
 	settingsAddingBrowser   bool
 	settingsBrowserInput    string
 
@@ -140,10 +135,13 @@ type Model struct {
 
 	hoveredElement   string
 	hoveredPanel     int
-	clickableRegions []ClickableRegion
+	clickableRegions []clickableRegion
+
+	sortedAppsCache    []appUsage
+	sortedAppsCacheKey string
 }
 
-type ClickableRegion struct {
+type clickableRegion struct {
 	X1, Y1, X2, Y2 int
 	ID             string
 	Kind           string
@@ -155,7 +153,6 @@ func NewModel() Model {
 		splash:                 true,
 		clock:                  time.Now(),
 		focusDuration:          system.GetPomodoroMinutes(),
-		focusBreak:             5,
 		statsRange:             0,
 		statsSort:              0,
 		statsCustomFrom:        time.Now().Format("2006-01-02"),
@@ -169,19 +166,15 @@ func NewModel() Model {
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		secondTick(),
-		splashDone(),
+		tea.Tick(1500*time.Millisecond, func(time.Time) tea.Msg { return splashDoneMsg{} }),
 		checkDaemon(),
 		loadDashboard(),
-		loadStats(m.statsRange),
+		loadStats(m.statsRange, m.statsCustomFrom, m.statsCustomTo),
 	)
 }
 
 func secondTick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return secondTickMsg(t) })
-}
-
-func splashDone() tea.Cmd {
-	return tea.Tick(1500*time.Millisecond, func(time.Time) tea.Msg { return splashDoneMsg{} })
 }
 
 func flushCmd() tea.Cmd {
@@ -204,25 +197,14 @@ func loadDashboard() tea.Cmd {
 	}
 }
 
-func loadStats(rangeIndex int) tea.Cmd {
+func loadStats(rangeIndex int, from, to string) tea.Cmd {
 	return func() tea.Msg {
-		start, end, historyDays := statsRangeDates(rangeIndex, "", "")
+		start, end, historyDays := statsRangeDates(rangeIndex, from, to, time.Now())
 		return statsLoadedMsg(readTUIData(start, end, historyDays, false))
 	}
 }
 
-func loadCustomStats(from, to string) tea.Cmd {
-	return func() tea.Msg {
-		start, end, historyDays := statsRangeDates(3, from, to)
-		return statsLoadedMsg(readTUIData(start, end, historyDays, false))
-	}
-}
-
-func statsRangeDates(rangeIndex int, customFrom, customTo string) (string, string, int) {
-	return statsRangeDatesTime(rangeIndex, customFrom, customTo, time.Now())
-}
-
-func statsRangeDatesTime(rangeIndex int, customFrom, customTo string, now time.Time) (string, string, int) {
+func statsRangeDates(rangeIndex int, customFrom, customTo string, now time.Time) (string, string, int) {
 	today := now.Format("2006-01-02")
 	switch rangeIndex {
 	case 1:
@@ -257,45 +239,46 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 
 	apps, err := aggregateAppStats(startDate, endDate)
 	if err != nil {
-		data.Err = err
-		return data
+		log.Printf("WARN: failed to load app stats: %v", err)
 	}
 	for _, s := range apps {
 		name := s.ExeName
 		if name == "" {
 			name = s.AppName
 		}
-		data.Apps = append(data.Apps, appUsage{Name: name, Exe: s.ExeName, Duration: s.TotalDurationSecs, Opens: s.OpenCount})
+		data.Apps = append(data.Apps, appUsage{Name: name, Duration: s.TotalDurationSecs, Opens: s.OpenCount})
 		data.Total += s.TotalDurationSecs
 	}
 	data.ActiveApps = len(data.Apps)
 
 	browsers, err := aggregateBrowserStats(startDate, endDate)
 	if err != nil {
-		data.Err = err
-		return data
+		log.Printf("WARN: failed to load browser stats: %v", err)
 	}
 	for _, s := range browsers {
 		data.Browsers = append(data.Browsers, appUsage{Name: s.AppName, Duration: s.TotalDurationSecs, Opens: s.OpenCount})
 	}
 
 	limits := system.GetAppTimeLimits()
-	for app, mins := range limits {
-		if storage.GetAppUsageTodayMinutes(app) >= mins {
-			data.LimitsHit++
+	if len(limits) > 0 {
+		usageMap, err := storage.GetAppUsageTodayMinutesMap()
+		if err == nil {
+			for app, mins := range limits {
+				if usageMap[app] >= mins {
+					data.LimitsHit++
+				}
+			}
 		}
 	}
 
 	if includeHourly {
-		sessions, _, err := storage.GetSessionsPaginated(500, 0, today, today)
-		if err != nil {
-			data.Err = err
-			return data
-		}
-		for _, s := range sessions {
-			h := s.StartTime.Hour()
-			if h >= 0 && h < 24 {
-				data.Hourly[h] += s.DurationSecs
+		sessions, err := storage.GetSessionsPaginated(500, 0, today, today)
+		if err == nil {
+			for _, s := range sessions {
+				h := s.StartTime.Hour()
+				if h < 24 {
+					data.Hourly[h] += s.DurationSecs
+				}
 			}
 		}
 	}
@@ -314,43 +297,37 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 			}
 		}
 	}
+	earliestDate := historyEnd.AddDate(0, 0, -(historyDays - 1)).Format("2006-01-02")
+	allStats, err := storage.GetAppStatsInRange(earliestDate, endDate)
+	dateTotals := make(map[string]int)
+	if err == nil {
+		for _, s := range allStats {
+			dateTotals[s.Date] += s.TotalDurationSecs
+		}
+	}
+
 	for i := historyDays - 1; i >= 0; i-- {
 		d := historyEnd.AddDate(0, 0, -i)
 		date := d.Format("2006-01-02")
-		dayApps, err := storage.GetAppStatsForDate(date)
-		if err != nil {
-			data.Err = err
-			return data
-		}
-		total := 0
-		for _, s := range dayApps {
-			total += s.TotalDurationSecs
-		}
 		data.Days = append(data.Days, dailyUsage{
 			Date:     date,
 			Label:    d.Format("Mon"),
-			Duration: total,
+			Duration: dateTotals[date],
 			Today:    date == today,
 			Weekend:  d.Weekday() == time.Saturday || d.Weekday() == time.Sunday,
 		})
 	}
 
-	if dbPath, err := storage.GetDBPath(); err == nil {
-		data.DBPath = dbPath
-	}
 	return data
 }
 
 func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error) {
-	stats, err := storage.GetAllAppStats()
+	stats, err := storage.GetAppStatsInRange(startDate, endDate)
 	if err != nil {
 		return nil, err
 	}
 	combined := map[string]storage.AppDailyStat{}
 	for _, s := range stats {
-		if s.Date < startDate || s.Date > endDate {
-			continue
-		}
 		key := s.ExeName
 		if key == "" {
 			key = s.AppName
@@ -375,20 +352,21 @@ func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error
 }
 
 func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, error) {
-	stats, err := storage.GetAllBrowserStats()
+	stats, err := storage.GetBrowserStatsInRange(startDate, endDate)
 	if err != nil {
 		return nil, err
 	}
 	combined := map[string]storage.AppDailyStat{}
 	for _, s := range stats {
-		if s.Date < startDate || s.Date > endDate {
-			continue
+		key := s.AppName
+		item := combined[key]
+		if item.AppName == "" {
+			item.AppName = s.AppName
+			item.ExeName = s.ExeName
 		}
-		item := combined[s.AppName]
-		item.AppName = s.AppName
 		item.TotalDurationSecs += s.TotalDurationSecs
 		item.OpenCount += s.OpenCount
-		combined[s.AppName] = item
+		combined[key] = item
 	}
 	out := make([]storage.AppDailyStat, 0, len(combined))
 	for _, item := range combined {
@@ -417,7 +395,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, secondTick(), checkDaemon())
 		if m.clock.Second()%5 == 0 {
 			m.refreshing = true
-			cmds = append(cmds, loadDashboard(), loadStats(m.statsRange))
+			cmds = append(cmds, loadDashboard(), loadStats(m.statsRange, m.statsCustomFrom, m.statsCustomTo))
 		}
 	case statusMsg:
 		m.daemonActive = bool(msg)
@@ -428,6 +406,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshing = false
 	case statsLoadedMsg:
 		m.stats = tuiData(msg)
+		m.sortedAppsCache = nil
 		m.statsSelected = min(m.statsSelected, max(0, len(m.stats.Apps)-1))
 		m.browserSelected = min(m.browserSelected, max(0, len(m.stats.Browsers)-1))
 		m.statsUsageOffset = min(m.statsUsageOffset, max(0, len(m.stats.Apps)-1))
@@ -452,7 +431,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) contentHeight() int {
-	contentHeight := m.height - lipgloss.Height(m.renderHeader()) - lipgloss.Height(m.renderTabs()) - 2
+	contentHeight := m.height - lipgloss.Height(m.renderHeader()) - lipgloss.Height(m.renderTabs()) - lipgloss.Height(m.renderFooter())
 	if contentHeight < 1 {
 		return 1
 	}
@@ -494,8 +473,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.panelFocus = (m.panelFocus + m.panelCount() - 1) % m.panelCount()
 		return m, nil
 	case "r":
-		m.refreshing = true
-		return m, flushCmd()
+		// 'r' is reserved for resetting the pomodoro timer on the Focus tab,
+		// so we only trigger a database flush/refresh on other tabs.
+		if m.activeTab != tabFocus {
+			m.refreshing = true
+			return m, flushCmd()
+		}
 	}
 
 	switch m.activeTab {
@@ -535,6 +518,7 @@ func (m Model) handleModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 					m.addToast("Tracking data wiped", toastSuccess)
 					m.dashboard = tuiData{}
 					m.stats = tuiData{}
+					m.sortedAppsCache = nil
 					m.dashSelected = 0
 					m.limitsSelected = 0
 					m.statsSelected = 0
@@ -543,7 +527,7 @@ func (m Model) handleModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 					m.statsBrowserOffset = 0
 				}
 				m.modal = modal{}
-				return m, tea.Batch(loadDashboard(), loadStats(m.statsRange))
+				return m, tea.Batch(loadDashboard(), loadStats(m.statsRange, m.statsCustomFrom, m.statsCustomTo))
 			}
 			m.modal = modal{}
 		}
@@ -607,19 +591,32 @@ func (m *Model) View() string {
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderSplash())
 	}
 
+	originalWidth := m.width
+	m.width--
+	defer func() { m.width = originalWidth }()
+
 	m.clickableRegions = nil
 
 	header := m.renderHeader()
 	nav := m.renderTabs()
 	footer := m.renderFooter()
 
-	chromeHeight := lipgloss.Height(header) + lipgloss.Height(nav) + lipgloss.Height(footer)
-	contentHeight := m.height - chromeHeight
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
+	contentHeight := m.contentHeight()
 
-	body := m.renderActiveTab(m.width, contentHeight)
+	var body string
+	switch m.activeTab {
+	case tabDashboard:
+		body = m.renderDashboard(m.width, contentHeight)
+	case tabStats:
+		body = m.renderStats(m.width, contentHeight)
+	case tabFocus:
+		body = m.renderFocus(m.width, contentHeight)
+	case tabLimits:
+		body = m.renderLimits(m.width, contentHeight)
+	case tabSettings:
+		body = m.renderSettings(m.width, contentHeight)
+	}
+	body = clipLines(body, contentHeight, m.width)
 	screen := lipgloss.JoinVertical(lipgloss.Left, header, nav, body, footer)
 	screen = clipLines(screen, m.height, m.width)
 	if m.showHelp {
@@ -631,7 +628,7 @@ func (m *Model) View() string {
 	if len(m.toasts) > 0 {
 		screen = m.placeToasts(screen)
 	}
-	return appStyle.Width(m.width).Height(m.height).Render(screen)
+	return appStyle.Width(originalWidth).Height(m.height).Render(screen)
 }
 
 func (m Model) renderSplash() string {
@@ -665,7 +662,7 @@ func (m *Model) renderHeader() string {
 		midWidth = 1
 	}
 	line := "  " + left + center(version, midWidth) + right
-	return lipgloss.JoinVertical(lipgloss.Left, padRight(line, m.width), mutedStyle.Render(fill(m.width, "─")))
+	return lipgloss.JoinVertical(lipgloss.Left, padRight(line, m.width), mutedStyle.Render(strings.Repeat("─", max(0, m.width))))
 }
 
 func (m *Model) renderTabs() string {
@@ -700,17 +697,32 @@ func (m *Model) renderTabs() string {
 
 	labelLine := strings.Join(labels, mutedStyle.Render(separator))
 	underlineLine := strings.Join(underlines, "   ")
-	contentWidth := min(max(lipgloss.Width(labelLine), lipgloss.Width(underlineLine)), max(1, m.width-8))
-	bar := center(labelLine, contentWidth) + "\n" + center(underlineLine, contentWidth)
-
-	leftMargin := (m.width - 2 - contentWidth) / 2
+	tabWidth := lipgloss.Width(labelLine)
+	
+	inner := m.width - 4
+	leftMargin := (inner - tabWidth) / 2
 	if leftMargin < 0 {
 		leftMargin = 0
 	}
+
+	centeredLabel := strings.Repeat(" ", leftMargin) + labelLine
+	centeredUnderline := strings.Repeat(" ", leftMargin) + underlineLine
+
+	centeredLabel += strings.Repeat(" ", max(0, inner-lipgloss.Width(centeredLabel)))
+	centeredUnderline += strings.Repeat(" ", max(0, inner-lipgloss.Width(centeredUnderline)))
+
+	edge := lipgloss.NewStyle().Foreground(cMuted)
+	top := edge.Render("╭" + strings.Repeat("─", m.width-2) + "╮")
+	mid1 := edge.Render("│ ") + centeredLabel + edge.Render(" │")
+	mid2 := edge.Render("│ ") + centeredUnderline + edge.Render(" │")
+	bottom := edge.Render("╰" + strings.Repeat("─", m.width-2) + "╯")
+
+	bar := lipgloss.JoinVertical(lipgloss.Left, top, mid1, mid2, bottom)
+
 	startX := leftMargin + 2
 	for i := range tabNames {
 		w := tabWidths[i]
-		m.clickableRegions = append(m.clickableRegions, ClickableRegion{
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{
 			X1:   startX,
 			Y1:   2,
 			X2:   startX + w,
@@ -721,12 +733,7 @@ func (m *Model) renderTabs() string {
 		startX += w + sepWidth
 	}
 
-	return lipgloss.NewStyle().
-		Width(m.width-2).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(cMuted).
-		Padding(0, 1).
-		Render(bar)
+	return bar
 }
 
 func (m *Model) renderFooter() string {
@@ -741,7 +748,7 @@ func (m *Model) renderFooter() string {
 		case tabStats:
 			pairs = append([]string{"←→ Range", "Enter Edit Custom Range", "s Sort", "r Refresh"}, pairs...)
 		case tabFocus:
-			pairs = append([]string{"s Start", "p Pause", "x Stop", "r Reset"}, pairs...)
+			pairs = append([]string{"s Start", "x Stop", "r Reset"}, pairs...)
 		case tabLimits:
 			pairs = append([]string{"n New", "e Edit", "d Delete", "Enter Save"}, pairs...)
 		case tabSettings:
@@ -752,26 +759,9 @@ func (m *Model) renderFooter() string {
 		}
 		hint = strings.Join(pairs, "  ·  ")
 	}
-	return mutedStyle.Render(fill(m.width, "─")) + "\n  " + mutedStyle.Render(truncate(hint, m.width-2))
+	return mutedStyle.Render(strings.Repeat("─", max(0, m.width))) + "\n  " + mutedStyle.Render(truncate(hint, m.width-2))
 }
 
-func (m *Model) renderActiveTab(width, height int) string {
-	var body string
-	switch m.activeTab {
-	case tabDashboard:
-		body = m.renderDashboard(width, height)
-	case tabStats:
-		body = m.renderStats(width, height)
-	case tabFocus:
-		body = m.renderFocus(width, height)
-	case tabLimits:
-		body = m.renderLimits(width, height)
-	case tabSettings:
-		body = m.renderSettings(width, height)
-	}
-	body = clipLines(body, height, width)
-	return body
-}
 
 func (m Model) renderModal() string {
 	if m.modal.Title == "CUSTOM RANGE" {
@@ -787,7 +777,7 @@ func (m Model) renderModal() string {
 		"",
 		center(buttonStyle.Render("[ CANCEL ]")+"   "+redStyle.Bold(true).Render("[ CONFIRM ]"), 40),
 	}
-	return panel("CONFIRM", "", 44, strings.Join(msg, "\n"), true)
+	return panelWithHover("CONFIRM", "", 44, strings.Join(msg, "\n"), true, false)
 }
 
 func (m Model) overlay(base, modalView string) string {
@@ -804,6 +794,35 @@ func (m Model) placeToasts(base string) string {
 		out = overlayAt(out, view, x, y)
 	}
 	return out
+}
+
+func truncateAnsi(s string, limit int) string {
+	var sb strings.Builder
+	printed := 0
+	inEsc := false
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if r == '\x1b' {
+			inEsc = true
+			sb.WriteRune(r)
+			continue
+		}
+		if inEsc {
+			sb.WriteRune(r)
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+				inEsc = false
+			}
+			continue
+		}
+		w := runewidth.RuneWidth(r)
+		if printed+w > limit {
+			break
+		}
+		sb.WriteRune(r)
+		printed += w
+	}
+	return sb.String()
 }
 
 func overlayAt(base, over string, x, y int) string {
@@ -825,11 +844,7 @@ func overlayAt(base, over string, x, y int) string {
 			baseLines[target] += strings.Repeat(" ", x-plainWidth)
 		}
 		line := baseLines[target]
-		prefix := line
-		for lipgloss.Width(prefix) > x && len([]rune(prefix)) > 0 {
-			r := []rune(prefix)
-			prefix = string(r[:len(r)-1])
-		}
+		prefix := truncateAnsi(line, x)
 		if lipgloss.Width(prefix) < x {
 			prefix += strings.Repeat(" ", x-lipgloss.Width(prefix))
 		}
@@ -854,12 +869,18 @@ func renderToast(t toast) string {
 	}
 	age := time.Since(t.CreatedAt)
 	progress := max(0, 20-int(age.Seconds()*7))
-	body := "  " + style.Render(icon) + " " + truncate(t.Text, 34) + "  \n" + style.Render(fill(progress, "─"))
+	body := "  " + style.Render(icon) + " " + truncate(t.Text, 34) + "  \n" + style.Render(strings.Repeat("─", max(0, progress)))
 	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(style.GetForeground()).Padding(0, 1).Render(body)
 }
 
 func rowKV(label, value string, width int) string {
-	return "  " + mutedStyle.Render(padRight(label, max(8, width-18))) + boldStyle.Render(padLeft(value, 14))
+	usable := max(6, width-2)
+	valWidth := 8
+	if usable > 20 {
+		valWidth = 12
+	}
+	lblWidth := max(4, usable-valWidth)
+	return " " + mutedStyle.Render(padRight(label, lblWidth)) + boldStyle.Render(padLeft(value, valWidth)) + " "
 }
 
 func formatDuration(secs int) string {
@@ -870,13 +891,6 @@ func formatDuration(secs int) string {
 		return fmt.Sprintf("%dm %ds", secs/60, secs%60)
 	}
 	return fmt.Sprintf("%dh %dm", secs/3600, (secs%3600)/60)
-}
-
-func ifThen(ok bool, a, b string) string {
-	if ok {
-		return a
-	}
-	return b
 }
 
 func (m Model) renderHelp() string {
@@ -929,7 +943,7 @@ func (m Model) renderHelp() string {
 		rows[i] = padRight(l, 36) + "  " + r
 	}
 	rows = append(rows, "", center(mutedStyle.Render("Press ? or Esc to close"), 72))
-	return panel("KEYBOARD SHORTCUTS", "", 78, "\n"+strings.Join(rows, "\n")+"\n", true)
+	return panelWithHover("KEYBOARD SHORTCUTS", "", 78, "\n"+strings.Join(rows, "\n")+"\n", true, false)
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
@@ -942,7 +956,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
 	m.hoveredElement = ""
 	m.hoveredPanel = -1
 
-	var hoveredRegion *ClickableRegion
+	var hoveredRegion *clickableRegion
 	for _, region := range m.clickableRegions {
 		if msg.X >= region.X1 && msg.X < region.X2 && msg.Y >= region.Y1 && msg.Y < region.Y2 {
 			hoveredRegion = &region
@@ -974,7 +988,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
 		if hoveredRegion != nil {
 			if hoveredRegion.Kind == "tab" {
 				var idx int
-				if _, err := fmt.Sscanf(hoveredRegion.ID, "tab-%d", &idx); err == nil {
+				if _, err := fmt.Sscanf(hoveredRegion.ID, "tab-%d", &idx); err == nil && idx >= 0 && idx < len(tabNames) {
 					m.activeTab = idx
 					m.panelFocus = 0
 					m.hoveredElement = ""
@@ -1040,12 +1054,12 @@ func (m Model) scrollPanel(panelIdx int, delta int) Model {
 	case tabStats:
 		if panelIdx == 1 {
 			appsLen := len(m.sortedStatsApps())
-			m.statsUsageOffset = clampScrollOffset(m.statsUsageOffset+delta, m.statsVisibleUsageRows(), appsLen)
+			m.statsUsageOffset = clampScrollOffset(m.statsUsageOffset+delta, m.statsVisibleRows(false), appsLen)
 			m.statsSelected = min(m.statsUsageOffset, max(0, appsLen-1))
 			m.panelFocus = 1
 		} else if panelIdx == 2 {
 			browserLen := len(m.stats.Browsers)
-			m.statsBrowserOffset = clampScrollOffset(m.statsBrowserOffset+delta, m.statsVisibleBrowserRows(), browserLen)
+			m.statsBrowserOffset = clampScrollOffset(m.statsBrowserOffset+delta, m.statsVisibleRows(true), browserLen)
 			m.browserSelected = min(m.statsBrowserOffset, max(0, browserLen-1))
 			m.panelFocus = 2
 		}

@@ -10,7 +10,7 @@ import (
 
 const DaemonProcessName = "focusd_daemon.exe"
 
-func GetInstallDir() string {
+func getInstallDir() string {
 	appData := os.Getenv("APPDATA")
 	if appData == "" {
 		return ""
@@ -18,30 +18,22 @@ func GetInstallDir() string {
 	return filepath.Join(appData, "focusd")
 }
 
-func GetInstalledExePath() string {
-	installDir := GetInstallDir()
-	if installDir == "" {
-		return ""
-	}
-	return filepath.Join(installDir, "focusd.exe")
-}
-
-func GetInstalledDaemonPath() string {
-	installDir := GetInstallDir()
+func getInstalledDaemonPath() string {
+	installDir := getInstallDir()
 	if installDir == "" {
 		return ""
 	}
 	return filepath.Join(installDir, "focusd_daemon.exe")
 }
 
-func InstallExes() error {
+func installExes() error {
 	src, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get current executable: %w", err)
 	}
 	src, _ = filepath.Abs(src)
 
-	installDir := GetInstallDir()
+	installDir := getInstallDir()
 	if installDir == "" {
 		return fmt.Errorf("APPDATA environment variable not set")
 	}
@@ -72,49 +64,43 @@ func InstallExes() error {
 }
 
 func installFile(src, dst string) error {
+	hasBackup := false
 	if _, err := os.Stat(dst); err == nil {
 		oldPath := dst + ".old"
 		os.Remove(oldPath)
 		if err := os.Rename(dst, oldPath); err != nil {
 			return fmt.Errorf("failed to move existing file %s to %s (is it locked?): %w", dst, oldPath, err)
 		}
+		hasBackup = true
 	}
 
 	srcFile, err := os.Open(src)
 	if err != nil {
+		if hasBackup {
+			os.Rename(dst+".old", dst)
+		}
 		return err
 	}
 	defer srcFile.Close()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
+		if hasBackup {
+			os.Rename(dst+".old", dst)
+		}
 		return err
 	}
-	defer dstFile.Close()
 
 	_, err = io.Copy(dstFile, srcFile)
-	return err
-}
-
-func CleanupOldBinary() {
-	exePath, err := os.Executable()
+	if closeErr := dstFile.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
 	if err != nil {
-		return
+		os.Remove(dst)
+		if hasBackup {
+			os.Rename(dst+".old", dst)
+		}
+		return err
 	}
-	oldPath := exePath + ".old"
-	if _, err := os.Stat(oldPath); err == nil {
-
-		_ = os.Remove(oldPath)
-	}
-}
-
-func IsInstalled() bool {
-	exePath := GetInstalledExePath()
-	daemonPath := GetInstalledDaemonPath()
-	if exePath == "" || daemonPath == "" {
-		return false
-	}
-	_, err1 := os.Stat(exePath)
-	_, err2 := os.Stat(daemonPath)
-	return err1 == nil && err2 == nil
+	return nil
 }

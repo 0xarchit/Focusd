@@ -1,12 +1,13 @@
 package storage
 
 import (
+	"database/sql"
+	"errors"
 	"log"
 	"time"
 )
 
 type Session struct {
-	ID           int64
 	AppName      string
 	ExeName      string
 	WindowTitle  string
@@ -16,29 +17,52 @@ type Session struct {
 	Date         string
 }
 
-func InsertSession(s *Session) error {
+func InsertSessionWithDaily(s *Session, cleanBrowserTitle string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	var endTime *int64
 	if !s.EndTime.IsZero() {
 		t := s.EndTime.Unix()
 		endTime = &t
 	}
 
-	_, err := db.Exec(`
+	_, err = tx.Exec(`
 		INSERT INTO sessions (app_name, exe_name, window_title, start_time, end_time, duration_secs, date)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`, s.AppName, s.ExeName, s.WindowTitle, s.StartTime.Unix(), endTime, s.DurationSecs, s.Date)
-	return err
-}
+	if err != nil {
+		return err
+	}
 
-func UpdateAppDaily(date, appName, exeName string, durationSecs int) error {
-	_, err := db.Exec(`
+	_, err = tx.Exec(`
 		INSERT INTO apps_daily (date, app_name, exe_name, total_duration_secs, open_count)
 		VALUES (?, ?, ?, ?, 1)
 		ON CONFLICT(date, exe_name) DO UPDATE SET
 			total_duration_secs = total_duration_secs + excluded.total_duration_secs,
 			open_count = open_count + 1
-	`, date, appName, exeName, durationSecs)
-	return err
+	`, s.Date, s.AppName, s.ExeName, s.DurationSecs)
+	if err != nil {
+		return err
+	}
+
+	if cleanBrowserTitle != "" {
+		_, err = tx.Exec(`
+			INSERT INTO browsing_daily (date, domain_or_title, total_duration_secs, open_count)
+			VALUES (?, ?, ?, 1)
+			ON CONFLICT(date, domain_or_title) DO UPDATE SET
+				total_duration_secs = total_duration_secs + excluded.total_duration_secs,
+				open_count = open_count + 1
+		`, s.Date, cleanBrowserTitle, s.DurationSecs)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 type AppDailyStat struct {
@@ -49,44 +73,11 @@ type AppDailyStat struct {
 	OpenCount         int
 }
 
-func GetAppStatsForDate(date string) ([]AppDailyStat, error) {
-	rows, err := db.Query(`
-		SELECT date, app_name, exe_name, total_duration_secs, open_count
-		FROM apps_daily
-		WHERE date = ?
-		ORDER BY total_duration_secs DESC
-	`, date)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var stats []AppDailyStat
-	for rows.Next() {
-		var s AppDailyStat
-		if err := rows.Scan(&s.Date, &s.AppName, &s.ExeName, &s.TotalDurationSecs, &s.OpenCount); err != nil {
-			return nil, err
-		}
-		stats = append(stats, s)
-	}
-	return stats, rows.Err()
-}
-
-func GetTotalScreenTimeTodaySecs() int {
-	today := Today()
-	var secs int
-	err := db.QueryRow(`
-		SELECT COALESCE(SUM(total_duration_secs), 0) FROM apps_daily
-		WHERE date = ?
-	`, today).Scan(&secs)
-	if err != nil {
-		log.Printf("WARN: GetTotalScreenTimeTodaySecs query failed: %v", err)
-		return 0
-	}
-	return secs
-}
-
 func GetAppUsageTodayMinutes(exeName string) int {
+	return GetAppUsageTodaySeconds(exeName) / 60
+}
+
+func GetAppUsageTodaySeconds(exeName string) int {
 	today := Today()
 	var secs int
 	err := db.QueryRow(`
@@ -94,18 +85,46 @@ func GetAppUsageTodayMinutes(exeName string) int {
 		WHERE date = ? AND exe_name = ?
 	`, today, exeName).Scan(&secs)
 	if err != nil {
-		if err.Error() != "sql: no rows in result set" {
-			log.Printf("WARN: GetAppUsageTodayMinutes query failed for %s: %v", exeName, err)
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("WARN: GetAppUsageTodaySeconds query failed for %s: %v", exeName, err)
 		}
 		return 0
 	}
-	return secs / 60
+	return secs
 }
 
-func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Session, int, error) {
-	countQuery := `SELECT COUNT(*) FROM sessions`
+func GetAppUsageTodayMinutesMap() (map[string]int, error) {
+	today := Today()
+	rows, err := db.Query(`
+		SELECT exe_name, total_duration_secs FROM apps_daily
+		WHERE date = ?
+	`, today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	res := make(map[string]int)
+	for rows.Next() {
+		var exeName string
+		var secs int
+		if err := rows.Scan(&exeName, &secs); err != nil {
+			return nil, err
+		}
+		res[exeName] = secs / 60
+	}
+	return res, rows.Err()
+}
+
+func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Session, error) {
+	if limit < 0 {
+		limit = 0
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	dataQuery := `
-		SELECT id, app_name, exe_name, window_title, start_time, end_time, duration_secs, date
+		SELECT app_name, exe_name, window_title, start_time, end_time, duration_secs, date
 		FROM sessions
 	`
 
@@ -123,44 +142,10 @@ func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Sessi
 		args = append(args, endDate)
 	}
 
-	var total int
-	err := db.QueryRow(countQuery+whereClause, args...).Scan(&total)
-	if err != nil {
-		return nil, 0, err
-	}
-
 	dataQuery += whereClause + " ORDER BY start_time DESC LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
 	rows, err := db.Query(dataQuery, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-
-	var sessions []Session
-	for rows.Next() {
-		var s Session
-		var startTime int64
-		var endTime *int64
-		if err := rows.Scan(&s.ID, &s.AppName, &s.ExeName, &s.WindowTitle, &startTime, &endTime, &s.DurationSecs, &s.Date); err != nil {
-			return nil, 0, err
-		}
-		s.StartTime = time.Unix(startTime, 0)
-		if endTime != nil {
-			s.EndTime = time.Unix(*endTime, 0)
-		}
-		sessions = append(sessions, s)
-	}
-	return sessions, total, rows.Err()
-}
-
-func GetAllSessions() ([]Session, error) {
-	rows, err := db.Query(`
-		SELECT id, app_name, exe_name, window_title, start_time, end_time, duration_secs, date
-		FROM sessions
-		ORDER BY start_time DESC
-	`)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +156,7 @@ func GetAllSessions() ([]Session, error) {
 		var s Session
 		var startTime int64
 		var endTime *int64
-		if err := rows.Scan(&s.ID, &s.AppName, &s.ExeName, &s.WindowTitle, &startTime, &endTime, &s.DurationSecs, &s.Date); err != nil {
+		if err := rows.Scan(&s.AppName, &s.ExeName, &s.WindowTitle, &startTime, &endTime, &s.DurationSecs, &s.Date); err != nil {
 			return nil, err
 		}
 		s.StartTime = time.Unix(startTime, 0)
@@ -183,12 +168,15 @@ func GetAllSessions() ([]Session, error) {
 	return sessions, rows.Err()
 }
 
-func GetAllAppStats() ([]AppDailyStat, error) {
-	rows, err := db.Query(`
-		SELECT date, app_name, exe_name, total_duration_secs, open_count
-		FROM apps_daily
-		ORDER BY date DESC, total_duration_secs DESC
-	`)
+func GetAppStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
+	query := `SELECT date, app_name, exe_name, total_duration_secs, open_count FROM apps_daily`
+	var args []any
+	if startDate != "" && endDate != "" {
+		query += ` WHERE date >= ? AND date <= ?`
+		args = append(args, startDate, endDate)
+	}
+	query += ` ORDER BY date DESC, total_duration_secs DESC`
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -205,46 +193,13 @@ func GetAllAppStats() ([]AppDailyStat, error) {
 	return stats, rows.Err()
 }
 
-func GetAllBrowserStats() ([]AppDailyStat, error) {
+func GetBrowserStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 	rows, err := db.Query(`
 		SELECT date, domain_or_title, '', total_duration_secs, open_count
 		FROM browsing_daily
+		WHERE date >= ? AND date <= ?
 		ORDER BY date DESC, total_duration_secs DESC
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var stats []AppDailyStat
-	for rows.Next() {
-		var s AppDailyStat
-		if err := rows.Scan(&s.Date, &s.AppName, &s.ExeName, &s.TotalDurationSecs, &s.OpenCount); err != nil {
-			return nil, err
-		}
-		stats = append(stats, s)
-	}
-	return stats, rows.Err()
-}
-
-func UpdateBrowserDaily(date, domainOrTitle string, durationSecs int) error {
-	_, err := db.Exec(`
-		INSERT INTO browsing_daily (date, domain_or_title, total_duration_secs, open_count)
-		VALUES (?, ?, ?, 1)
-		ON CONFLICT(date, domain_or_title) DO UPDATE SET
-			total_duration_secs = total_duration_secs + excluded.total_duration_secs,
-			open_count = open_count + 1
-	`, date, domainOrTitle, durationSecs)
-	return err
-}
-
-func GetBrowserStatsForDate(date string) ([]AppDailyStat, error) {
-	rows, err := db.Query(`
-		SELECT date, domain_or_title, '', total_duration_secs, open_count
-		FROM browsing_daily
-		WHERE date = ?
-		ORDER BY total_duration_secs DESC
-	`, date)
+	`, startDate, endDate)
 	if err != nil {
 		return nil, err
 	}
@@ -271,13 +226,14 @@ type ActiveSessionRecord struct {
 }
 
 func SaveActiveSession(s *ActiveSessionRecord) error {
-	if s == nil {
-		return nil
+	lastSeen := s.LastSeen
+	if lastSeen.IsZero() {
+		lastSeen = time.Now()
 	}
 	_, err := db.Exec(`
 		INSERT OR REPLACE INTO active_session (id, app_name, exe_name, window_title, start_time, last_seen, date)
 		VALUES (1, ?, ?, ?, ?, ?, ?)
-	`, s.AppName, s.ExeName, s.WindowTitle, s.StartTime.Unix(), s.LastSeen.Unix(), s.Date)
+	`, s.AppName, s.ExeName, s.WindowTitle, s.StartTime.Unix(), lastSeen.Unix(), s.Date)
 	return err
 }
 
@@ -296,10 +252,15 @@ func RecoverActiveSession() (*Session, error) {
 	`).Scan(&s.AppName, &s.ExeName, &s.WindowTitle, &startTime, &lastSeen, &s.Date)
 
 	if err != nil {
-		return nil, nil
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
 	}
 
-	ClearActiveSession()
+	if err := ClearActiveSession(); err != nil {
+		log.Printf("WARN: failed to clear active session: %v", err)
+	}
 
 	duration := int(lastSeen - startTime)
 	if duration < 1 {

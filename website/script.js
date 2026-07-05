@@ -1,12 +1,11 @@
 const commands = {
-  help: "Available commands: [help] [status] [features] [download] [clear] [theme] [matrix]",
+  help: "Available commands: [help] [status] [features] [download] [clear] [theme]",
   status: "focusd is ONLINE. Privacy protocols active. Zero data exfiltration.",
   features:
     "Features: [PRIVACY] [TUI DASHBOARD] [BROWSER TRACKING] [POMODORO] [APP LIMITS] [BREAK REMINDERS] [DATA CONTROL] [AUTO-START]",
   download: "Redirecting to GitHub releases...",
   clear: "CLEAR_ACTION",
   theme: "THEME_ACTION",
-  matrix: "MATRIX_ACTION",
   focusd:
     "<span style='color:#0f0'>Launching focusd TUI...</span><br><span style='color:#888'>  ___  ___  ___  ___  ___  ___  ___<br> | F || O || C || U || S || D || ↑ |<br> |___||___||___||___||___||___||___|</span><br><span style='color:#0f0'>● Dashboard  ○ Stats  ○ Focus  ○ Limits  ○ Settings</span><br><span style='color:#555'>(simulation — install focusd to experience the real TUI)</span>",
 };
@@ -16,6 +15,7 @@ let matrixSpeed = 50;
 let sfxEnabled = false;
 let audioCtx;
 let noiseBuffer = null;
+let systemStarted = false;
 
 document.addEventListener("DOMContentLoaded", () => {
   const prefersReducedMotion = window.matchMedia(
@@ -24,8 +24,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   initTheme();
   initSFX();
-  initTiltCards();
-  initKonamiCode();
   fetchLatestVersion();
 
   if (prefersReducedMotion) {
@@ -38,6 +36,9 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 async function startSystem() {
+  if (systemStarted) return;
+  systemStarted = true;
+
   const overlay = document.getElementById("start-overlay");
   overlay.style.opacity = "0";
   setTimeout(() => overlay.remove(), 500);
@@ -314,13 +315,6 @@ function initTerminal() {
         } else if (response === "THEME_ACTION") {
           toggleTheme();
           addToHistory("Theme toggled.");
-        } else if (response === "MATRIX_ACTION") {
-          matrixSpeed = matrixSpeed === 50 ? 20 : 50;
-          addToHistory(
-            matrixSpeed === 20
-              ? "Matrix intensity: HIGH"
-              : "Matrix intensity: NORMAL",
-          );
         } else {
           const allowedHTMLKeys = ["focusd"];
           const isAllowedHTML = allowedHTMLKeys.includes(cmd);
@@ -370,64 +364,6 @@ function addToHistory(text, isHTML = false) {
   history.appendChild(p);
 }
 
-function initTiltCards() {
-  const cards = document.querySelectorAll(".card");
-  cards.forEach((card) => {
-    card.addEventListener("mousemove", (e) => {
-      const rect = card.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      const centerX = rect.width / 2;
-      const centerY = rect.height / 2;
-
-      const rotateX = ((y - centerY) / centerY) * -10;
-      const rotateY = ((x - centerX) / centerX) * 10;
-
-      card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
-    });
-
-    card.addEventListener("mouseleave", () => {
-      card.style.transform = "perspective(1000px) rotateX(0) rotateY(0)";
-    });
-  });
-}
-
-function initKonamiCode() {
-  const code = [
-    "ArrowUp",
-    "ArrowUp",
-    "ArrowDown",
-    "ArrowDown",
-    "ArrowLeft",
-    "ArrowRight",
-    "ArrowLeft",
-    "ArrowRight",
-    "b",
-    "a",
-  ];
-  let index = 0;
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === code[index]) {
-      index++;
-      if (index === code.length) {
-        activateGodMode();
-        index = 0;
-      }
-    } else {
-      index = 0;
-    }
-  });
-}
-
-function activateGodMode() {
-  showToast("GOD MODE ACTIVATED");
-  document.body.classList.add("god-mode");
-  document.documentElement.style.setProperty("--accent-color", "#ff0000");
-  document.documentElement.style.setProperty("--text-color", "#ffaaaa");
-}
-
 function fetchLatestVersion() {
   const badge = document.getElementById("github-badge");
   fetch("https://api.github.com/repos/0xarchit/focusd/releases/latest")
@@ -446,44 +382,19 @@ function fetchLatestVersion() {
 }
 
 function copyToClipboard(text, successMsg) {
-  if (navigator.clipboard) {
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        showToast(successMsg);
-      })
-      .catch((err) => {
-        console.error("Async: Could not copy text: ", err);
-        fallbackCopyText(text, successMsg);
-      });
-  } else {
-    fallbackCopyText(text, successMsg);
+  if (!navigator.clipboard || !navigator.clipboard.writeText) {
+    showToast("Failed to copy: Clipboard API unavailable");
+    return;
   }
-}
-
-function fallbackCopyText(text, successMsg) {
-  var textArea = document.createElement("textarea");
-  textArea.value = text;
-  textArea.style.top = "0";
-  textArea.style.left = "0";
-  textArea.style.position = "fixed";
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
-
-  try {
-    var successful = document.execCommand("copy");
-    if (successful) {
+  navigator.clipboard
+    .writeText(text)
+    .then(() => {
       showToast(successMsg);
-    } else {
-      showToast("Copy failed. Please select manually.");
-    }
-  } catch (err) {
-    console.error("Fallback: Oops, unable to copy", err);
-    showToast("Copy error.");
-  }
-
-  document.body.removeChild(textArea);
+    })
+    .catch((err) => {
+      console.error("Could not copy text: ", err);
+      showToast("Failed to copy command");
+    });
 }
 
 function copyCommand() {

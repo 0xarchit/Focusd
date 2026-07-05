@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-func PrintHelp() {
+func printHelp() {
 	fmt.Println()
 	fmt.Println("focusd - Privacy-first digital wellbeing tracker")
 	fmt.Printf("Version %s\n", system.Version)
@@ -21,7 +21,6 @@ func PrintHelp() {
 	fmt.Println("Viewing Data:")
 	fmt.Println("  focusd status    (s)      Show tracking status")
 	fmt.Println("  focusd stats     (st)     Detailed usage breakdown")
-	fmt.Println("  focusd export    (e)      Export data to CSV")
 	fmt.Println()
 	fmt.Println("Tracking Control:")
 	fmt.Println("  focusd pause     (p)      Pause tracking")
@@ -38,17 +37,16 @@ func PrintHelp() {
 	fmt.Println("Other:")
 	fmt.Println("  focusd help      (h)      Show this help message")
 	fmt.Println("  focusd version   (-v)     Show version")
-	fmt.Println("  focusd reset-password     Reset password (when locked out)")
 	fmt.Println()
 }
 
-func PrintVersion() {
+func printVersion() {
 	fmt.Printf("focusd version %s\n", system.Version)
 }
 
 func Run(args []string) {
 	if len(args) < 2 {
-		RunInteractiveMenu()
+		runInteractiveMenu()
 		return
 	}
 
@@ -56,27 +54,27 @@ func Run(args []string) {
 
 	switch command {
 	case "update":
-		RunUpdate()
+		runUpdate()
 	case "focus":
-		RunFocus(args)
+		runFocus(args)
 	case "stop-timer":
-		RunStopTimer()
+		runStopTimer()
 	case "limit":
-		RunLimits(args)
+		runLimits(args)
 	case "start":
-		RunStart()
+		runStart()
 	case "stop":
-		RunStop()
+		runStop()
 	case "--daemon":
 		RunDaemon()
 	case "status", "s":
-		RunStatus()
+		runStatus()
 	case "stats", "st":
-		RunStats()
+		runStats()
 	case "pause", "p":
-		RunPause()
+		runPause()
 	case "resume", "r":
-		RunResume()
+		runResume()
 	case "retention", "ret":
 		handleRetention(args)
 	case "autostart", "auto":
@@ -84,15 +82,11 @@ func Run(args []string) {
 	case "path":
 		handlePath(args)
 	case "browser":
-		HandleBrowsersCommand(args)
-	case "export", "e":
-		RunExport()
+		handleBrowsersCommand(args)
 	case "help", "-h", "--help", "h":
-		PrintHelp()
+		printHelp()
 	case "version", "-v", "--version":
-		PrintVersion()
-	case "reset-password":
-		RunResetPassword()
+		printVersion()
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		fmt.Println("Run 'focusd help' for usage information.")
@@ -100,22 +94,25 @@ func Run(args []string) {
 	}
 }
 
+// Switch-based command dispatching is preferred here over map-based lookup
+// to keep argument index parsing simple, static, and extremely transparent
+// without needing extra struct wrapping or interface reflection.
 func handleRetention(args []string) {
 	if len(args) < 3 {
-		RunRetentionStatus()
+		runRetentionStatus()
 		return
 	}
 	switch args[2] {
 	case "status":
-		RunRetentionStatus()
+		runRetentionStatus()
 	case "set":
 		if len(args) < 4 {
 			fmt.Println("Usage: focusd retention set <days>")
 			os.Exit(1)
 		}
-		RunRetentionSet(args[3])
+		runRetentionSet(args[3])
 	case "reset":
-		RunRetentionReset()
+		runRetentionReset()
 	default:
 		fmt.Printf("Unknown retention command: %s\n", args[2])
 		os.Exit(1)
@@ -124,16 +121,16 @@ func handleRetention(args []string) {
 
 func handleAutostart(args []string) {
 	if len(args) < 3 {
-		RunAutostartStatus()
+		runAutostartStatus()
 		return
 	}
 	switch args[2] {
 	case "enable":
-		RunAutostartEnable()
+		runAutostartEnable()
 	case "disable":
-		RunAutostartDisable()
+		runAutostartDisable()
 	case "status":
-		RunAutostartStatus()
+		runAutostartStatus()
 	default:
 		fmt.Printf("Unknown autostart command: %s\n", args[2])
 		os.Exit(1)
@@ -142,16 +139,16 @@ func handleAutostart(args []string) {
 
 func handlePath(args []string) {
 	if len(args) < 3 {
-		RunPathStatus()
+		runPathStatus()
 		return
 	}
 	switch args[2] {
 	case "enable":
-		RunPathEnable()
+		runPathEnable()
 	case "disable":
-		RunPathDisable()
+		runPathDisable()
 	case "status":
-		RunPathStatus()
+		runPathStatus()
 	default:
 		fmt.Printf("Unknown path command: %s\n", args[2])
 		os.Exit(1)

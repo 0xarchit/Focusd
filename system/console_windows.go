@@ -4,13 +4,9 @@ package system
 
 import (
 	"os"
-	"syscall"
 )
 
-var (
-	modkernel32       = syscall.NewLazyDLL("kernel32.dll")
-	procAttachConsole = modkernel32.NewProc("AttachConsole")
-)
+var procAttachConsole = kernel32.NewProc("AttachConsole")
 
 func AttachParentConsole() {
 	ret, _, _ := procAttachConsole.Call(uintptr(0xFFFFFFFF))
@@ -20,8 +16,7 @@ func AttachParentConsole() {
 			stdOutputHandle = 0xFFFFFFF5
 			stdErrorHandle  = 0xFFFFFFF4
 		)
-		modkernel32 := syscall.NewLazyDLL("kernel32.dll")
-		procGetStdHandle := modkernel32.NewProc("GetStdHandle")
+		procGetStdHandle := kernel32.NewProc("GetStdHandle")
 
 		hIn, _, _ := procGetStdHandle.Call(uintptr(stdInputHandle))
 		hOut, _, _ := procGetStdHandle.Call(uintptr(stdOutputHandle))
