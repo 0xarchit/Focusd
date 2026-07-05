@@ -325,7 +325,12 @@ func (t *Tracker) flushPendingSessions() {
 		}
 		if err := storage.InsertSessionWithDaily(s, cleanBrowserTitle); err != nil {
 			log.Printf("ERROR: failed to insert session with daily: %v", err)
-			failed = append(failed, s)
+			s.RetryCount++
+			if s.RetryCount <= 5 {
+				failed = append(failed, s)
+			} else {
+				log.Printf("WARN: discarding session %s (%s) after 5 failed insertion retries: %v", s.AppName, s.ExeName, err)
+			}
 		}
 	}
 	if len(failed) > 0 {

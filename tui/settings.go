@@ -280,6 +280,9 @@ func exportData(jsonOut bool) (string, error) {
 		return "", fmt.Errorf("USERPROFILE not set")
 	}
 	exportDir := filepath.Join(userProfile, "Desktop")
+	if _, err := os.Stat(exportDir); os.IsNotExist(err) {
+		exportDir = userProfile
+	}
 	if jsonOut {
 		path := filepath.Join(exportDir, "focusd_export.json")
 		apps, err := storage.GetAllAppStats()

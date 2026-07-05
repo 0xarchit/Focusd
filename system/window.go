@@ -23,12 +23,12 @@ const (
 	processVMRead           = 0x0010
 )
 
-type windowInfo struct {
+type WindowInfo struct {
 	Title   string
 	ExeName string
 }
 
-func GetForegroundWindowInfo() (*windowInfo, error) {
+func GetForegroundWindowInfo() (*WindowInfo, error) {
 	hwnd, _, _ := procGetForegroundWindow.Call()
 	if hwnd == 0 {
 		return nil, nil
@@ -47,7 +47,7 @@ func GetForegroundWindowInfo() (*windowInfo, error) {
 		exeName = getProcessName(pid)
 	}
 
-	return &windowInfo{
+	return &WindowInfo{
 		Title:   title,
 		ExeName: exeName,
 	}, nil

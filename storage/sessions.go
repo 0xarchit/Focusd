@@ -15,6 +15,7 @@ type Session struct {
 	EndTime      time.Time
 	DurationSecs int
 	Date         string
+	RetryCount   int
 }
 
 func InsertSession(s *Session) error {
@@ -65,9 +66,9 @@ func InsertSessionWithDaily(s *Session, cleanBrowserTitle string) error {
 
 	if cleanBrowserTitle != "" {
 		_, err = tx.Exec(`
-			INSERT INTO browser_daily (date, app_name, total_duration_secs, open_count)
+			INSERT INTO browsing_daily (date, domain_or_title, total_duration_secs, open_count)
 			VALUES (?, ?, ?, 1)
-			ON CONFLICT(date, app_name) DO UPDATE SET
+			ON CONFLICT(date, domain_or_title) DO UPDATE SET
 				total_duration_secs = total_duration_secs + excluded.total_duration_secs,
 				open_count = open_count + 1
 		`, s.Date, cleanBrowserTitle, s.DurationSecs)
@@ -122,19 +123,7 @@ func GetAppStatsForDate(date string) ([]AppDailyStat, error) {
 }
 
 func GetAppUsageTodayMinutes(exeName string) int {
-	today := Today()
-	var secs int
-	err := db.QueryRow(`
-		SELECT COALESCE(total_duration_secs, 0) FROM apps_daily
-		WHERE date = ? AND exe_name = ?
-	`, today, exeName).Scan(&secs)
-	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			log.Printf("WARN: GetAppUsageTodayMinutes query failed for %s: %v", exeName, err)
-		}
-		return 0
-	}
-	return secs / 60
+	return GetAppUsageTodaySeconds(exeName) / 60
 }
 
 func GetAppUsageTodaySeconds(exeName string) int {
