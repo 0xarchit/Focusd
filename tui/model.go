@@ -589,6 +589,10 @@ func (m *Model) View() string {
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderSplash())
 	}
 
+	originalWidth := m.width
+	m.width--
+	defer func() { m.width = originalWidth }()
+
 	m.clickableRegions = nil
 
 	header := m.renderHeader()
@@ -622,7 +626,7 @@ func (m *Model) View() string {
 	if len(m.toasts) > 0 {
 		screen = m.placeToasts(screen)
 	}
-	return appStyle.Width(m.width).Height(m.height).Render(screen)
+	return appStyle.Width(originalWidth).Height(m.height).Render(screen)
 }
 
 func (m Model) renderSplash() string {
@@ -691,13 +695,28 @@ func (m *Model) renderTabs() string {
 
 	labelLine := strings.Join(labels, mutedStyle.Render(separator))
 	underlineLine := strings.Join(underlines, "   ")
-	contentWidth := min(max(lipgloss.Width(labelLine), lipgloss.Width(underlineLine)), max(1, m.width-8))
-	bar := center(labelLine, contentWidth) + "\n" + center(underlineLine, contentWidth)
-
-	leftMargin := (m.width - 2 - contentWidth) / 2
+	tabWidth := lipgloss.Width(labelLine)
+	
+	inner := m.width - 4
+	leftMargin := (inner - tabWidth) / 2
 	if leftMargin < 0 {
 		leftMargin = 0
 	}
+
+	centeredLabel := strings.Repeat(" ", leftMargin) + labelLine
+	centeredUnderline := strings.Repeat(" ", leftMargin) + underlineLine
+
+	centeredLabel += strings.Repeat(" ", max(0, inner-lipgloss.Width(centeredLabel)))
+	centeredUnderline += strings.Repeat(" ", max(0, inner-lipgloss.Width(centeredUnderline)))
+
+	edge := lipgloss.NewStyle().Foreground(cMuted)
+	top := edge.Render("╭" + strings.Repeat("─", m.width-2) + "╮")
+	mid1 := edge.Render("│ ") + centeredLabel + edge.Render(" │")
+	mid2 := edge.Render("│ ") + centeredUnderline + edge.Render(" │")
+	bottom := edge.Render("╰" + strings.Repeat("─", m.width-2) + "╯")
+
+	bar := lipgloss.JoinVertical(lipgloss.Left, top, mid1, mid2, bottom)
+
 	startX := leftMargin + 2
 	for i := range tabNames {
 		w := tabWidths[i]
@@ -712,12 +731,7 @@ func (m *Model) renderTabs() string {
 		startX += w + sepWidth
 	}
 
-	return lipgloss.NewStyle().
-		Width(m.width-2).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(cMuted).
-		Padding(0, 1).
-		Render(bar)
+	return bar
 }
 
 func (m *Model) renderFooter() string {
@@ -829,7 +843,13 @@ func renderToast(t toast) string {
 }
 
 func rowKV(label, value string, width int) string {
-	return "  " + mutedStyle.Render(padRight(label, max(8, width-18))) + boldStyle.Render(padLeft(value, 14))
+	usable := max(6, width-2)
+	valWidth := 8
+	if usable > 20 {
+		valWidth = 12
+	}
+	lblWidth := max(4, usable-valWidth)
+	return " " + mutedStyle.Render(padRight(label, lblWidth)) + boldStyle.Render(padLeft(value, valWidth)) + " "
 }
 
 func formatDuration(secs int) string {

@@ -46,7 +46,7 @@ func (m Model) handleDashboardKey(key string) (Model, tea.Cmd) {
 }
 
 func (m *Model) renderDashboard(width, height int) string {
-	inner := width - 2
+	inner := width
 
 	topHeight := (height * 55) / 100
 	bottomHeight := height - topHeight
@@ -103,19 +103,19 @@ func (m *Model) renderTodayPanel(width, height int) string {
 	var trendText string
 	if m.dashboard.YesterdayTotal == 0 {
 		if m.dashboard.Total > 0 {
-			trendText = mutedStyle.Render("N/A (first day)")
+			trendText = mutedStyle.Render("N/A")
 		} else {
-			trendText = mutedStyle.Render("0% (no change)")
+			trendText = mutedStyle.Render("0%")
 		}
 	} else {
 		diff := m.dashboard.Total - m.dashboard.YesterdayTotal
 		pct := int(float64(diff) / float64(m.dashboard.YesterdayTotal) * 100)
 		if pct > 0 {
-			trendText = redStyle.Render(fmt.Sprintf("▲ %d%% (increased)", pct))
+			trendText = redStyle.Render(fmt.Sprintf("▲ %d%%", pct))
 		} else if pct < 0 {
-			trendText = greenStyle.Render(fmt.Sprintf("▼ %d%% (decreased)", -pct))
+			trendText = greenStyle.Render(fmt.Sprintf("▼ %d%%", -pct))
 		} else {
-			trendText = mutedStyle.Render("0% (no change)")
+			trendText = mutedStyle.Render("0%")
 		}
 	}
 	rows = append(rows, rowKV("Vs Yesterday", trendText, width-4))
@@ -242,7 +242,7 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 		}
 	}
 
-	maxRows := max(1, height-4)
+	maxRows := max(1, height-4-2) // Subtract 2 for headers
 	visibleDays := m.dashboard.Days
 	if len(visibleDays) > maxRows {
 		visibleDays = visibleDays[len(visibleDays)-maxRows:]
@@ -251,6 +251,12 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 	if len(visibleDays) == 0 {
 		lines = append(lines, mutedStyle.Render("No historical weekly trends yet."))
 	} else {
+		// Aligned Headers
+		barWidth := max(5, width-29)
+		headerLine := boldStyle.Render(padRight("DAY", 6) + padRight("DATE", 12) + padRight("WEEKLY TREND", barWidth) + " " + padLeft("DURATION", 8))
+		lines = append(lines, headerLine)
+		lines = append(lines, mutedStyle.Render(strings.Repeat("─", width-4)))
+
 		for _, day := range visibleDays {
 			labelStyle := mutedStyle
 			if day.Today {
@@ -258,7 +264,6 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 			} else if day.Weekend {
 				labelStyle = amberStyle
 			}
-			barWidth := max(5, width-20)
 			filled := 0
 			if maxVal > 0 {
 				filled = day.Duration * barWidth / maxVal
@@ -285,13 +290,13 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 func (m *Model) renderQuickActionsPanel(width, height int) string {
 	pauseLabel := "[p] Pause Tracking"
 	if storage.IsPaused() {
-		pauseLabel = "[p] Resume Tracking"
+		pauseLabel = "[p] Resume"
 	}
 	actions := []string{
-		"[s] Start Focus Session",
+		"[s] Start Focus",
 		"[n] Add App Limit",
 		pauseLabel,
-		"[q] Quit Application",
+		"[q] Quit App",
 	}
 	var lines []string
 	lines = append(lines, "")
