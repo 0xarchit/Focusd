@@ -88,6 +88,29 @@ func GetAppUsageTodayMinutes(exeName string) int {
 	return secs / 60
 }
 
+func GetAppUsageTodayMinutesMap() (map[string]int, error) {
+	today := Today()
+	rows, err := db.Query(`
+		SELECT exe_name, total_duration_secs FROM apps_daily
+		WHERE date = ?
+	`, today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	res := make(map[string]int)
+	for rows.Next() {
+		var exeName string
+		var secs int
+		if err := rows.Scan(&exeName, &secs); err != nil {
+			return nil, err
+		}
+		res[exeName] = secs / 60
+	}
+	return res, rows.Err()
+}
+
 func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Session, error) {
 	dataQuery := `
 		SELECT id, app_name, exe_name, window_title, start_time, end_time, duration_secs, date
@@ -222,9 +245,6 @@ type ActiveSessionRecord struct {
 }
 
 func SaveActiveSession(s *ActiveSessionRecord) error {
-	if s == nil {
-		return nil
-	}
 	_, err := db.Exec(`
 		INSERT OR REPLACE INTO active_session (id, app_name, exe_name, window_title, start_time, last_seen, date)
 		VALUES (1, ?, ?, ?, ?, ?, ?)

@@ -133,7 +133,7 @@ func calculateFileHash(filePath string) (string, error) {
 	return hex.EncodeToString(hash[:]), nil
 }
 
-func performUpdate(version string) error {
+func performUpdate(version string) (err error) {
 	ui.PrintStatus("Downloading update...", "0%", false)
 
 	downloadURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s/focusd_setup.exe",
@@ -145,23 +145,24 @@ func performUpdate(version string) error {
 	}
 	tmpPath := tmpFile.Name()
 
+	defer func() {
+		if err != nil {
+			tmpFile.Close()
+			os.Remove(tmpPath)
+		}
+	}()
+
 	resp, err := httpClient.Get(downloadURL)
 	if err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
 		return fmt.Errorf("download failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		tmpFile.Close()
-		os.Remove(tmpPath)
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+	if _, err = io.Copy(tmpFile, resp.Body); err != nil {
 		return fmt.Errorf("write failed: %w", err)
 	}
 	tmpFile.Close()
@@ -173,11 +174,9 @@ func performUpdate(version string) error {
 	} else {
 		actualHash, err := calculateFileHash(tmpPath)
 		if err != nil {
-			os.Remove(tmpPath)
 			return fmt.Errorf("failed to calculate hash: %w", err)
 		}
 		if actualHash != expectedHash {
-			os.Remove(tmpPath)
 			return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actualHash)
 		}
 		ui.PrintOK("Checksum verified")
@@ -187,23 +186,19 @@ func performUpdate(version string) error {
 
 	verbPtr, err := syscall.UTF16PtrFromString("runas")
 	if err != nil {
-		os.Remove(tmpPath)
 		return err
 	}
 	pathPtr, err := syscall.UTF16PtrFromString(tmpPath)
 	if err != nil {
-		os.Remove(tmpPath)
 		return err
 	}
 	argsPtr, err := syscall.UTF16PtrFromString("/S")
 	if err != nil {
-		os.Remove(tmpPath)
 		return err
 	}
 
 	err = windows.ShellExecute(0, verbPtr, pathPtr, argsPtr, nil, windows.SW_HIDE)
 	if err != nil {
-		os.Remove(tmpPath)
 		return fmt.Errorf("failed to start installer with elevation: %w", err)
 	}
 

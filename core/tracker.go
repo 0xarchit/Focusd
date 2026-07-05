@@ -243,7 +243,7 @@ func (t *Tracker) poll() {
 	defer t.mu.Unlock()
 
 	if t.currentSession != nil {
-		if t.isSameSession(info.ExeName) {
+		if t.currentSession.ExeName == info.ExeName {
 			return
 		}
 		t.closeCurrentSession()
@@ -256,13 +256,6 @@ func (t *Tracker) poll() {
 		StartTime:   time.Now(),
 		Date:        storage.Today(),
 	}
-}
-
-func (t *Tracker) isSameSession(exeName string) bool {
-	if t.currentSession == nil {
-		return false
-	}
-	return t.currentSession.ExeName == exeName
 }
 
 func (t *Tracker) closeCurrentSession() {

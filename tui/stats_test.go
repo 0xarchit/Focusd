@@ -79,7 +79,7 @@ func TestStatsRangeDates(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			start, end, days := statsRangeDatesTime(tc.rangeIndex, tc.customFrom, tc.customTo, now)
+			start, end, days := statsRangeDates(tc.rangeIndex, tc.customFrom, tc.customTo, now)
 			if start != tc.expectedStart {
 				t.Errorf("start = %q; want %q", start, tc.expectedStart)
 			}

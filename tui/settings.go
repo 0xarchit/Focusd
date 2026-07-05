@@ -162,7 +162,12 @@ func (m *Model) renderSettings(width, height int) string {
 
 	lines := []string{
 		"DAEMON",
-		m.settingRow(0, m.settingsSelected, "Background service", statusPill(m.daemonActive)+"  "+buttonText(ifThen(m.daemonActive, "Stop", "Start")), inner),
+		m.settingRow(0, m.settingsSelected, "Background service", statusPill(m.daemonActive)+"  "+buttonText(func() string {
+			if m.daemonActive {
+				return "Stop"
+			}
+			return "Start"
+		}()), inner),
 		m.settingRow(1, m.settingsSelected, "Auto-start on login", toggleText(auto), inner),
 		"",
 		"TRACKING",

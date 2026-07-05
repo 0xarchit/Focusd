@@ -40,19 +40,20 @@ func (m *Model) triggerFocusButton() (Model, tea.Cmd) {
 	switch m.focusButton {
 	case 0:
 		return m.startFocus()
-	case 1:
-		if err := core.StopPomodoro(); err != nil {
-			m.addToast(fmt.Sprintf("Failed to stop timer: %v", err), toastError)
-		} else {
-			m.focusPaused = false
-			m.addToast("Focus timer stopped", toastWarning)
+	case 1, 2:
+		action := "stop"
+		toastType := toastWarning
+		msg := "Focus timer stopped"
+		if m.focusButton == 2 {
+			action = "reset"
+			toastType = toastInfo
+			msg = "Focus timer reset"
 		}
-	case 2:
 		if err := core.StopPomodoro(); err != nil {
-			m.addToast(fmt.Sprintf("Failed to reset timer: %v", err), toastError)
+			m.addToast(fmt.Sprintf("Failed to %s timer: %v", action, err), toastError)
 		} else {
 			m.focusPaused = false
-			m.addToast("Focus timer reset", toastInfo)
+			m.addToast(msg, toastType)
 		}
 	}
 	return *m, nil
@@ -90,7 +91,7 @@ func (m *Model) renderFocus(width, height int) string {
 
 	mins := int(remaining.Minutes())
 	secs := int(remaining.Seconds()) % 60
-	timerDigits := RenderBlockTimer(mins, secs)
+	timerDigits := renderBlockTimer(mins, secs)
 
 	buttons := []string{"▶ START", "■ STOP", "⟳ RESET"}
 	var renderedBtns []string
@@ -132,7 +133,7 @@ func (m *Model) renderFocus(width, height int) string {
 		"",
 		buttonsLine,
 		"",
-		fmt.Sprintf("Duration: [ %02d ] min      Break: [ %02d ] min", m.focusDuration, m.focusBreak),
+		fmt.Sprintf("Duration: [ %02d ] min      Break: [ 05 ] min", m.focusDuration),
 	)
 	m.clickableRegions = append(m.clickableRegions, ClickableRegion{
 		X1: 1, Y1: 5, X2: width - 1, Y2: height - 1,

@@ -55,16 +55,17 @@ func (m *Model) renderDashboard(width, height int) string {
 	midW := (inner * 45) / 100
 	rightW := inner - leftW - midW - 2
 
+	weeklyH := (bottomHeight * 70) / 100
+	quickH := bottomHeight - weeklyH - 1
+	weeklyW := (inner * 70) / 100
+	quickW := inner - weeklyW - 1
+
 	var bottomPart string
 	if width < 100 {
-		weeklyH := (bottomHeight * 70) / 100
-		quickH := bottomHeight - weeklyH - 1
 		weeklyPanel := m.renderWeeklyPanel(inner, weeklyH)
 		quickPanel := m.renderQuickActionsPanel(inner, quickH)
 		bottomPart = lipgloss.JoinVertical(lipgloss.Left, weeklyPanel, "", quickPanel)
 	} else {
-		weeklyW := (inner * 70) / 100
-		quickW := inner - weeklyW - 1
 		weeklyPanel := m.renderWeeklyPanel(weeklyW, bottomHeight)
 		quickPanel := m.renderQuickActionsPanel(quickW, bottomHeight)
 		bottomPart = lipgloss.JoinHorizontal(lipgloss.Top, weeklyPanel, " ", quickPanel)
@@ -77,12 +78,9 @@ func (m *Model) renderDashboard(width, height int) string {
 
 	bottomY := topY + topHeight + 1
 	if width < 100 {
-		weeklyH := (bottomHeight * 70) / 100
-		quickH := bottomHeight - weeklyH - 1
 		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY, X2: width - 1, Y2: bottomY + weeklyH, ID: "panel-3", Kind: "panel"})
 		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY + weeklyH + 1, X2: width - 1, Y2: bottomY + weeklyH + 1 + quickH, ID: "panel-4", Kind: "panel"})
 	} else {
-		weeklyW := (inner * 70) / 100
 		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: 1, Y1: bottomY, X2: weeklyW, Y2: bottomY + bottomHeight, ID: "panel-3", Kind: "panel"})
 		m.clickableRegions = append(m.clickableRegions, ClickableRegion{X1: weeklyW + 2, Y1: bottomY, X2: width - 1, Y2: bottomY + bottomHeight, ID: "panel-4", Kind: "panel"})
 	}

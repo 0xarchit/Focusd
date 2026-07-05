@@ -2,7 +2,7 @@ package tui
 
 import "strings"
 
-func RenderBlockTimer(mins, secs int) string {
+func renderBlockTimer(mins, secs int) string {
 	var minDigits []int
 	if mins >= 100 {
 		minDigits = []int{mins / 100, (mins / 10) % 10, mins % 10}

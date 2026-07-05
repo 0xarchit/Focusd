@@ -71,6 +71,15 @@ func loadFromDiskLocked() {
 	if userConfig.CustomBrowsers == nil {
 		userConfig.CustomBrowsers = []string{}
 	}
+	if userConfig.BreakReminderMinutes < 1 {
+		userConfig.BreakReminderMinutes = 60
+	}
+	if userConfig.PomodoroMinutes < 1 {
+		userConfig.PomodoroMinutes = 25
+	}
+	if userConfig.SnoozeDurationMinutes < 1 {
+		userConfig.SnoozeDurationMinutes = 60
+	}
 }
 
 func SaveUserConfig() error {
@@ -90,7 +99,9 @@ func saveUserConfigLocked() error {
 	}
 
 	dataDir := filepath.Dir(configPath)
-	os.MkdirAll(dataDir, 0700)
+	if err := os.MkdirAll(dataDir, 0700); err != nil {
+		return err
+	}
 
 	data, err := json.MarshalIndent(userConfig, "", "  ")
 	if err != nil {
@@ -138,11 +149,7 @@ func GetBreakReminderMinutes() int {
 	loadFromDisk()
 	configMu.RLock()
 	defer configMu.RUnlock()
-	mins := userConfig.BreakReminderMinutes
-	if mins < 1 {
-		return 60
-	}
-	return mins
+	return userConfig.BreakReminderMinutes
 }
 
 func SetBreakReminder(enabled bool, minutes int) error {
@@ -203,11 +210,7 @@ func GetPomodoroMinutes() int {
 	loadFromDisk()
 	configMu.RLock()
 	defer configMu.RUnlock()
-	mins := userConfig.PomodoroMinutes
-	if mins < 1 {
-		return 25
-	}
-	return mins
+	return userConfig.PomodoroMinutes
 }
 
 func SetPomodoroMinutes(minutes int) error {
@@ -223,11 +226,7 @@ func GetSnoozeDurationMinutes() int {
 	loadFromDisk()
 	configMu.RLock()
 	defer configMu.RUnlock()
-	mins := userConfig.SnoozeDurationMinutes
-	if mins < 1 {
-		return 60
-	}
-	return mins
+	return userConfig.SnoozeDurationMinutes
 }
 
 var defaultBrowsers = map[string]bool{

@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 const (
@@ -129,7 +130,6 @@ type Model struct {
 	settingsExportSelected  int
 	focusButton             int
 	focusDuration           int
-	focusBreak              int
 	focusPaused             bool
 	settingsAddingBrowser   bool
 	settingsBrowserInput    string
@@ -155,7 +155,6 @@ func NewModel() Model {
 		splash:                 true,
 		clock:                  time.Now(),
 		focusDuration:          system.GetPomodoroMinutes(),
-		focusBreak:             5,
 		statsRange:             0,
 		statsSort:              0,
 		statsCustomFrom:        time.Now().Format("2006-01-02"),
@@ -206,23 +205,19 @@ func loadDashboard() tea.Cmd {
 
 func loadStats(rangeIndex int) tea.Cmd {
 	return func() tea.Msg {
-		start, end, historyDays := statsRangeDates(rangeIndex, "", "")
+		start, end, historyDays := statsRangeDates(rangeIndex, "", "", time.Now())
 		return statsLoadedMsg(readTUIData(start, end, historyDays, false))
 	}
 }
 
 func loadCustomStats(from, to string) tea.Cmd {
 	return func() tea.Msg {
-		start, end, historyDays := statsRangeDates(3, from, to)
+		start, end, historyDays := statsRangeDates(3, from, to, time.Now())
 		return statsLoadedMsg(readTUIData(start, end, historyDays, false))
 	}
 }
 
-func statsRangeDates(rangeIndex int, customFrom, customTo string) (string, string, int) {
-	return statsRangeDatesTime(rangeIndex, customFrom, customTo, time.Now())
-}
-
-func statsRangeDatesTime(rangeIndex int, customFrom, customTo string, now time.Time) (string, string, int) {
+func statsRangeDates(rangeIndex int, customFrom, customTo string, now time.Time) (string, string, int) {
 	today := now.Format("2006-01-02")
 	switch rangeIndex {
 	case 1:
@@ -280,9 +275,14 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	}
 
 	limits := system.GetAppTimeLimits()
-	for app, mins := range limits {
-		if storage.GetAppUsageTodayMinutes(app) >= mins {
-			data.LimitsHit++
+	if len(limits) > 0 {
+		usageMap, err := storage.GetAppUsageTodayMinutesMap()
+		if err == nil {
+			for app, mins := range limits {
+				if usageMap[app] >= mins {
+					data.LimitsHit++
+				}
+			}
 		}
 	}
 
@@ -294,7 +294,7 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 		}
 		for _, s := range sessions {
 			h := s.StartTime.Hour()
-			if h >= 0 && h < 24 {
+			if h < 24 {
 				data.Hourly[h] += s.DurationSecs
 			}
 		}
@@ -341,8 +341,8 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	return data
 }
 
-func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error) {
-	stats, err := storage.GetAllAppStats()
+func aggregateStats(fetchFn func() ([]storage.AppDailyStat, error), startDate, endDate string, keyFn func(storage.AppDailyStat) string) ([]storage.AppDailyStat, error) {
+	stats, err := fetchFn()
 	if err != nil {
 		return nil, err
 	}
@@ -351,10 +351,7 @@ func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error
 		if s.Date < startDate || s.Date > endDate {
 			continue
 		}
-		key := s.ExeName
-		if key == "" {
-			key = s.AppName
-		}
+		key := keyFn(s)
 		item := combined[key]
 		if item.AppName == "" {
 			item.AppName = s.AppName
@@ -374,30 +371,19 @@ func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error
 	return out, nil
 }
 
-func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, error) {
-	stats, err := storage.GetAllBrowserStats()
-	if err != nil {
-		return nil, err
-	}
-	combined := map[string]storage.AppDailyStat{}
-	for _, s := range stats {
-		if s.Date < startDate || s.Date > endDate {
-			continue
+func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error) {
+	return aggregateStats(storage.GetAllAppStats, startDate, endDate, func(s storage.AppDailyStat) string {
+		if s.ExeName != "" {
+			return s.ExeName
 		}
-		item := combined[s.AppName]
-		item.AppName = s.AppName
-		item.TotalDurationSecs += s.TotalDurationSecs
-		item.OpenCount += s.OpenCount
-		combined[s.AppName] = item
-	}
-	out := make([]storage.AppDailyStat, 0, len(combined))
-	for _, item := range combined {
-		out = append(out, item)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].TotalDurationSecs > out[j].TotalDurationSecs
+		return s.AppName
 	})
-	return out, nil
+}
+
+func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, error) {
+	return aggregateStats(storage.GetAllBrowserStats, startDate, endDate, func(s storage.AppDailyStat) string {
+		return s.AppName
+	})
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -452,7 +438,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) contentHeight() int {
-	contentHeight := m.height - lipgloss.Height(m.renderHeader()) - lipgloss.Height(m.renderTabs()) - 2
+	contentHeight := m.height - lipgloss.Height(m.renderHeader()) - lipgloss.Height(m.renderTabs()) - lipgloss.Height(m.renderFooter())
 	if contentHeight < 1 {
 		return 1
 	}
@@ -613,11 +599,7 @@ func (m *Model) View() string {
 	nav := m.renderTabs()
 	footer := m.renderFooter()
 
-	chromeHeight := lipgloss.Height(header) + lipgloss.Height(nav) + lipgloss.Height(footer)
-	contentHeight := m.height - chromeHeight
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
+	contentHeight := m.contentHeight()
 
 	body := m.renderActiveTab(m.width, contentHeight)
 	screen := lipgloss.JoinVertical(lipgloss.Left, header, nav, body, footer)
@@ -825,11 +807,7 @@ func overlayAt(base, over string, x, y int) string {
 			baseLines[target] += strings.Repeat(" ", x-plainWidth)
 		}
 		line := baseLines[target]
-		prefix := line
-		for lipgloss.Width(prefix) > x && len([]rune(prefix)) > 0 {
-			r := []rune(prefix)
-			prefix = string(r[:len(r)-1])
-		}
+		prefix := runewidth.Truncate(line, x, "")
 		if lipgloss.Width(prefix) < x {
 			prefix += strings.Repeat(" ", x-lipgloss.Width(prefix))
 		}
@@ -870,13 +848,6 @@ func formatDuration(secs int) string {
 		return fmt.Sprintf("%dm %ds", secs/60, secs%60)
 	}
 	return fmt.Sprintf("%dh %dm", secs/3600, (secs%3600)/60)
-}
-
-func ifThen(ok bool, a, b string) string {
-	if ok {
-		return a
-	}
-	return b
 }
 
 func (m Model) renderHelp() string {
