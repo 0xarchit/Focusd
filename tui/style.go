@@ -220,7 +220,38 @@ func center(s string, width int) string {
 	return strings.Repeat(" ", left) + s + strings.Repeat(" ", width-lipgloss.Width(s)-left)
 }
 
-func truncate(s string, width int) string {
-	return runewidth.Truncate(s, width, "…")
+func truncate(s string, limit int) string {
+	var sb strings.Builder
+	printed := 0
+	inEsc := false
+	runes := []rune(s)
+	truncated := false
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if r == '\x1b' {
+			inEsc = true
+			sb.WriteRune(r)
+			continue
+		}
+		if inEsc {
+			sb.WriteRune(r)
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+				inEsc = false
+			}
+			continue
+		}
+		w := runewidth.RuneWidth(r)
+		if printed+w > limit {
+			truncated = true
+			break
+		}
+		sb.WriteRune(r)
+		printed += w
+	}
+	if truncated {
+		sb.WriteString("…")
+		sb.WriteString("\x1b[0m")
+	}
+	return sb.String()
 }
 

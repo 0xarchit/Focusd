@@ -39,7 +39,7 @@ func runRetentionSet(daysStr string) {
 		ui.PrintError(fmt.Sprintf("Failed to save retention days: %v", err))
 		os.Exit(1)
 	}
-	ui.PrintOK(fmt.Sprintf("Retention set to %d days.", days))
+	ui.PrintOK(fmt.Sprintf("Retention set to %d days.", storage.GetRetentionDays()))
 }
 
 func runRetentionReset() {

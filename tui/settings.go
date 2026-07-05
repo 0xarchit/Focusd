@@ -140,8 +140,12 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			browsers := system.GetCustomBrowsersList()
 			if len(browsers) > 0 {
 				i := min(m.settingsBrowserSelected, len(browsers)-1)
-				system.RemoveCustomBrowser(browsers[i])
-				m.addToast("Removed "+browsers[i], toastWarning)
+				if err := system.RemoveCustomBrowser(browsers[i]); err != nil {
+					m.addToast("Failed to remove browser: "+err.Error(), toastError)
+				} else {
+					m.addToast("Removed "+browsers[i], toastWarning)
+				}
+				m.settingsBrowserSelected = max(0, m.settingsBrowserSelected-1)
 			}
 		}
 	}

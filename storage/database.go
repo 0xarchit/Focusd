@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -63,11 +62,17 @@ func initDB() error {
 	q.Add("_pragma", "auto_vacuum(INCREMENTAL)")
 	q.Add("_pragma", "cache_size(-1000)")
 	q.Add("_pragma", "temp_store(MEMORY)")
-	escapedPath := filepath.ToSlash(dbPath)
-	escapedPath = strings.ReplaceAll(escapedPath, " ", "%20")
-	escapedPath = strings.ReplaceAll(escapedPath, "?", "%3F")
-	escapedPath = strings.ReplaceAll(escapedPath, "#", "%23")
-	dsn := fmt.Sprintf("file:%s?%s", escapedPath, q.Encode())
+
+	uPath := filepath.ToSlash(dbPath)
+	if len(uPath) > 0 && uPath[0] != '/' {
+		uPath = "/" + uPath
+	}
+	u := &url.URL{
+		Scheme:   "file",
+		Path:     uPath,
+		RawQuery: q.Encode(),
+	}
+	dsn := u.String()
 
 	var lastErr error
 	db, lastErr = sql.Open("sqlite", dsn)

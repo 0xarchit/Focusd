@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type UserConfig struct {
@@ -21,8 +22,9 @@ type UserConfig struct {
 }
 
 var (
-	userConfig *UserConfig
-	configMu   sync.RWMutex
+	userConfig  *UserConfig
+	configMu    sync.RWMutex
+	lastModTime time.Time
 )
 
 func getUserConfigPath() (string, error) {
@@ -45,22 +47,51 @@ func defaultUserConfig() *UserConfig {
 	}
 }
 
+
 func loadFromDisk() {
 	configMu.Lock()
 	defer configMu.Unlock()
-	if userConfig != nil {
-		return
-	}
-	userConfig = defaultUserConfig()
 
 	configPath, err := getUserConfigPath()
-	if err == nil && configPath != "" {
-		if data, err := os.ReadFile(configPath); err == nil {
-			if err := json.Unmarshal(data, userConfig); err != nil {
-				log.Printf("WARN: failed to parse user config %s: %v", configPath, err)
-			}
+	if err != nil || configPath == "" {
+		if userConfig == nil {
+			userConfig = defaultUserConfig()
+		}
+		return
+	}
+
+	fi, err := os.Stat(configPath)
+	if err != nil {
+		if userConfig == nil {
+			userConfig = defaultUserConfig()
+		}
+		return
+	}
+
+	if userConfig != nil && !fi.ModTime().After(lastModTime) {
+		return
+	}
+
+	lastModTime = fi.ModTime()
+	if userConfig == nil {
+		userConfig = defaultUserConfig()
+	}
+
+	if data, err := os.ReadFile(configPath); err == nil {
+		var temp UserConfig
+		if err := json.Unmarshal(data, &temp); err == nil {
+			userConfig.WhitelistApps = temp.WhitelistApps
+			userConfig.BreakReminderEnabled = temp.BreakReminderEnabled
+			userConfig.BreakReminderMinutes = temp.BreakReminderMinutes
+			userConfig.AppTimeLimits = temp.AppTimeLimits
+			userConfig.PomodoroMinutes = temp.PomodoroMinutes
+			userConfig.SnoozeDurationMinutes = temp.SnoozeDurationMinutes
+			userConfig.CustomBrowsers = temp.CustomBrowsers
+		} else {
+			log.Printf("WARN: failed to parse user config %s: %v", configPath, err)
 		}
 	}
+
 	if userConfig.AppTimeLimits == nil {
 		userConfig.AppTimeLimits = make(map[string]int)
 	}
@@ -77,8 +108,6 @@ func loadFromDisk() {
 		userConfig.SnoozeDurationMinutes = 60
 	}
 }
-
-
 
 func saveUserConfigLocked() error {
 	if userConfig == nil {
@@ -105,7 +134,14 @@ func saveUserConfigLocked() error {
 		return err
 	}
 
-	return os.Rename(tempPath, configPath)
+	if err := os.Rename(tempPath, configPath); err != nil {
+		return err
+	}
+
+	if fi, err := os.Stat(configPath); err == nil {
+		lastModTime = fi.ModTime()
+	}
+	return nil
 }
 
 func IsWhitelisted(exeName string) bool {

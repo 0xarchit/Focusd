@@ -382,6 +382,10 @@ function fetchLatestVersion() {
 }
 
 function copyToClipboard(text, successMsg) {
+  if (!navigator.clipboard || !navigator.clipboard.writeText) {
+    showToast("Failed to copy: Clipboard API unavailable");
+    return;
+  }
   navigator.clipboard
     .writeText(text)
     .then(() => {
@@ -389,6 +393,7 @@ function copyToClipboard(text, successMsg) {
     })
     .catch((err) => {
       console.error("Could not copy text: ", err);
+      showToast("Failed to copy command");
     });
 }
 

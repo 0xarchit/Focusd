@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -39,8 +40,9 @@ func runUpdate() {
 	ui.PrintInfo(fmt.Sprintf("New version available: %s", latestVer))
 	fmt.Print("Do you want to update? [y/N]: ")
 
-	var response string
-	if _, err := fmt.Scanln(&response); err != nil && err.Error() != "unexpected newline" {
+	reader := bufio.NewReader(os.Stdin)
+	response, err := reader.ReadString('\n')
+	if err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to read input: %v", err))
 		return
 	}

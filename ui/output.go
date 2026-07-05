@@ -130,7 +130,12 @@ func PrintTable(columns []TableColumn, rows [][]string) {
 func printTableHeader(columns []TableColumn) {
 	fmt.Print(gray + boxVertical + Reset)
 	for _, col := range columns {
-		fmt.Printf(" %s%s%-*s%s %s%s%s", bold, yellow, col.Width, col.Header, Reset, gray, boxVertical, Reset)
+		displayW := runewidth.StringWidth(col.Header)
+		padding := ""
+		if col.Width > displayW {
+			padding = strings.Repeat(" ", col.Width-displayW)
+		}
+		fmt.Printf(" %s%s%s%s%s %s%s%s", bold, yellow, col.Header, padding, Reset, gray, boxVertical, Reset)
 	}
 	fmt.Println()
 }
@@ -150,7 +155,12 @@ func printTableRowStyled(columns []TableColumn, values []string, first bool) {
 		if i > 0 {
 			c = Cyan
 		}
-		fmt.Printf(" %s%-*s%s %s%s%s", c, col.Width, val, Reset, gray, boxVertical, Reset)
+		displayW := runewidth.StringWidth(val)
+		padding := ""
+		if col.Width > displayW {
+			padding = strings.Repeat(" ", col.Width-displayW)
+		}
+		fmt.Printf(" %s%s%s%s %s%s%s", c, val, padding, Reset, gray, boxVertical, Reset)
 	}
 	fmt.Println()
 }

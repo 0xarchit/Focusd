@@ -297,23 +297,25 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 			}
 		}
 	}
+	earliestDate := historyEnd.AddDate(0, 0, -(historyDays - 1)).Format("2006-01-02")
+	allStats, err := storage.GetAppStatsInRange(earliestDate, endDate)
+	dateTotals := make(map[string]int)
+	if err == nil {
+		for _, s := range allStats {
+			dateTotals[s.Date] += s.TotalDurationSecs
+		}
+	}
+
 	for i := historyDays - 1; i >= 0; i-- {
 		d := historyEnd.AddDate(0, 0, -i)
 		date := d.Format("2006-01-02")
-		dayApps, err := storage.GetAppStatsInRange(date, date)
-		if err == nil {
-			total := 0
-			for _, s := range dayApps {
-				total += s.TotalDurationSecs
-			}
-			data.Days = append(data.Days, dailyUsage{
-				Date:     date,
-				Label:    d.Format("Mon"),
-				Duration: total,
-				Today:    date == today,
-				Weekend:  d.Weekday() == time.Saturday || d.Weekday() == time.Sunday,
-			})
-		}
+		data.Days = append(data.Days, dailyUsage{
+			Date:     date,
+			Label:    d.Format("Mon"),
+			Duration: dateTotals[date],
+			Today:    date == today,
+			Weekend:  d.Weekday() == time.Saturday || d.Weekday() == time.Sunday,
+		})
 	}
 
 	return data
@@ -794,6 +796,35 @@ func (m Model) placeToasts(base string) string {
 	return out
 }
 
+func truncateAnsi(s string, limit int) string {
+	var sb strings.Builder
+	printed := 0
+	inEsc := false
+	runes := []rune(s)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if r == '\x1b' {
+			inEsc = true
+			sb.WriteRune(r)
+			continue
+		}
+		if inEsc {
+			sb.WriteRune(r)
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+				inEsc = false
+			}
+			continue
+		}
+		w := runewidth.RuneWidth(r)
+		if printed+w > limit {
+			break
+		}
+		sb.WriteRune(r)
+		printed += w
+	}
+	return sb.String()
+}
+
 func overlayAt(base, over string, x, y int) string {
 	if x < 0 {
 		x = 0
@@ -813,7 +844,7 @@ func overlayAt(base, over string, x, y int) string {
 			baseLines[target] += strings.Repeat(" ", x-plainWidth)
 		}
 		line := baseLines[target]
-		prefix := runewidth.Truncate(line, x, "")
+		prefix := truncateAnsi(line, x)
 		if lipgloss.Width(prefix) < x {
 			prefix += strings.Repeat(" ", x-lipgloss.Width(prefix))
 		}

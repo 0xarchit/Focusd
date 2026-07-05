@@ -64,22 +64,30 @@ func installExes() error {
 }
 
 func installFile(src, dst string) error {
+	hasBackup := false
 	if _, err := os.Stat(dst); err == nil {
 		oldPath := dst + ".old"
 		os.Remove(oldPath)
 		if err := os.Rename(dst, oldPath); err != nil {
 			return fmt.Errorf("failed to move existing file %s to %s (is it locked?): %w", dst, oldPath, err)
 		}
+		hasBackup = true
 	}
 
 	srcFile, err := os.Open(src)
 	if err != nil {
+		if hasBackup {
+			os.Rename(dst+".old", dst)
+		}
 		return err
 	}
 	defer srcFile.Close()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
+		if hasBackup {
+			os.Rename(dst+".old", dst)
+		}
 		return err
 	}
 
@@ -89,6 +97,9 @@ func installFile(src, dst string) error {
 	}
 	if err != nil {
 		os.Remove(dst)
+		if hasBackup {
+			os.Rename(dst+".old", dst)
+		}
 		return err
 	}
 	return nil

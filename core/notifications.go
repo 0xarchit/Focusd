@@ -25,14 +25,14 @@ const (
 	idOK              = 1
 )
 
-func show(title, message string, flags uintptr, callback func(ret uintptr)) {
+func show(title, message string, flags uintptr, callback func(ret uintptr)) bool {
 	now := time.Now().Unix()
 	last := atomic.LoadInt64(&lastNotificationTime)
 	if now-last < 10 {
-		return
+		return false
 	}
 	if !atomic.CompareAndSwapInt32(&activeInstances, 0, 1) {
-		return
+		return false
 	}
 	atomic.StoreInt64(&lastNotificationTime, now)
 
@@ -57,15 +57,16 @@ func show(title, message string, flags uintptr, callback func(ret uintptr)) {
 			callback(ret)
 		}
 	}()
+	return true
 }
 
-func showNotification(title, message string) {
-	show(title, message, mbIconInformation, nil)
+func showNotification(title, message string) bool {
+	return show(title, message, mbIconInformation, nil)
 }
 
-func showNotificationWithAction(title, message string, callback func(disable bool)) {
+func showNotificationWithAction(title, message string, callback func(disable bool)) bool {
 	fullMessage := message + "\n\n[OK] Disable this reminder\n[Cancel] Just close"
-	show(title, fullMessage, mbOKCancel|mbIconWarning, func(ret uintptr) {
+	return show(title, fullMessage, mbOKCancel|mbIconWarning, func(ret uintptr) {
 		if callback != nil {
 			callback(ret == idOK)
 		}

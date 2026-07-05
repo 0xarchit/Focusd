@@ -176,8 +176,6 @@ func (t *Tracker) Start() {
 
 			if len(limits) > 0 && sessionExe != "" {
 				if sessionExe != prevSessionApp {
-					prevSessionApp = sessionExe
-
 					stateMu.Lock()
 					appSnoozed := !disabledLimitApps[sessionExe].IsZero() && now.Before(disabledLimitApps[sessionExe])
 					stateMu.Unlock()
@@ -186,7 +184,7 @@ func (t *Tracker) Start() {
 						todayUsage := storage.GetAppUsageTodayMinutes(sessionExe)
 						if todayUsage >= limit {
 							exeCopy := sessionExe
-							showNotificationWithAction("App Time Limit",
+							shown := showNotificationWithAction("App Time Limit",
 								sessionAppName+" has exceeded daily limit!",
 								func(disable bool) {
 									if disable {
@@ -195,6 +193,9 @@ func (t *Tracker) Start() {
 										stateMu.Unlock()
 									}
 								})
+							if shown {
+								prevSessionApp = sessionExe
+							}
 						}
 					}
 				}
@@ -260,7 +261,11 @@ func (t *Tracker) poll() {
 	defer t.mu.Unlock()
 
 	if t.currentSession != nil {
-		if t.currentSession.ExeName == info.ExeName {
+		isSameExe := t.currentSession.ExeName == info.ExeName
+		isBrowser := system.IsBrowser(info.ExeName)
+		isSameTitle := t.currentSession.WindowTitle == info.Title
+
+		if isSameExe && (!isBrowser || isSameTitle) {
 			return
 		}
 		t.closeCurrentSession()

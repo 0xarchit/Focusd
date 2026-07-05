@@ -148,7 +148,9 @@ func generateAIReleaseNotes(commitData []string, apiKey string) error {
 	curr := ""
 	for _, d := range commitData {
 		if len(curr)+len(d) > MaxCharsPerChunk {
-			chunks = append(chunks, curr)
+			if curr != "" {
+				chunks = append(chunks, curr)
+			}
 			curr = ""
 		}
 		curr += d + "\n\n"
