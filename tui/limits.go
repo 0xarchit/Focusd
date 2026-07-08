@@ -48,6 +48,10 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 		case "backspace":
 			if m.limitForm.Field == 0 && len(m.limitForm.App) > 0 {
 				m.limitForm.App = m.limitForm.App[:len(m.limitForm.App)-1]
+			} else if m.limitForm.Field == 1 {
+				m.limitForm.Hours /= 10
+			} else if m.limitForm.Field == 2 {
+				m.limitForm.Minutes /= 10
 			}
 		case "enter":
 			if m.limitForm.Field == 3 {
@@ -87,11 +91,23 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 					n, err := strconv.Atoi(key)
 					if err == nil {
 						if m.limitForm.Field == 1 {
-							m.limitForm.Hours = min(24, m.limitForm.Hours*10+n)
+							if m.limitForm.Hours*10+n > 24 {
+								m.limitForm.Hours = 24
+							} else {
+								m.limitForm.Hours = m.limitForm.Hours*10 + n
+							}
 						} else {
-							m.limitForm.Minutes = min(59, m.limitForm.Minutes*10+n)
+							if m.limitForm.Minutes*10+n > 59 {
+								m.limitForm.Minutes = 59
+							} else {
+								m.limitForm.Minutes = m.limitForm.Minutes*10 + n
+							}
 						}
 					}
+				}
+			} else if key == "space" || key == " " {
+				if m.limitForm.Field == 0 && len(m.limitForm.App) < 32 {
+					m.limitForm.App += " "
 				}
 			}
 		}
@@ -215,15 +231,31 @@ func (m *Model) renderLimits(width, height int) string {
 	if m.limitForm.Editing {
 		formTitle = "EDIT LIMIT"
 	}
-	fields := []string{
-		"App name:    [ " + padRight(m.limitForm.App, 18) + " ]",
-		fmt.Sprintf("Daily limit: [ %02d ] h  [ %02d ] m", m.limitForm.Hours, m.limitForm.Minutes),
-		"[ SAVE ]   [ CANCEL ]",
+	appNameVal := padRight(m.limitForm.App, 18)
+	if m.limitForm.Field == 0 {
+		appNameVal = cyanStyle.Bold(true).Render(appNameVal)
 	}
-	for i := range fields {
-		if i == m.limitForm.Field || (i == 2 && m.limitForm.Field == 3) {
-			fields[i] = cyanStyle.Bold(true).Render(fields[i])
-		}
+
+	hVal := fmt.Sprintf("%02d", m.limitForm.Hours)
+	mVal := fmt.Sprintf("%02d", m.limitForm.Minutes)
+	if m.limitForm.Field == 1 {
+		hVal = cyanStyle.Bold(true).Render(hVal)
+	} else if m.limitForm.Field == 2 {
+		mVal = cyanStyle.Bold(true).Render(mVal)
+	}
+
+	saveBtn := "[ SAVE (Enter) ]"
+	cancelBtn := "[ CANCEL (Esc) ]"
+	if m.limitForm.Field == 3 {
+		saveBtn = cyanStyle.Bold(true).Render(saveBtn)
+	}
+
+	fields := []string{
+		"App name:    [ " + appNameVal + " ]",
+		fmt.Sprintf("Daily limit: [ %s ] h  [ %s ] m", hVal, mVal),
+		saveBtn + "   " + cancelBtn,
+		"",
+		mutedStyle.Render("  Hint: Enter the process/exe name (e.g. 'chrome' or 'code')"),
 	}
 
 	formY := 5 + height - 8

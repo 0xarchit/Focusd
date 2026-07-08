@@ -2,10 +2,9 @@ package core
 
 import (
 	"encoding/json"
+	"focusd/storage"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 )
@@ -21,51 +20,23 @@ type PomodoroState struct {
 	Notified  bool      `json:"notified"`
 }
 
-func getPomodoroPath() string {
-	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		return ""
-	}
-	return filepath.Join(appData, "focusd", "pomodoro.json")
-}
-
 func loadPomodoroStateFresh() *PomodoroState {
 	state := &PomodoroState{Duration: defaultPomodoroMinutes}
-	path := getPomodoroPath()
-	if path == "" {
-		return state
-	}
-
-	data, err := os.ReadFile(path)
-	if err == nil {
-		if err := json.Unmarshal(data, state); err != nil {
-			log.Printf("WARN: failed to parse pomodoro state %s: %v", path, err)
+	dataStr, err := storage.GetConfig("pomodoro_state")
+	if err == nil && dataStr != "" {
+		if err := json.Unmarshal([]byte(dataStr), state); err != nil {
+			log.Printf("WARN: failed to parse pomodoro state: %v", err)
 		}
 	}
 	return state
 }
 
 func savePomodoroState(state *PomodoroState) error {
-	path := getPomodoroPath()
-	if path == "" {
-		return nil
-	}
-
-	data, err := json.MarshalIndent(state, "", "  ")
+	data, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
-
-	tempPath := path + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0600); err != nil {
-		return err
-	}
-
-	return os.Rename(tempPath, path)
+	return storage.SetConfig("pomodoro_state", string(data))
 }
 
 func StartPomodoro(minutes int) error {

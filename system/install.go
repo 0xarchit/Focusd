@@ -102,5 +102,8 @@ func installFile(src, dst string) error {
 		}
 		return err
 	}
+	if hasBackup {
+		os.Remove(dst + ".old")
+	}
 	return nil
 }

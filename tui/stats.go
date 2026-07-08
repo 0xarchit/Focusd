@@ -424,6 +424,19 @@ func (m *Model) renderDailyHistory(width int) string {
 	var bars []string
 	var hours []string
 
+	colW := 6
+	if len(m.stats.Days) > 10 {
+		colW = 5
+	}
+	if len(m.stats.Days) > 20 {
+		colW = 4
+	}
+	if len(m.stats.Days) > 0 {
+		maxPossibleColW := (width - 6) / len(m.stats.Days)
+		colW = min(colW, maxPossibleColW)
+		colW = max(1, colW)
+	}
+
 	maxH := 4
 	for h := maxH; h >= 1; h-- {
 		var row []string
@@ -442,9 +455,9 @@ func (m *Model) renderDailyHistory(width int) string {
 			} else {
 				ch = mutedStyle.Render("·")
 			}
-			row = append(row, ch)
+			row = append(row, center(ch, colW))
 		}
-		bars = append(bars, "  "+strings.Join(row, "   ")+"  ")
+		bars = append(bars, "  "+strings.Join(row, "")+"  ")
 	}
 
 	for _, d := range m.stats.Days {
@@ -454,13 +467,15 @@ func (m *Model) renderDailyHistory(width int) string {
 		} else if d.Weekend {
 			style = violetStyle
 		}
-		labels = append(labels, style.Render(d.Label))
-		hours = append(hours, mutedStyle.Render(fmt.Sprintf("%2.1fh", float64(d.Duration)/3600.0)))
+		labels = append(labels, center(style.Render(d.Label), colW))
+		
+		hrStr := fmt.Sprintf("%2.1fh", float64(d.Duration)/3600.0)
+		hours = append(hours, center(mutedStyle.Render(hrStr), colW))
 	}
 
 	lines = append(lines, bars...)
-	lines = append(lines, "  "+strings.Join(labels, "   ")+"  ")
-	lines = append(lines, "  "+strings.Join(hours, "  ")+" ")
+	lines = append(lines, "  "+strings.Join(labels, "")+"  ")
+	lines = append(lines, "  "+strings.Join(hours, "")+"  ")
 
 	title := "DAILY HISTORY"
 	if m.statsRange == 1 {

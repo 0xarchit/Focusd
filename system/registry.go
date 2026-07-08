@@ -84,7 +84,10 @@ func DisableAutoStart() error {
 func disableRegistryAutoStart() error {
 	key, err := registry.OpenKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
 	if err != nil {
-		return nil
+		if err == registry.ErrNotExist {
+			return nil
+		}
+		return err
 	}
 	defer key.Close()
 	err = key.DeleteValue(appName)
@@ -210,3 +213,5 @@ func DisablePath() error {
 
 	return key.SetStringValue("Path", newPath)
 }
+
+

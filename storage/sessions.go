@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -15,6 +16,7 @@ type Session struct {
 	EndTime      time.Time
 	DurationSecs int
 	Date         string
+	RetryCount   int
 }
 
 func InsertSessionWithDaily(s *Session, cleanBrowserTitle string) error {
@@ -82,13 +84,25 @@ func GetAppUsageTodaySeconds(exeName string) int {
 	var secs int
 	err := db.QueryRow(`
 		SELECT COALESCE(total_duration_secs, 0) FROM apps_daily
-		WHERE date = ? AND exe_name = ?
+		WHERE date = ? AND exe_name = ? COLLATE NOCASE
 	`, today, exeName).Scan(&secs)
-	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			log.Printf("WARN: GetAppUsageTodaySeconds query failed for %s: %v", exeName, err)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		log.Printf("WARN: GetAppUsageTodaySeconds query failed for %s: %v", exeName, err)
+	}
+
+	// Add currently active session duration if it matches exeName
+	var activeExe string
+	var startTime int64
+	err = db.QueryRow(`
+		SELECT exe_name, start_time FROM active_session WHERE id = 1
+	`).Scan(&activeExe, &startTime)
+	if err == nil {
+		if strings.EqualFold(activeExe, exeName) {
+			elapsed := time.Now().Unix() - startTime
+			if elapsed > 0 {
+				secs += int(elapsed)
+			}
 		}
-		return 0
 	}
 	return secs
 }
@@ -111,8 +125,22 @@ func GetAppUsageTodayMinutesMap() (map[string]int, error) {
 		if err := rows.Scan(&exeName, &secs); err != nil {
 			return nil, err
 		}
-		res[exeName] = secs / 60
+		res[strings.ToLower(exeName)] = secs / 60
 	}
+
+	// Add currently active session elapsed minutes to the map
+	var activeExe string
+	var startTime int64
+	err = db.QueryRow(`
+		SELECT exe_name, start_time FROM active_session WHERE id = 1
+	`).Scan(&activeExe, &startTime)
+	if err == nil && activeExe != "" {
+		elapsed := time.Now().Unix() - startTime
+		if elapsed > 0 {
+			res[strings.ToLower(activeExe)] += int(elapsed) / 60
+		}
+	}
+
 	return res, rows.Err()
 }
 
@@ -156,8 +184,12 @@ func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Sessi
 		var s Session
 		var startTime int64
 		var endTime *int64
-		if err := rows.Scan(&s.AppName, &s.ExeName, &s.WindowTitle, &startTime, &endTime, &s.DurationSecs, &s.Date); err != nil {
+		var windowTitle *string
+		if err := rows.Scan(&s.AppName, &s.ExeName, &windowTitle, &startTime, &endTime, &s.DurationSecs, &s.Date); err != nil {
 			return nil, err
+		}
+		if windowTitle != nil {
+			s.WindowTitle = *windowTitle
 		}
 		s.StartTime = time.Unix(startTime, 0)
 		if endTime != nil {
@@ -190,6 +222,40 @@ func GetAppStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 		}
 		stats = append(stats, s)
 	}
+
+	// Dynamic active session injection if date range includes today
+	today := Today()
+	inRange := (startDate == "" && endDate == "") || (today >= startDate && today <= endDate)
+	if inRange {
+		var activeExe, activeApp string
+		var startTime int64
+		err = db.QueryRow(`
+			SELECT app_name, exe_name, start_time FROM active_session WHERE id = 1
+		`).Scan(&activeApp, &activeExe, &startTime)
+		if err == nil && activeExe != "" {
+			elapsed := time.Now().Unix() - startTime
+			if elapsed > 0 {
+				found := false
+				for i, s := range stats {
+					if s.Date == today && strings.EqualFold(s.ExeName, activeExe) {
+						stats[i].TotalDurationSecs += int(elapsed)
+						found = true
+						break
+					}
+				}
+				if !found {
+					stats = append(stats, AppDailyStat{
+						Date:              today,
+						AppName:           activeApp,
+						ExeName:           activeExe,
+						TotalDurationSecs: int(elapsed),
+						OpenCount:         1,
+					})
+				}
+			}
+		}
+	}
+
 	return stats, rows.Err()
 }
 
@@ -256,10 +322,6 @@ func RecoverActiveSession() (*Session, error) {
 			return nil, nil
 		}
 		return nil, err
-	}
-
-	if err := ClearActiveSession(); err != nil {
-		log.Printf("WARN: failed to clear active session: %v", err)
 	}
 
 	duration := int(lastSeen - startTime)

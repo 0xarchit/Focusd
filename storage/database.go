@@ -60,19 +60,10 @@ func initDB() error {
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "synchronous(NORMAL)")
 	q.Add("_pragma", "auto_vacuum(INCREMENTAL)")
-	q.Add("_pragma", "cache_size(-1000)")
+	q.Add("_pragma", "cache_size(-200)")
 	q.Add("_pragma", "temp_store(MEMORY)")
 
-	uPath := filepath.ToSlash(dbPath)
-	if len(uPath) > 0 && uPath[0] != '/' {
-		uPath = "/" + uPath
-	}
-	u := &url.URL{
-		Scheme:   "file",
-		Path:     uPath,
-		RawQuery: q.Encode(),
-	}
-	dsn := u.String()
+	dsn := "file:" + filepath.ToSlash(dbPath) + "?" + q.Encode()
 
 	var lastErr error
 	db, lastErr = sql.Open("sqlite", dsn)
@@ -86,7 +77,7 @@ func initDB() error {
 		return fmt.Errorf("failed to ping database: %w", pingErr)
 	}
 
-	db.SetMaxOpenConns(4)
+	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
