@@ -17,6 +17,39 @@ import (
 )
 
 func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
+	if m.settingsAddingWhitelist {
+		switch key {
+		case "esc":
+			m.settingsAddingWhitelist = false
+			m.settingsWhitelistInput = ""
+		case "backspace":
+			if len(m.settingsWhitelistInput) > 0 {
+				m.settingsWhitelistInput = m.settingsWhitelistInput[:len(m.settingsWhitelistInput)-1]
+			}
+		case "enter":
+			if strings.TrimSpace(m.settingsWhitelistInput) == "" {
+				m.addToast("App name is required", toastError)
+				return *m, nil
+			}
+			if err := system.AddWhitelistApp(m.settingsWhitelistInput); err != nil {
+				m.addToast(err.Error(), toastError)
+				return *m, nil
+			}
+			m.addToast("Whitelisted "+m.settingsWhitelistInput, toastSuccess)
+			m.settingsAddingWhitelist = false
+			m.settingsWhitelistInput = ""
+		default:
+			if len(key) == 1 && len(m.settingsWhitelistInput) < 32 {
+				m.settingsWhitelistInput += key
+			} else if key == "space" || key == " " {
+				if len(m.settingsWhitelistInput) < 32 {
+					m.settingsWhitelistInput += " "
+				}
+			}
+		}
+		return *m, nil
+	}
+
 	if m.settingsAddingBrowser {
 		switch key {
 		case "esc":
@@ -41,6 +74,10 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 		default:
 			if len(key) == 1 && len(m.settingsBrowserInput) < 32 {
 				m.settingsBrowserInput += key
+			} else if key == "space" || key == " " {
+				if len(m.settingsBrowserInput) < 32 {
+					m.settingsBrowserInput += " "
+				}
 			}
 		}
 		return *m, nil
@@ -55,7 +92,9 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 		switch m.settingsSelected {
 		case 4:
 			m.settingsBrowserSelected = max(0, m.settingsBrowserSelected-1)
-		case 6:
+		case 3:
+			m.settingsWhitelistSelected = max(0, m.settingsWhitelistSelected-1)
+		case 7:
 			m.settingsExportSelected = 0
 		}
 	case "l", "right":
@@ -63,7 +102,10 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 		case 4:
 			browsers := system.GetCustomBrowsersList()
 			m.settingsBrowserSelected = min(m.settingsBrowserSelected+1, max(0, len(browsers)-1))
-		case 6:
+		case 3:
+			whitelist := system.GetWhitelistApps()
+			m.settingsWhitelistSelected = min(m.settingsWhitelistSelected+1, max(0, len(whitelist)-1))
+		case 7:
 			m.settingsExportSelected = 1
 		}
 	case "space", "enter":
@@ -76,7 +118,13 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 					m.addToast("Failed to stop daemon gracefully", toastError)
 				}
 			} else {
-				m.addToast("Run focusd start to launch daemon", toastInfo)
+				pid, err := system.StartDaemon()
+				if err != nil {
+					m.addToast("Failed to start daemon: "+err.Error(), toastError)
+				} else {
+					m.addToast(fmt.Sprintf("Daemon started (PID %d)", pid), toastSuccess)
+					m.daemonActive = true
+				}
 			}
 		case 1:
 			enabled, _, err := system.GetAutoStartEnabled()
@@ -98,18 +146,13 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 		case 2:
 			paused := storage.IsPaused()
 			if err := storage.SetPaused(!paused); err != nil {
-				m.addToast("Failed to toggle browser tracking", toastError)
+				m.addToast("Failed to toggle tracking", toastError)
 			} else {
-				m.addToast("Browser tracking toggled", toastSuccess)
+				m.addToast("Tracking toggled", toastSuccess)
 			}
 		case 3:
-			enabled := system.GetBreakReminderEnabled()
-			minutes := system.GetBreakReminderMinutes()
-			if err := system.SetBreakReminder(!enabled, minutes); err != nil {
-				m.addToast("Failed to toggle focus alerts", toastError)
-			} else {
-				m.addToast("Focus alerts toggled", toastSuccess)
-			}
+			m.settingsAddingWhitelist = true
+			m.settingsWhitelistInput = ""
 		case 4:
 			m.settingsAddingBrowser = true
 			m.settingsBrowserInput = ""
@@ -136,7 +179,18 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			}
 		}
 	case "d":
-		if m.settingsSelected == 4 {
+		if m.settingsSelected == 3 {
+			whitelist := system.GetWhitelistApps()
+			if len(whitelist) > 0 {
+				i := min(m.settingsWhitelistSelected, len(whitelist)-1)
+				if err := system.RemoveWhitelistApp(whitelist[i]); err != nil {
+					m.addToast("Failed to remove: "+err.Error(), toastError)
+				} else {
+					m.addToast("Removed "+whitelist[i], toastWarning)
+				}
+				m.settingsWhitelistSelected = max(0, m.settingsWhitelistSelected-1)
+			}
+		} else if m.settingsSelected == 4 {
 			browsers := system.GetCustomBrowsersList()
 			if len(browsers) > 0 {
 				i := min(m.settingsBrowserSelected, len(browsers)-1)
@@ -155,13 +209,30 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 func (m *Model) renderSettings(width, height int) string {
 	auto, _, _ := system.GetAutoStartEnabled()
 	paused := storage.IsPaused()
-	focusAlerts := system.GetBreakReminderEnabled()
 	browsers := append([]string{"chrome.exe", "firefox.exe", "msedge.exe"}, system.GetCustomBrowsersList()...)
+	whitelist := system.GetWhitelistApps()
 	dbPath, _ := storage.GetDBPath()
 	inner := max(20, width-6)
+
 	browserValue := truncate(strings.Join(browsers, "   "), max(12, inner-42)) + "   " + buttonText("+ Add Browser")
 	if m.settingsAddingBrowser {
 		browserValue = "New browser: [ " + cyanStyle.Render(padRight(m.settingsBrowserInput, 18)) + " ]"
+	}
+
+	whitelistValue := mutedStyle.Render("none") + "   " + buttonText("+ Add App")
+	if m.settingsAddingWhitelist {
+		whitelistValue = "App exe: [ " + cyanStyle.Render(padRight(m.settingsWhitelistInput, 18)) + " ]"
+	} else if len(whitelist) > 0 {
+		selected := min(m.settingsWhitelistSelected, len(whitelist)-1)
+		var wParts []string
+		for i, w := range whitelist {
+			if i == selected && m.settingsSelected == 3 {
+				wParts = append(wParts, redStyle.Render("["+w+"]"))
+			} else {
+				wParts = append(wParts, w)
+			}
+		}
+		whitelistValue = truncate(strings.Join(wParts, "  "), max(12, inner-42)) + "   " + buttonText("+ Add App")
 	}
 
 	lines := []string{
@@ -176,11 +247,7 @@ func (m *Model) renderSettings(width, height int) string {
 		"",
 		"TRACKING",
 		m.settingRow(2, m.settingsSelected, "Browser tracking", toggleText(!paused), inner),
-		"",
-		"NOTIFICATIONS",
-		m.settingRow(3, m.settingsSelected, "Focus complete alert", toggleText(focusAlerts), inner),
-		"",
-		"BROWSERS",
+		m.settingRow(3, m.settingsSelected, "Whitelisted apps", whitelistValue, inner),
 		m.settingRow(4, m.settingsSelected, "Tracked browsers", browserValue, inner),
 		"",
 		"DATA",
@@ -193,7 +260,7 @@ func (m *Model) renderSettings(width, height int) string {
 	}
 	for i, line := range lines {
 		switch line {
-		case "DAEMON", "TRACKING", "NOTIFICATIONS", "BROWSERS", "DATA":
+		case "DAEMON", "TRACKING", "DATA":
 			lines[i] = boldStyle.Render(line) + "\n" + mutedStyle.Render("────────────────────────────────────────")
 		case "DANGER ZONE":
 			lines[i] = redStyle.Bold(true).Render(line) + "\n" + redStyle.Render("────────────────────────────────────────")
@@ -333,3 +400,5 @@ func renderExportButtons(active bool, selectedButton int) string {
 	}
 	return s[0] + "   " + s[1]
 }
+
+

@@ -14,9 +14,38 @@ import (
 func (m *Model) handleFocusKey(key string) (Model, tea.Cmd) {
 	switch key {
 	case "h", "left":
-		m.focusButton = max(0, m.focusButton-1)
+		if m.focusButton == -1 {
+			// adjust break interval
+			enabled := system.GetBreakReminderEnabled()
+			mins := max(5, system.GetBreakReminderMinutes()-5)
+			if err := system.SetBreakReminder(enabled, mins); err != nil {
+				m.addToast("Failed to adjust break interval: "+err.Error(), toastError)
+			}
+		} else {
+			m.focusButton = max(0, m.focusButton-1)
+		}
 	case "l", "right":
-		m.focusButton = min(2, m.focusButton+1)
+		if m.focusButton == -1 {
+			enabled := system.GetBreakReminderEnabled()
+			mins := min(300, system.GetBreakReminderMinutes()+5)
+			if err := system.SetBreakReminder(enabled, mins); err != nil {
+				m.addToast("Failed to adjust break interval: "+err.Error(), toastError)
+			}
+		} else {
+			m.focusButton = min(2, m.focusButton+1)
+		}
+	case "tab":
+		// toggle between button row and break row
+		if m.focusButton == -1 {
+			m.focusButton = 0
+		} else {
+			m.focusButton = -1
+		}
+	case "b":
+		enabled := system.GetBreakReminderEnabled()
+		if err := system.SetBreakReminder(!enabled, system.GetBreakReminderMinutes()); err != nil {
+			m.addToast("Failed to toggle break reminder: "+err.Error(), toastError)
+		}
 	case "s":
 		m.focusButton = 0
 		return m.triggerFocusButton()
@@ -27,7 +56,9 @@ func (m *Model) handleFocusKey(key string) (Model, tea.Cmd) {
 		m.focusButton = 2
 		return m.triggerFocusButton()
 	case "enter":
-		return m.triggerFocusButton()
+		if m.focusButton >= 0 {
+			return m.triggerFocusButton()
+		}
 	case "up":
 		m.focusDuration = min(180, m.focusDuration+1)
 	case "down":
@@ -125,14 +156,33 @@ func (m *Model) renderFocus(width, height int) string {
 	}
 	barStr := strings.Repeat("▓", filled) + strings.Repeat("░", barWidth-filled)
 	progressBar := cyanStyle.Render(barStr)
+	breakEnabled := system.GetBreakReminderEnabled()
+	breakMins := system.GetBreakReminderMinutes()
+
+	breakToggle := mutedStyle.Render("[·] Off")
+	if breakEnabled {
+		breakToggle = greenStyle.Render("[✓] On ")
+	}
+
+	breakRow := fmt.Sprintf("Break Reminder: %s   Interval: ", breakToggle)
+	if m.focusButton == -1 {
+		breakRow += cyanStyle.Render(fmt.Sprintf("[ ← %d min → ]", breakMins))
+		breakRow += mutedStyle.Render("  (b=toggle  ←→=interval  Tab=back)")
+	} else {
+		breakRow += fmt.Sprintf("%d min", breakMins)
+		breakRow += mutedStyle.Render("  (b=toggle  Tab=adjust interval)")
+	}
+
 	timerBody := lipgloss.JoinVertical(lipgloss.Left,
 		timerDigits,
 		"",
 		progressBar,
 		"",
+		fmt.Sprintf("Focus Duration: [ %02d ] min   (↑↓ to adjust)", m.focusDuration),
+		"",
 		buttonsLine,
 		"",
-		fmt.Sprintf("Duration: [ %02d ] min      Break: [ %02d ] min", m.focusDuration, system.GetBreakReminderMinutes()),
+		breakRow,
 	)
 	m.clickableRegions = append(m.clickableRegions, clickableRegion{
 		X1: 1, Y1: 5, X2: width - 1, Y2: height - 1,

@@ -6,6 +6,7 @@ import (
 	"focusd/storage"
 	"focusd/system"
 	"focusd/ui"
+	"log"
 	"os"
 	"time"
 )
@@ -59,17 +60,15 @@ func runStop() {
 }
 
 func RunDaemon() {
-	time.Sleep(2 * time.Second)
-
-	var err error
+	var dbErr error
 	for i := 0; i < 5; i++ {
-		err = storage.Init()
-		if err == nil {
+		dbErr = storage.Init()
+		if dbErr == nil {
 			break
 		}
 		time.Sleep(1 * time.Second)
 	}
-	if err != nil {
+	if dbErr != nil {
 		os.Exit(1)
 	}
 	defer storage.Close()
@@ -77,5 +76,8 @@ func RunDaemon() {
 	storage.EnforceRetention()
 
 	tracker := core.NewTracker()
-	tracker.Start()
+	if err := tracker.Start(); err != nil {
+		log.Printf("ERROR: daemon failed to start tracker: %v", err)
+		os.Exit(1)
+	}
 }

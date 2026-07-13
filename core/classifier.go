@@ -48,6 +48,8 @@ func cleanWindowTitle(rawTitle, exeName string) string {
 	}
 
 	clean = strings.TrimSpace(clean)
+	clean = strings.Trim(clean, "-–—| ")
+	clean = strings.TrimSpace(clean)
 
 	if clean == "" {
 		return "New Tab / Other"

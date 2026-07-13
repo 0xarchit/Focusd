@@ -60,6 +60,12 @@ func runUpdate() {
 		time.Sleep(500 * time.Millisecond)
 	}
 
+	ui.PrintStatus("Closing other focusd instances...", "", false)
+	if err := system.KillOtherInstances("focusd.exe"); err != nil {
+		log.Printf("WARN: could not close other focusd instances: %v", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
 	if err := performUpdate(latestVer); err != nil {
 		ui.PrintError(fmt.Sprintf("Update failed: %v", err))
 		if daemonWasRunning {
@@ -114,7 +120,7 @@ func fetchChecksum(version string) (string, error) {
 		return "", fmt.Errorf("checksums not available (status %d)", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return "", err
 	}

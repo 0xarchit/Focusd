@@ -126,8 +126,11 @@ type Model struct {
 	settingsExportSelected  int
 	focusButton             int
 	focusDuration           int
-	settingsAddingBrowser   bool
-	settingsBrowserInput    string
+	settingsAddingBrowser    bool
+	settingsBrowserInput     string
+	settingsAddingWhitelist  bool
+	settingsWhitelistInput   string
+	settingsWhitelistSelected int
 
 	limitForm limitForm
 	modal     modal
@@ -394,8 +397,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pruneToasts()
 		cmds = append(cmds, secondTick(), checkDaemon())
 		if m.clock.Second()%5 == 0 {
-			m.refreshing = true
-			cmds = append(cmds, loadDashboard(), loadStats(m.statsRange, m.statsCustomFrom, m.statsCustomTo))
+			isEditing := m.limitForm.Visible || m.settingsAddingBrowser || m.settingsAddingWhitelist
+			if !isEditing {
+				m.refreshing = true
+				cmds = append(cmds, loadDashboard(), loadStats(m.statsRange, m.statsCustomFrom, m.statsCustomTo))
+			}
 		}
 	case statusMsg:
 		m.daemonActive = bool(msg)
@@ -451,6 +457,22 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m.handleModalKey(msg)
 	}
 
+	isInputActive := (m.activeTab == tabLimits && m.limitForm.Visible) ||
+		(m.activeTab == tabSettings && (m.settingsAddingBrowser || m.settingsAddingWhitelist))
+
+	if isInputActive {
+		if key == "ctrl+c" {
+			return m, tea.Quit
+		}
+		switch m.activeTab {
+		case tabLimits:
+			return m.handleLimitsKey(key)
+		case tabSettings:
+			return m.handleSettingsKey(key)
+		}
+		return m, nil
+	}
+
 	switch key {
 	case "ctrl+c", "q":
 		return m, tea.Quit
@@ -467,9 +489,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		return m, nil
 	case "tab":
+		if m.activeTab == tabFocus {
+			return m.handleFocusKey(key)
+		}
 		m.panelFocus = (m.panelFocus + 1) % m.panelCount()
 		return m, nil
 	case "shift+tab":
+		if m.activeTab == tabFocus {
+			return m.handleFocusKey(key)
+		}
 		m.panelFocus = (m.panelFocus + m.panelCount() - 1) % m.panelCount()
 		return m, nil
 	case "r":

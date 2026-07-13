@@ -15,6 +15,8 @@ InstallDir "$APPDATA\focusd"
 
 ; Interface Settings
 !define MUI_ABORTWARNING
+!define MUI_ICON "assets\focusd.ico"
+!define MUI_UNICON "assets\focusd.ico"
 
 ; Pages
 !insertmacro MUI_PAGE_WELCOME

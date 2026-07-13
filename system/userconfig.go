@@ -159,6 +159,51 @@ func IsWhitelisted(exeName string) bool {
 	return false
 }
 
+func GetWhitelistApps() []string {
+	loadFromDisk()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	out := make([]string, len(userConfig.WhitelistApps))
+	copy(out, userConfig.WhitelistApps)
+	return out
+}
+
+func AddWhitelistApp(exeName string) error {
+	loadFromDisk()
+	configMu.Lock()
+	defer configMu.Unlock()
+	exeName = strings.ToLower(strings.TrimSpace(exeName))
+	if !strings.HasSuffix(exeName, ".exe") {
+		exeName += ".exe"
+	}
+	for _, a := range userConfig.WhitelistApps {
+		if strings.EqualFold(a, exeName) {
+			return nil // already exists
+		}
+	}
+	userConfig.WhitelistApps = append(userConfig.WhitelistApps, exeName)
+	return saveUserConfigLocked()
+}
+
+func RemoveWhitelistApp(exeName string) error {
+	loadFromDisk()
+	configMu.Lock()
+	defer configMu.Unlock()
+	matched := false
+	filtered := userConfig.WhitelistApps[:0]
+	for _, a := range userConfig.WhitelistApps {
+		if !strings.EqualFold(a, exeName) {
+			filtered = append(filtered, a)
+		} else {
+			matched = true
+		}
+	}
+	if !matched {
+		return nil
+	}
+	userConfig.WhitelistApps = filtered
+	return saveUserConfigLocked()
+}
 
 func GetBreakReminderEnabled() bool {
 	loadFromDisk()
@@ -235,24 +280,30 @@ func GetSnoozeDurationMinutes() int {
 }
 
 var defaultBrowsers = map[string]bool{
-	"chrome.exe":    true,
-	"firefox.exe":   true,
-	"msedge.exe":    true,
-	"edge.exe":      true,
-	"brave.exe":     true,
-	"opera.exe":     true,
-	"vivaldi.exe":   true,
-	"waterfox.exe":  true,
-	"arc.exe":       true,
-	"iexplore.exe":  true,
-	"safari.exe":    true,
-	"whale.exe":     true,
-	"yandex.exe":    true,
-	"thorium.exe":   true,
-	"librewolf.exe": true,
-	"chromium.exe":  true,
-	"floorp.exe":    true,
-	"zen.exe":       true,
+	"chrome.exe":     true,
+	"firefox.exe":    true,
+	"msedge.exe":     true,
+	"edge.exe":       true,
+	"brave.exe":      true,
+	"opera.exe":      true,
+	"operagx.exe":    true,
+	"sidekick.exe":   true,
+	"orion.exe":      true,
+	"tor.exe":        true,
+	"torbrowser.exe": true,
+	"coccoc.exe":     true,
+	"vivaldi.exe":    true,
+	"waterfox.exe":   true,
+	"arc.exe":        true,
+	"iexplore.exe":   true,
+	"safari.exe":     true,
+	"whale.exe":      true,
+	"yandex.exe":     true,
+	"thorium.exe":    true,
+	"librewolf.exe":  true,
+	"chromium.exe":   true,
+	"floorp.exe":     true,
+	"zen.exe":        true,
 }
 
 func IsBrowser(exeName string) bool {

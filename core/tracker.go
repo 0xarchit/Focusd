@@ -3,6 +3,7 @@ package core
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"focusd/storage"
 	"focusd/system"
@@ -10,16 +11,18 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 )
 
-const ipcAddress = "127.0.0.1:48321"
+// IPCAddress is the TCP address for IPC between CLI and daemon.
+const IPCAddress = "127.0.0.1:48321"
 
 func SendIPCCmd(cmd string) bool {
-	conn, err := net.DialTimeout("tcp", ipcAddress, 1*time.Second)
+	conn, err := net.DialTimeout("tcp", IPCAddress, 1*time.Second)
 	if err != nil {
 		return false
 	}
@@ -68,7 +71,12 @@ func NewTracker() *Tracker {
 	}
 }
 
-func (t *Tracker) Start() {
+func (t *Tracker) Start() error {
+	listener, err := net.Listen("tcp", IPCAddress)
+	if err != nil {
+		return err
+	}
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -77,9 +85,11 @@ func (t *Tracker) Start() {
 		t.Stop()
 	}()
 
-	t.recoverOrphanedSession()
+	if err := t.recoverOrphanedSession(); err != nil {
+		return err
+	}
 
-	go t.startIPCOnPort()
+	go t.startIPCOnPort(listener)
 
 	pollTicker := time.NewTicker(t.pollInterval)
 	persistTicker := time.NewTicker(5 * time.Minute)
@@ -105,7 +115,7 @@ func (t *Tracker) Start() {
 			t.flushCurrentSession()
 			t.flushPendingSessions()
 			storage.ClearActiveSession()
-			return
+			return nil
 		case <-pollTicker.C:
 			if storage.IsPaused() {
 				t.flushCurrentSession()
@@ -115,8 +125,14 @@ func (t *Tracker) Start() {
 				continue
 			}
 			t.poll()
+			t.persistActiveSession()
 			stateMu.Lock()
-			if continuousUseStart.IsZero() {
+			t.mu.Lock()
+			hasActive := t.currentSession != nil
+			t.mu.Unlock()
+			if !hasActive {
+				continuousUseStart = time.Time{}
+			} else if continuousUseStart.IsZero() {
 				continuousUseStart = time.Now()
 			}
 			stateMu.Unlock()
@@ -144,15 +160,18 @@ func (t *Tracker) Start() {
 			if system.GetBreakReminderEnabled() && !breakSnoozed && continuousUseActive {
 				mins := system.GetBreakReminderMinutes()
 				if elapsed >= time.Duration(mins)*time.Minute {
+					stateMu.Lock()
+					continuousUseStart = time.Now() // Reset immediately to prevent repeated triggers
+					stateMu.Unlock()
+
 					showNotificationWithAction("Break Reminder",
 						fmt.Sprintf("You've been working for %d min. Take a break!", mins),
 						func(disable bool) {
-							stateMu.Lock()
-							continuousUseStart = time.Now()
 							if disable {
+								stateMu.Lock()
 								breakSnoozedUntil = time.Now().Add(snoozeDuration)
+								stateMu.Unlock()
 							}
-							stateMu.Unlock()
 						})
 				}
 			}
@@ -174,29 +193,40 @@ func (t *Tracker) Start() {
 			}
 			t.mu.Unlock()
 
-			if len(limits) > 0 && sessionExe != "" {
-				if sessionExe != prevSessionApp {
-					stateMu.Lock()
-					appSnoozed := !disabledLimitApps[sessionExe].IsZero() && now.Before(disabledLimitApps[sessionExe])
-					stateMu.Unlock()
+			// Reset prevSessionApp guard when user switches away
+			if sessionExe != prevSessionApp {
+				prevSessionApp = ""
+			}
 
-					if limit, ok := limits[sessionExe]; ok && !appSnoozed {
-						todayUsage := storage.GetAppUsageTodayMinutes(sessionExe)
-						if todayUsage >= limit {
-							exeCopy := sessionExe
-							shown := showNotificationWithAction("App Time Limit",
-								sessionAppName+" has exceeded daily limit!",
-								func(disable bool) {
-									if disable {
-										stateMu.Lock()
-										disabledLimitApps[exeCopy] = time.Now().Add(snoozeDuration)
-										stateMu.Unlock()
-									}
-								})
-							if shown {
-								prevSessionApp = sessionExe
-							}
-						}
+			if len(limits) > 0 && sessionExe != "" {
+				stateMu.Lock()
+				snoozeTime := disabledLimitApps[sessionExe]
+				appSnoozed := !snoozeTime.IsZero() && now.Before(snoozeTime)
+				if !snoozeTime.IsZero() && !now.Before(snoozeTime) {
+					disabledLimitApps[sessionExe] = time.Time{}
+					if prevSessionApp == sessionExe {
+						prevSessionApp = ""
+					}
+					appSnoozed = false
+				}
+				stateMu.Unlock()
+
+				if limit, ok := limits[sessionExe]; ok && !appSnoozed && prevSessionApp != sessionExe {
+					// GetAppUsageTodaySeconds already includes the live active session elapsed time
+					todayUsageSeconds := storage.GetAppUsageTodaySeconds(sessionExe)
+					todayUsage := todayUsageSeconds / 60
+					if todayUsage >= limit {
+						prevSessionApp = sessionExe // Set guard immediately to prevent repeated triggers
+						exeCopy := sessionExe
+						showNotificationWithAction("App Time Limit",
+							sessionAppName+" has exceeded daily limit!",
+							func(disable bool) {
+								if disable {
+									stateMu.Lock()
+									disabledLimitApps[exeCopy] = time.Now().Add(snoozeDuration)
+									stateMu.Unlock()
+								}
+							})
 					}
 				}
 			}
@@ -208,19 +238,19 @@ func (t *Tracker) Stop() {
 	t.cancel()
 }
 
-func (t *Tracker) recoverOrphanedSession() {
+func (t *Tracker) recoverOrphanedSession() error {
 	recovered, err := storage.RecoverActiveSession()
 	if err != nil {
-		log.Printf("ERROR: failed to recover active session from storage: %v", err)
-		return
+		return fmt.Errorf("failed to recover active session from storage: %w", err)
 	}
 	if recovered == nil {
-		return
+		return nil
 	}
 	if err := storage.InsertSessionWithDaily(recovered, ""); err != nil {
-		log.Printf("ERROR: failed to recover orphaned session: %v", err)
+		return fmt.Errorf("failed to recover orphaned session: %w", err)
 	}
 	storage.ClearActiveSession()
+	return nil
 }
 
 func (t *Tracker) persistActiveSession() {
@@ -247,11 +277,24 @@ func (t *Tracker) persistActiveSession() {
 
 func (t *Tracker) poll() {
 	info, err := system.GetForegroundWindowInfo()
+
+	// If foreground is unknown/empty/whitelisted, close any running session
+	// (e.g. user closed the app and focus went to desktop)
 	if err != nil || info == nil || info.Title == "" || info.ExeName == "" {
+		t.mu.Lock()
+		if t.currentSession != nil {
+			t.closeCurrentSession()
+		}
+		t.mu.Unlock()
 		return
 	}
 
 	if system.IsWhitelisted(info.ExeName) {
+		t.mu.Lock()
+		if t.currentSession != nil {
+			t.closeCurrentSession()
+		}
+		t.mu.Unlock()
 		return
 	}
 
@@ -312,26 +355,96 @@ func (t *Tracker) flushCurrentSession() {
 	t.closeCurrentSession()
 }
 
+func (t *Tracker) writeToDurableFallback(s *storage.Session) {
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		return
+	}
+	fallbackDir := filepath.Join(appData, "focusd")
+	_ = os.MkdirAll(fallbackDir, 0755)
+	fallbackPath := filepath.Join(fallbackDir, "failed_sessions.jsonl")
+	f, err := os.OpenFile(fallbackPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	data, _ := json.Marshal(s)
+	_, _ = f.Write(append(data, '\n'))
+}
+
+func (t *Tracker) retryDurableFallback() {
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		return
+	}
+	fallbackPath := filepath.Join(appData, "focusd", "failed_sessions.jsonl")
+	if _, err := os.Stat(fallbackPath); os.IsNotExist(err) {
+		return
+	}
+
+	data, err := os.ReadFile(fallbackPath)
+	if err != nil {
+		return
+	}
+	_ = os.Remove(fallbackPath)
+
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var s storage.Session
+		if err := json.Unmarshal([]byte(line), &s); err == nil {
+			t.mu.Lock()
+			t.pendingSessions = append(t.pendingSessions, &s)
+			t.mu.Unlock()
+		}
+	}
+}
+
 func (t *Tracker) flushPendingSessions() {
+	t.retryDurableFallback()
+
 	t.mu.Lock()
 	sessions := t.pendingSessions
 	t.pendingSessions = nil
 	t.mu.Unlock()
 
+	now := time.Now()
 	for _, s := range sessions {
+		if !s.NextRetryTime.IsZero() && now.Before(s.NextRetryTime) {
+			t.mu.Lock()
+			t.pendingSessions = append(t.pendingSessions, s)
+			t.mu.Unlock()
+			continue
+		}
+
 		cleanBrowserTitle := ""
 		if system.IsBrowser(s.ExeName) {
 			cleanBrowserTitle = cleanWindowTitle(s.WindowTitle, s.ExeName)
 		}
 		if err := storage.InsertSessionWithDaily(s, cleanBrowserTitle); err != nil {
-			log.Printf("ERROR: failed to insert session with daily: %v", err)
+			s.RetryCount++
+			backoffSec := int64(5 << min(s.RetryCount, 6))
+			s.NextRetryTime = time.Now().Add(time.Duration(backoffSec) * time.Second)
+
+			log.Printf("WARN: failed to insert session with daily (exe: %s, date: %s, start: %s, retry: %d): %v",
+				s.ExeName, s.Date, s.StartTime.Format(time.RFC3339), s.RetryCount, err)
+
+			t.mu.Lock()
+			if len(t.pendingSessions) < 1000 {
+				t.pendingSessions = append(t.pendingSessions, s)
+			} else {
+				t.writeToDurableFallback(s)
+			}
+			t.mu.Unlock()
 		}
 	}
 }
 
 var nameMap = map[string]string{
 	"code":            "VS Code",
-	"Code":            "VS Code",
 	"devenv":          "Visual Studio",
 	"idea64":          "IntelliJ IDEA",
 	"pycharm64":       "PyCharm",
@@ -343,13 +456,13 @@ var nameMap = map[string]string{
 	"atom":            "Atom",
 	"explorer":        "File Explorer",
 	"slack":           "Slack",
-	"Teams":           "Microsoft Teams",
-	"WINWORD":         "Microsoft Word",
-	"EXCEL":           "Microsoft Excel",
-	"POWERPNT":        "PowerPoint",
-	"OUTLOOK":         "Outlook",
-	"Terminal":        "Windows Terminal",
-	"WindowsTerminal": "Windows Terminal",
+	"teams":           "Microsoft Teams",
+	"winword":         "Microsoft Word",
+	"excel":           "Microsoft Excel",
+	"powerpnt":        "PowerPoint",
+	"outlook":         "Outlook",
+	"terminal":        "Windows Terminal",
+	"windowsterminal": "Windows Terminal",
 	"cmd":             "Command Prompt",
 	"powershell":      "PowerShell",
 	"pwsh":            "PowerShell",
@@ -360,7 +473,7 @@ func getAppName(exeName string) string {
 	name := strings.TrimSuffix(exeName, ".exe")
 	name = strings.TrimSuffix(name, ".EXE")
 
-	if mapped, ok := nameMap[name]; ok {
+	if mapped, ok := nameMap[strings.ToLower(name)]; ok {
 		return mapped
 	}
 
@@ -375,12 +488,7 @@ func getAppName(exeName string) string {
 	return exeName
 }
 
-func (t *Tracker) startIPCOnPort() {
-	listener, err := net.Listen("tcp", ipcAddress)
-	if err != nil {
-		log.Printf("ERROR: IPC listener failed to bind on %s: %v", ipcAddress, err)
-		return
-	}
+func (t *Tracker) startIPCOnPort(listener net.Listener) {
 	defer listener.Close()
 
 	go func() {
@@ -395,6 +503,7 @@ func (t *Tracker) startIPCOnPort() {
 			case <-t.ctx.Done():
 				return
 			default:
+				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 		}

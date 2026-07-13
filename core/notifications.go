@@ -1,74 +1,107 @@
 package core
 
 import (
-	"sync/atomic"
+	"encoding/base64"
+	"os"
+	"os/exec"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
-	"unsafe"
+
+	_ "github.com/go-toast/toast"
 )
 
 var (
-	lastNotificationTime int64
-	activeInstances      int32
+	lastNotification time.Time
+	notificationMu   sync.Mutex
 )
 
-var (
-	user32          = syscall.NewLazyDLL("user32.dll")
-	procMessageBoxW = user32.NewProc("MessageBoxW")
-)
-
-const (
-	mbOKCancel        = 0x00000001
-	mbIconInformation = 0x00000040
-	mbIconWarning     = 0x00000030
-	mbSetForeground   = 0x00010000
-	idOK              = 1
-)
-
-func show(title, message string, flags uintptr, callback func(ret uintptr)) bool {
-	now := time.Now().Unix()
-	last := atomic.LoadInt64(&lastNotificationTime)
-	if now-last < 10 {
+func showNotification(title, message string) bool {
+	notificationMu.Lock()
+	if time.Since(lastNotification) < 10*time.Second {
+		notificationMu.Unlock()
 		return false
 	}
-	if !atomic.CompareAndSwapInt32(&activeInstances, 0, 1) {
-		return false
-	}
-	atomic.StoreInt64(&lastNotificationTime, now)
+	lastNotification = time.Now()
+	notificationMu.Unlock()
 
 	go func() {
-		defer atomic.StoreInt32(&activeInstances, 0)
+		t, m := title, message
+		if len(t) > 200 {
+			t = t[:200]
+		}
+		if len(m) > 200 {
+			m = m[:200]
+		}
 
-		titlePtr, err := syscall.UTF16PtrFromString(title)
-		if err != nil {
-			return
-		}
-		messagePtr, err := syscall.UTF16PtrFromString(message)
-		if err != nil {
-			return
-		}
-		ret, _, _ := procMessageBoxW.Call(
-			0,
-			uintptr(unsafe.Pointer(messagePtr)),
-			uintptr(unsafe.Pointer(titlePtr)),
-			flags|mbSetForeground,
-		)
-		if callback != nil {
-			callback(ret)
-		}
+		xmlStr := `<toast><header id='focusd_group' title='Focusd'/><visual><binding template='ToastGeneric'><text id='1'></text><text id='2'></text></binding></visual></toast>`
+		b64XML := base64.StdEncoding.EncodeToString([]byte(xmlStr))
+
+		cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", `
+[void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
+[void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
+$xml = [Windows.Data.Xml.Dom.XmlDocument]::new()
+$decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("`+b64XML+`"))
+$xml.LoadXml($decoded)
+$xml.GetElementsByTagName('text').Item(0).InnerText = $env:TTL
+$xml.GetElementsByTagName('text').Item(1).InnerText = $env:MSG
+$toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe').Show($toast)
+`)
+		cmd.Env = append(os.Environ(), "TTL="+t, "MSG="+m)
+		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
+		cmd.Run()
 	}()
 	return true
 }
 
-func showNotification(title, message string) bool {
-	return show(title, message, mbIconInformation, nil)
-}
-
 func showNotificationWithAction(title, message string, callback func(disable bool)) bool {
-	fullMessage := message + "\n\n[OK] Disable this reminder\n[Cancel] Just close"
-	return show(title, fullMessage, mbOKCancel|mbIconWarning, func(ret uintptr) {
-		if callback != nil {
-			callback(ret == idOK)
+	notificationMu.Lock()
+	if time.Since(lastNotification) < 10*time.Second {
+		notificationMu.Unlock()
+		return false
+	}
+	lastNotification = time.Now()
+	notificationMu.Unlock()
+
+	go func() {
+		t, m := title, message
+		if len(t) > 200 {
+			t = t[:200]
 		}
-	})
+		if len(m) > 200 {
+			m = m[:200]
+		}
+
+		xmlStr := `<toast><header id='focusd_group' title='Focusd'/><visual><binding template='ToastGeneric'><text id='1'></text><text id='2'></text></binding></visual><actions><action content='Disable this reminder' arguments='disable' activationType='background'/><action content='Just close' arguments='close' activationType='background'/></actions></toast>`
+		b64XML := base64.StdEncoding.EncodeToString([]byte(xmlStr))
+
+		cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", `
+[void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
+[void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
+$xml = [Windows.Data.Xml.Dom.XmlDocument]::new()
+$decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("`+b64XML+`"))
+$xml.LoadXml($decoded)
+$xml.GetElementsByTagName('text').Item(0).InnerText = $env:TTL
+$xml.GetElementsByTagName('text').Item(1).InnerText = $env:MSG
+$toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
+$evt = Register-ObjectEvent -InputObject $toast -EventName Activated -SourceIdentifier ToastAct 2>$null
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe').Show($toast)
+$r = Wait-Event -SourceIdentifier ToastAct -Timeout 120 2>$null
+if ($r -ne $null) { $r.MessageData.Arguments } else { 'timeout' }
+Unregister-Event -SourceIdentifier ToastAct -ErrorAction SilentlyContinue
+`)
+		cmd.Env = append(os.Environ(), "TTL="+t, "MSG="+m)
+		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0x08000000}
+
+		out, _ := cmd.Output()
+		choice := strings.TrimSpace(string(out))
+		if callback != nil {
+			if choice == "disable" {
+				callback(true)
+			}
+		}
+	}()
+	return true
 }
