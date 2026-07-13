@@ -63,7 +63,16 @@ func initDB() error {
 	q.Add("_pragma", "cache_size(-200)")
 	q.Add("_pragma", "temp_store(MEMORY)")
 
-	dsn := "file:" + filepath.ToSlash(dbPath) + "?" + q.Encode()
+	uPath := filepath.ToSlash(dbPath)
+	if len(uPath) >= 2 && uPath[1] == ':' {
+		uPath = "/" + uPath
+	}
+	u := &url.URL{
+		Scheme:   "file",
+		Path:     uPath,
+		RawQuery: q.Encode(),
+	}
+	dsn := u.String()
 
 	var lastErr error
 	db, lastErr = sql.Open("sqlite", dsn)

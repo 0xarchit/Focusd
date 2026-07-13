@@ -9,14 +9,15 @@ import (
 )
 
 type Session struct {
-	AppName      string
-	ExeName      string
-	WindowTitle  string
-	StartTime    time.Time
-	EndTime      time.Time
-	DurationSecs int
-	Date         string
-	RetryCount   int
+	AppName       string
+	ExeName       string
+	WindowTitle   string
+	StartTime     time.Time
+	EndTime       time.Time
+	DurationSecs  int
+	Date          string
+	RetryCount    int
+	NextRetryTime time.Time
 }
 
 func InsertSessionWithDaily(s *Session, cleanBrowserTitle string) error {
@@ -79,6 +80,48 @@ func GetAppUsageTodayMinutes(exeName string) int {
 	return GetAppUsageTodaySeconds(exeName) / 60
 }
 
+func checkAndRotateActiveSession(today string) (string, string, int64) {
+	var appName, activeExe, windowTitle, activeDate string
+	var startTime int64
+	err := db.QueryRow(`
+		SELECT app_name, exe_name, window_title, start_time, date
+		FROM active_session WHERE id = 1
+	`).Scan(&appName, &activeExe, &windowTitle, &startTime, &activeDate)
+	if err != nil || activeExe == "" {
+		return "", "", 0
+	}
+
+	now := time.Now()
+	localStartOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	localStartOfTodayUnix := localStartOfToday.Unix()
+
+	if startTime < localStartOfTodayUnix {
+		priorDuration := localStartOfTodayUnix - startTime
+		if priorDuration > 0 {
+			priorSession := &Session{
+				AppName:      appName,
+				ExeName:      activeExe,
+				WindowTitle:  windowTitle,
+				StartTime:    time.Unix(startTime, 0),
+				EndTime:      time.Unix(localStartOfTodayUnix, 0),
+				DurationSecs: int(priorDuration),
+				Date:         activeDate,
+			}
+			_ = InsertSessionWithDaily(priorSession, "")
+		}
+
+		_, _ = db.Exec(`
+			UPDATE active_session
+			SET start_time = ?, date = ?
+			WHERE id = 1
+		`, localStartOfTodayUnix, today)
+
+		return appName, activeExe, localStartOfTodayUnix
+	}
+
+	return appName, activeExe, startTime
+}
+
 func GetAppUsageTodaySeconds(exeName string) int {
 	today := Today()
 	var secs int
@@ -90,18 +133,11 @@ func GetAppUsageTodaySeconds(exeName string) int {
 		log.Printf("WARN: GetAppUsageTodaySeconds query failed for %s: %v", exeName, err)
 	}
 
-	// Add currently active session duration if it matches exeName
-	var activeExe string
-	var startTime int64
-	err = db.QueryRow(`
-		SELECT exe_name, start_time FROM active_session WHERE id = 1
-	`).Scan(&activeExe, &startTime)
-	if err == nil {
-		if strings.EqualFold(activeExe, exeName) {
-			elapsed := time.Now().Unix() - startTime
-			if elapsed > 0 {
-				secs += int(elapsed)
-			}
+	_, activeExe, startTime := checkAndRotateActiveSession(today)
+	if activeExe != "" && strings.EqualFold(activeExe, exeName) {
+		elapsed := time.Now().Unix() - startTime
+		if elapsed > 0 {
+			secs += int(elapsed)
 		}
 	}
 	return secs
@@ -128,13 +164,8 @@ func GetAppUsageTodayMinutesMap() (map[string]int, error) {
 		res[strings.ToLower(exeName)] = secs / 60
 	}
 
-	// Add currently active session elapsed minutes to the map
-	var activeExe string
-	var startTime int64
-	err = db.QueryRow(`
-		SELECT exe_name, start_time FROM active_session WHERE id = 1
-	`).Scan(&activeExe, &startTime)
-	if err == nil && activeExe != "" {
+	_, activeExe, startTime := checkAndRotateActiveSession(today)
+	if activeExe != "" {
 		elapsed := time.Now().Unix() - startTime
 		if elapsed > 0 {
 			res[strings.ToLower(activeExe)] += int(elapsed) / 60
@@ -227,18 +258,15 @@ func GetAppStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 	today := Today()
 	inRange := (startDate == "" && endDate == "") || (today >= startDate && today <= endDate)
 	if inRange {
-		var activeExe, activeApp string
-		var startTime int64
-		err = db.QueryRow(`
-			SELECT app_name, exe_name, start_time FROM active_session WHERE id = 1
-		`).Scan(&activeApp, &activeExe, &startTime)
-		if err == nil && activeExe != "" {
+		activeApp, activeExe, startTime := checkAndRotateActiveSession(today)
+		if activeExe != "" {
 			elapsed := time.Now().Unix() - startTime
 			if elapsed > 0 {
 				found := false
 				for i, s := range stats {
 					if s.Date == today && strings.EqualFold(s.ExeName, activeExe) {
 						stats[i].TotalDurationSecs += int(elapsed)
+						stats[i].OpenCount += 1
 						found = true
 						break
 					}

@@ -33,9 +33,9 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			}
 			if err := system.AddWhitelistApp(m.settingsWhitelistInput); err != nil {
 				m.addToast(err.Error(), toastError)
-			} else {
-				m.addToast("Whitelisted "+m.settingsWhitelistInput, toastSuccess)
+				return *m, nil
 			}
+			m.addToast("Whitelisted "+m.settingsWhitelistInput, toastSuccess)
 			m.settingsAddingWhitelist = false
 			m.settingsWhitelistInput = ""
 		default:

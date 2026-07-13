@@ -103,7 +103,9 @@ func installFile(src, dst string) error {
 		return err
 	}
 	if hasBackup {
-		os.Remove(dst + ".old")
+		if err := os.Remove(dst + ".old"); err != nil {
+			return fmt.Errorf("failed to clean up backup file %s.old: %w", dst, err)
+		}
 	}
 	return nil
 }

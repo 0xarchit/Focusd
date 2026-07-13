@@ -3,6 +3,7 @@ package core
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"focusd/storage"
 	"focusd/system"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -83,7 +85,9 @@ func (t *Tracker) Start() error {
 		t.Stop()
 	}()
 
-	t.recoverOrphanedSession()
+	if err := t.recoverOrphanedSession(); err != nil {
+		return err
+	}
 
 	go t.startIPCOnPort(listener)
 
@@ -196,7 +200,15 @@ func (t *Tracker) Start() error {
 
 			if len(limits) > 0 && sessionExe != "" {
 				stateMu.Lock()
-				appSnoozed := !disabledLimitApps[sessionExe].IsZero() && now.Before(disabledLimitApps[sessionExe])
+				snoozeTime := disabledLimitApps[sessionExe]
+				appSnoozed := !snoozeTime.IsZero() && now.Before(snoozeTime)
+				if !snoozeTime.IsZero() && !now.Before(snoozeTime) {
+					disabledLimitApps[sessionExe] = time.Time{}
+					if prevSessionApp == sessionExe {
+						prevSessionApp = ""
+					}
+					appSnoozed = false
+				}
 				stateMu.Unlock()
 
 				if limit, ok := limits[sessionExe]; ok && !appSnoozed && prevSessionApp != sessionExe {
@@ -226,20 +238,19 @@ func (t *Tracker) Stop() {
 	t.cancel()
 }
 
-func (t *Tracker) recoverOrphanedSession() {
+func (t *Tracker) recoverOrphanedSession() error {
 	recovered, err := storage.RecoverActiveSession()
 	if err != nil {
-		log.Printf("ERROR: failed to recover active session from storage: %v", err)
-		return
+		return fmt.Errorf("failed to recover active session from storage: %w", err)
 	}
 	if recovered == nil {
-		return
+		return nil
 	}
 	if err := storage.InsertSessionWithDaily(recovered, ""); err != nil {
-		log.Printf("ERROR: failed to recover orphaned session: %v", err)
-	} else {
-		storage.ClearActiveSession()
+		return fmt.Errorf("failed to recover orphaned session: %w", err)
 	}
+	storage.ClearActiveSession()
+	return nil
 }
 
 func (t *Tracker) persistActiveSession() {
@@ -344,27 +355,90 @@ func (t *Tracker) flushCurrentSession() {
 	t.closeCurrentSession()
 }
 
+func (t *Tracker) writeToDurableFallback(s *storage.Session) {
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		return
+	}
+	fallbackDir := filepath.Join(appData, "focusd")
+	_ = os.MkdirAll(fallbackDir, 0755)
+	fallbackPath := filepath.Join(fallbackDir, "failed_sessions.jsonl")
+	f, err := os.OpenFile(fallbackPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	data, _ := json.Marshal(s)
+	_, _ = f.Write(append(data, '\n'))
+}
+
+func (t *Tracker) retryDurableFallback() {
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		return
+	}
+	fallbackPath := filepath.Join(appData, "focusd", "failed_sessions.jsonl")
+	if _, err := os.Stat(fallbackPath); os.IsNotExist(err) {
+		return
+	}
+
+	data, err := os.ReadFile(fallbackPath)
+	if err != nil {
+		return
+	}
+	_ = os.Remove(fallbackPath)
+
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var s storage.Session
+		if err := json.Unmarshal([]byte(line), &s); err == nil {
+			t.mu.Lock()
+			t.pendingSessions = append(t.pendingSessions, &s)
+			t.mu.Unlock()
+		}
+	}
+}
+
 func (t *Tracker) flushPendingSessions() {
+	t.retryDurableFallback()
+
 	t.mu.Lock()
 	sessions := t.pendingSessions
 	t.pendingSessions = nil
 	t.mu.Unlock()
 
+	now := time.Now()
 	for _, s := range sessions {
+		if !s.NextRetryTime.IsZero() && now.Before(s.NextRetryTime) {
+			t.mu.Lock()
+			t.pendingSessions = append(t.pendingSessions, s)
+			t.mu.Unlock()
+			continue
+		}
+
 		cleanBrowserTitle := ""
 		if system.IsBrowser(s.ExeName) {
 			cleanBrowserTitle = cleanWindowTitle(s.WindowTitle, s.ExeName)
 		}
 		if err := storage.InsertSessionWithDaily(s, cleanBrowserTitle); err != nil {
-			log.Printf("ERROR: failed to insert session with daily: %v", err)
 			s.RetryCount++
-			if s.RetryCount <= 3 {
-				t.mu.Lock()
+			backoffSec := int64(5 << min(s.RetryCount, 6))
+			s.NextRetryTime = time.Now().Add(time.Duration(backoffSec) * time.Second)
+
+			log.Printf("WARN: failed to insert session with daily (exe: %s, date: %s, start: %s, retry: %d): %v",
+				s.ExeName, s.Date, s.StartTime.Format(time.RFC3339), s.RetryCount, err)
+
+			t.mu.Lock()
+			if len(t.pendingSessions) < 1000 {
 				t.pendingSessions = append(t.pendingSessions, s)
-				t.mu.Unlock()
 			} else {
-				log.Printf("WARN: dropping session after 3 failed retries: %+v", s)
+				t.writeToDurableFallback(s)
 			}
+			t.mu.Unlock()
 		}
 	}
 }

@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/go-toast/toast v0.0.0-20190211030409-01e6764cf0a4
 	github.com/mattn/go-runewidth v0.0.19
 	golang.org/x/sys v0.46.0
 	modernc.org/sqlite v1.29.5
@@ -21,7 +22,6 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
-	github.com/go-toast/toast v0.0.0-20190211030409-01e6764cf0a4 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect

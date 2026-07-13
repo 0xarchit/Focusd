@@ -189,11 +189,17 @@ func RemoveWhitelistApp(exeName string) error {
 	loadFromDisk()
 	configMu.Lock()
 	defer configMu.Unlock()
+	matched := false
 	filtered := userConfig.WhitelistApps[:0]
 	for _, a := range userConfig.WhitelistApps {
 		if !strings.EqualFold(a, exeName) {
 			filtered = append(filtered, a)
+		} else {
+			matched = true
 		}
+	}
+	if !matched {
+		return nil
 	}
 	userConfig.WhitelistApps = filtered
 	return saveUserConfigLocked()

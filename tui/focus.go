@@ -18,7 +18,9 @@ func (m *Model) handleFocusKey(key string) (Model, tea.Cmd) {
 			// adjust break interval
 			enabled := system.GetBreakReminderEnabled()
 			mins := max(5, system.GetBreakReminderMinutes()-5)
-			_ = system.SetBreakReminder(enabled, mins)
+			if err := system.SetBreakReminder(enabled, mins); err != nil {
+				m.addToast("Failed to adjust break interval: "+err.Error(), toastError)
+			}
 		} else {
 			m.focusButton = max(0, m.focusButton-1)
 		}
@@ -26,7 +28,9 @@ func (m *Model) handleFocusKey(key string) (Model, tea.Cmd) {
 		if m.focusButton == -1 {
 			enabled := system.GetBreakReminderEnabled()
 			mins := min(300, system.GetBreakReminderMinutes()+5)
-			_ = system.SetBreakReminder(enabled, mins)
+			if err := system.SetBreakReminder(enabled, mins); err != nil {
+				m.addToast("Failed to adjust break interval: "+err.Error(), toastError)
+			}
 		} else {
 			m.focusButton = min(2, m.focusButton+1)
 		}
@@ -39,7 +43,9 @@ func (m *Model) handleFocusKey(key string) (Model, tea.Cmd) {
 		}
 	case "b":
 		enabled := system.GetBreakReminderEnabled()
-		_ = system.SetBreakReminder(!enabled, system.GetBreakReminderMinutes())
+		if err := system.SetBreakReminder(!enabled, system.GetBreakReminderMinutes()); err != nil {
+			m.addToast("Failed to toggle break reminder: "+err.Error(), toastError)
+		}
 	case "s":
 		m.focusButton = 0
 		return m.triggerFocusButton()

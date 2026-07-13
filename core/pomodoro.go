@@ -5,6 +5,8 @@ import (
 	"focusd/storage"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -27,7 +29,24 @@ func loadPomodoroStateFresh() *PomodoroState {
 		if err := json.Unmarshal([]byte(dataStr), state); err != nil {
 			log.Printf("WARN: failed to parse pomodoro state: %v", err)
 		}
+		return state
 	}
+
+	// Migrate from legacy pomodoro.json if present
+	appData := os.Getenv("APPDATA")
+	if appData != "" {
+		legacyPath := filepath.Join(appData, "focusd", "pomodoro.json")
+		if bytes, readErr := os.ReadFile(legacyPath); readErr == nil {
+			var legacyState PomodoroState
+			if unmarshalErr := json.Unmarshal(bytes, &legacyState); unmarshalErr == nil {
+				if setErr := storage.SetConfig("pomodoro_state", string(bytes)); setErr == nil {
+					os.Remove(legacyPath)
+				}
+				return &legacyState
+			}
+		}
+	}
+
 	return state
 }
 
