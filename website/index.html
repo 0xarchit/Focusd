@@ -1,451 +1,480 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>focusd - Free Open-Source Windows Screen Time Tracker | Privacy-First</title>
-    <meta name="description" content="focusd is a free, open-source screen time tracker for Windows. Monitor app usage, track browser tabs, set daily limits, and run focus sessions — all data stays local on your PC. No cloud, no accounts, no tracking.">
-    <meta name="keywords" content="focusd, focusd screen time tracker, windows screen time tracker, screen time monitor windows, app usage tracker, digital wellbeing windows, focus timer windows, pomodoro timer windows, app time limiter, open source screen time, privacy screen tracker, windows productivity tracker">
-    <meta name="author" content="0xArchit">
-    <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://focusd.0xarchit.is-a.dev">
-    <link rel="icon" type="image/svg+xml" href="assets/focusd-icon.svg">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F0EDE4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E0E0E" media="(prefers-color-scheme: dark)">
 
-    <!-- Open Graph -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://focusd.0xarchit.is-a.dev">
-    <meta property="og:title" content="focusd — Free Open-Source Windows Screen Time Tracker">
-    <meta property="og:description" content="Monitor app usage, track browser tabs, set daily limits, and run focus sessions — all data stays local on your PC. No cloud, no accounts, no tracking.">
-    <meta property="og:site_name" content="focusd">
-    <meta property="og:locale" content="en_US">
-    <meta property="og:image" content="https://focusd.0xarchit.is-a.dev/assets/focusd-banner.jpg">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="focusd — Windows Screen Time Tracker Dashboard">
+<title>focusd - Private screen-time tracker for Windows</title>
+<meta name="description" content="focusd is a native Windows screen time tracker and digital wellbeing tool. Track apps and browser tabs, set daily limits, run Pomodoro sessions. Local SQLite storage, no cloud sync, no account. An open-source local alternative to RescueTime, StayFree, and Toggl Track.">
+<meta name="keywords" content="screen time tracker windows, digital wellbeing windows, app usage monitor, browser time tracker, pomodoro timer windows, productivity dashboard, rescuetime alternative, stayfree alternative, toggl track alternative, privacy-first, local, open source, go">
+<meta name="author" content="0xarchit">
+<link rel="canonical" href="https://focusd.0xarchit.is-a.dev/">
 
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="focusd - Free Open-Source Windows Screen Time Tracker">
-    <meta name="twitter:description" content="Monitor app usage, track browser tabs, set daily limits, and run focus sessions — all data stays local on your PC.">
-    <meta name="twitter:image" content="https://focusd.0xarchit.is-a.dev/assets/focusd-banner.jpg">
-    <meta name="twitter:image:alt" content="focusd — Windows Screen Time Tracker Dashboard">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="focusd">
+<meta property="og:title" content="focusd - Private screen-time tracker for Windows">
+<meta property="og:description" content="Track apps and browser tabs, set daily limits, run Pomodoro sessions. Local SQLite storage. No account, no cloud sync. Local by design.">
+<meta property="og:url" content="https://focusd.0xarchit.is-a.dev/">
+<meta property="og:image" content="https://focusd.0xarchit.is-a.dev/assets/focusd-banner.jpg">
+<meta property="og:image:alt" content="focusd - Privacy-first digital wellbeing for Windows">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="en_US">
 
-    <!-- Performance -->
-    <meta name="theme-color" content="#0c0c0c">
-    <link rel="dns-prefetch" href="https://api.github.com">
-    <link rel="preconnect" href="https://github.com" crossorigin>
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="focusd - Private screen-time tracker for Windows">
+<meta name="twitter:description" content="Native Windows daemon. Local SQLite storage. Nothing leaves your machine.">
+<meta name="twitter:image" content="https://focusd.0xarchit.is-a.dev/assets/focusd-banner.jpg">
+<meta name="twitter:creator" content="@0xarchit">
 
-    <!-- JSON-LD: SoftwareApplication -->
-    <script type="application/ld+json">
-    {
-        "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": "focusd",
-        "description": "A free, open-source, privacy-first screen time tracker for Windows. Monitors app usage, tracks browser tabs, sets daily time limits, and runs Pomodoro focus sessions. All data stored locally.",
-        "url": "https://github.com/0xarchit/focusd",
-        "applicationCategory": "UtilitiesApplication",
-        "operatingSystem": "Windows 10/11",
-        "offers": {
-            "@type": "Offer",
-            "price": "0",
-            "priceCurrency": "USD"
-        },
-        "softwareVersion": "latest",
-        "fileSize": "~12 MB",
-        "memoryRequirements": "10-25 MB RAM",
-        "permissions": "Local system access only",
-        "featureList": [
-            "Screen time tracking",
-            "Browser tab tracking with smart grouping for 70+ websites",
-            "Daily app time limits with notifications",
-            "Pomodoro focus timer with break reminders",
-            "Activity heatmap and usage analytics",
-            "Weekly trend visualization",
-            "Data export to CSV and JSON",
-            "Configurable data retention (1-30 days)",
-            "Auto-start with Windows",
-            "Whitelist apps from tracking",
-            "Pause and resume tracking",
-            "Local SQLite database — no cloud, no accounts"
-        ],
-        "downloadUrl": "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe",
-        "codeRepository": "https://github.com/0xarchit/focusd",
-        "license": "https://opensource.org/licenses/MIT",
-        "author": {
-            "@type": "Person",
-            "name": "0xArchit",
-            "url": "https://github.com/0xarchit"
-        }
-    }
-    </script>
+<link rel="icon" type="image/svg+xml" href="assets/focusd-icon.svg">
+<link rel="apple-touch-icon" href="assets/focusd-icon.svg">
 
-    <!-- JSON-LD: HowTo — Install focusd -->
-    <script type="application/ld+json">
-    {
-        "@context": "https://schema.org",
-        "@type": "HowTo",
-        "name": "How to Install focusd Screen Time Tracker on Windows",
-        "description": "Install focusd, a free open-source screen time tracker, on Windows 10 or 11 in under a minute.",
-        "totalTime": "PT1M",
-        "step": [
-            {
-                "@type": "HowToStep",
-                "name": "Download the installer",
-                "text": "Download focusd_setup.exe from GitHub Releases using PowerShell or Command Prompt.",
-                "url": "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe"
-            },
-            {
-                "@type": "HowToStep",
-                "name": "Run the installer",
-                "text": "Run focusd_setup.exe. It installs both binaries to %APPDATA%\\focusd, adds focusd to your PATH, registers auto-start, and launches the daemon."
-            },
-            {
-                "@type": "HowToStep",
-                "name": "Launch focusd",
-                "text": "Open a new terminal and type 'focusd' to launch the interactive TUI dashboard."
-            }
-        ]
-    }
-    </script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@10..48,75..100,400..800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
-    <!-- JSON-LD: FAQ -->
-    <script type="application/ld+json">
-    {
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        "mainEntity": [
-            {
-                "@type": "Question",
-                "name": "What is focusd?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "focusd is a free, open-source screen time tracker for Windows. It monitors which applications you use and for how long, tracks browser tabs by page title, and displays analytics through a terminal dashboard. All data stays local on your PC — no cloud, no accounts, no telemetry."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Is focusd free?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Yes. focusd is completely free and open source under the MIT License. There are no paid features, no premium tiers, and no data collection."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Does focusd track my browsing history or URLs?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "No. focusd reads the browser window title (not URLs) using Windows API calls. It classifies tabs by matching title text against known patterns for 70+ websites. There is no browser extension, no HTTP interception, and no DNS sniffing."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "How much RAM does focusd use?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "focusd uses approximately 10-25 MB of RAM at idle. The total installer is under 12 MB. It is written in Go with native Win32 system calls — no Electron, no Chromium, no runtime dependencies."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Which browsers does focusd support?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "focusd tracks 18 built-in browsers: Chrome, Firefox, Edge, Brave, Opera, Vivaldi, Arc, Waterfox, Safari, Whale, Yandex, Thorium, LibreWolf, Chromium, Floorp, Zen, and Internet Explorer. You can add custom browsers with 'focusd browser add'."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Can I export my screen time data?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "Yes. You can export data to CSV or JSON from the TUI Settings tab. You can also open the SQLite database directly at %APPDATA%\\focusd\\focusd.db using any SQL tool."
-                }
-            },
-            {
-                "@type": "Question",
-                "name": "Does focusd send my data to the cloud?",
-                "acceptedAnswer": {
-                    "@type": "Answer",
-                    "text": "No. The only network call focusd makes is an optional check against the GitHub Releases API when you run 'focusd update'. All tracking data is stored locally in a SQLite database on your machine."
-                }
-            }
-        ]
-    }
-    </script>
+<link rel="stylesheet" href="style.css">
 
-    <link rel="stylesheet" href="style.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "focusd",
+  "operatingSystem": "Windows 10, Windows 11",
+  "applicationCategory": "ProductivityApplication",
+  "applicationSubCategory": "Screen Time Tracker",
+  "description": "Native Windows screen time tracker and digital wellbeing tool. Local SQLite storage, per-app and per-browser-tab usage, daily limits, Pomodoro, break reminders. No cloud, no telemetry.",
+  "url": "https://focusd.0xarchit.is-a.dev/",
+  "downloadUrl": "https://github.com/0xarchit/focusd/releases/latest",
+  "softwareVersion": "latest",
+  "fileSize": "9MB",
+  "license": "https://opensource.org/licenses/MIT",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "0xarchit", "url": "https://github.com/0xarchit" },
+  "featureList": [
+    "Per-app time tracking via Win32 syscalls",
+    "Browser tab grouping across Chrome, Firefox, Edge, Brave, Arc",
+    "Daily per-app time limits",
+    "Pomodoro focus timer",
+    "Break reminders",
+    "Local SQLite storage - no cloud",
+    "CSV and JSON export",
+    "Auto-update via GitHub Releases"
+  ]
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "Does focusd send my data anywhere?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. Every session is written to a local SQLite database at %APPDATA%\\focusd\\focusd.db. The only network call is an optional update check against the GitHub Releases API." } },
+    { "@type": "Question", "name": "How is focusd different from RescueTime, StayFree, or Toggl Track?",
+      "acceptedAnswer": { "@type": "Answer", "text": "focusd has no cloud sync, no account, and no telemetry. Data is written to a local SQLite database on your machine and never leaves it. The competitors listed all require an account and sync data to their servers." } },
+    { "@type": "Question", "name": "Which browsers does focusd track tabs for?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Chrome, Firefox, Edge, Brave, Opera, Vivaldi, Waterfox, Arc, Safari, Whale, Yandex, Thorium, LibreWolf, Chromium, Floorp, and Zen - plus any custom browser executable you add." } },
+    { "@type": "Question", "name": "Is focusd free and open source?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. MIT-licensed, source on GitHub." } }
+  ]
+}
+</script>
 </head>
 
 <body>
-    <!-- Hidden SEO Content — accessible to screen readers and crawlers -->
-    <div class="seo-content">
-        <h1>focusd — Free Open-Source Windows Screen Time Tracker</h1>
 
-        <article>
-            <h2>What is focusd?</h2>
-            <p>
-                focusd is a free, open-source screen time tracker for Windows that monitors which applications you use and for how long. Built in Go with native Win32 system calls, it runs as a lightweight background daemon (10-25 MB RAM) and displays analytics through a rich terminal user interface (TUI) and standard CLI commands.
-            </p>
-            <p>
-                All tracking data is stored locally in a SQLite database at <code>%APPDATA%\focusd\focusd.db</code>. No data ever leaves your computer — there are no cloud services, no accounts, and no telemetry. focusd is licensed under the MIT License.
-            </p>
-        </article>
+<a href="#main" class="skip">Skip to content</a>
 
-        <article>
-            <h2>How focusd Tracks Screen Time</h2>
-            <p>
-                focusd uses Windows API calls (GetForegroundWindow, GetWindowTextW, GetModuleBaseNameW) to detect which application is currently in the foreground. Every 5 seconds (configurable from 1-60 seconds), it samples the active window, records the application name, executable, and window title, and stores session data. Sessions are batched in memory and persisted to SQLite every 5 minutes for efficiency.
-            </p>
-            <p>
-                The daemon process (<code>focusd_daemon.exe</code>) runs headless in the background. The CLI/TUI (<code>focusd.exe</code>) communicates with it over a local TCP channel at <code>127.0.0.1:48321</code> using a simple text-line protocol. This two-binary architecture keeps the daemon silent and the CLI responsive.
-            </p>
-        </article>
+<header class="top">
+  <a class="brand" href="/" aria-label="focusd home">
+    <img class="brand__mark" src="assets/focusd-icon.svg" alt="" width="28" height="28" decoding="async">
+    <span class="brand__word">focusd</span>
+  </a>
+  <nav class="top__nav" aria-label="Primary">
+    <a href="#capabilities">Capabilities</a>
+    <a href="#commands">Commands</a>
+    <a href="#compare">Compare</a>
+    <a href="#faq">FAQ</a>
+    <a href="https://github.com/0xarchit/focusd" rel="noopener">Source</a>
+  </nav>
+  <a class="cta" href="https://github.com/0xarchit/focusd/releases/latest" rel="noopener">
+    Download <span aria-hidden="true">→</span>
+  </a>
+</header>
 
-        <article>
-            <h2>Browser Tab Tracking</h2>
-            <p>
-                focusd automatically detects 18 built-in browsers — Chrome, Firefox, Edge, Brave, Opera, Vivaldi, Arc, Waterfox, Safari, Whale, Yandex, Thorium, LibreWolf, Chromium, Floorp, Zen, and Internet Explorer — plus custom browsers you can add. For browser windows, it reads the window title and classifies tabs using smart pattern matching for 70+ website categories including YouTube, GitHub, ChatGPT, Claude, Spotify, Netflix, Twitter/X, Reddit, LinkedIn, Stack Overflow, LeetCode, Notion, Figma, and more.
-            </p>
-            <p>
-                Unclassified tabs are grouped by their cleaned page title. The TUI displays browser usage with a tree-style breakdown showing total time per site category and individual tab details.
-            </p>
-        </article>
+<main id="main">
 
-        <article>
-            <h2>Screen Time Analytics and Dashboard</h2>
-            <p>
-                The focusd TUI provides a 5-tab interface: Dashboard, Stats, Focus, Limits, and Settings. The dashboard shows today's total screen time, top applications ranked by usage, a 24-hour activity heatmap, and a 7-day weekly trend chart. The Stats tab offers detailed breakdowns with date range selection (today, last 7 days, last 30 days, or custom range), sortable by duration, name, or open count.
-            </p>
-            <p>
-                The CLI provides <code>focusd status</code> for a quick summary and <code>focusd stats</code> for detailed usage tables with grouped browser categories.
-            </p>
-        </article>
+<section class="hero" aria-labelledby="hero-h">
+  <div class="hero__thesis" data-reveal>
+    <p class="eyebrow">
+      <span class="dot" aria-hidden="true"></span>
+      <a class="eyebrow__ver" href="https://github.com/0xarchit/focusd/releases/latest" rel="noopener" data-js="version-link">
+        <span data-js="version">v1</span>
+      </a>
+      <span class="eyebrow__sep" aria-hidden="true">·</span> Windows x64
+      <span class="eyebrow__sep" aria-hidden="true">·</span> MIT
+      <span class="eyebrow__dl" data-js="downloads-wrap" hidden>
+        <span class="eyebrow__sep" aria-hidden="true">·</span>
+        <span data-js="downloads">0</span> downloads
+      </span>
+    </p>
+    <h1 id="hero-h" class="display">
+      Your screen time,<br>
+      <em>on your machine.</em><br>
+      Nowhere else.
+    </h1>
+    <p class="lede">
+      A native Windows daemon that watches the foreground window and writes to a
+      local SQLite file. No account. No cloud. No telemetry. The installer is
+      about 9 MB.
+    </p>
+  </div>
 
-        <article>
-            <h2>Focus Timer and Productivity Features</h2>
-            <p>
-                focusd includes a built-in Pomodoro focus timer with configurable durations (1-180 minutes). When a session completes, a system notification appears. Break reminders can be enabled to alert you after N minutes of continuous use, with options to snooze or disable per session.
-            </p>
-            <p>
-                Daily app time limits let you set maximum usage per application. The daemon checks limits every 5 seconds and shows a Windows notification when you exceed them, with an option to disable the reminder for the snooze duration.
-            </p>
-        </article>
+  <div class="hero__side" data-reveal data-reveal-delay="1">
+    <aside class="panel" aria-label="Sample dashboard">
+      <header class="panel__head">
+        <span class="panel__title">Today · <time datetime="2026-07-18">Thu, 18 Jul</time></span>
+        <span class="panel__meta">local · never syncs</span>
+      </header>
 
-        <article>
-            <h2>Privacy and Data Control</h2>
-            <p>
-                focusd is designed for privacy. All data stays on your local machine in a SQLite database. You control data retention (1-30 days, default 7 days). You can export data to CSV or JSON from the TUI Settings tab, or open the SQLite database directly. The "Wipe All Data" feature in Settings requires typing "DELETE" as confirmation before clearing everything.
-            </p>
-            <p>
-                Apps can be whitelisted to skip tracking entirely. The daemon respects the whitelist and does not record any data for those executables.
-            </p>
-        </article>
+      <div class="panel__total">
+        <span class="panel__label">Tracked</span>
+        <span class="panel__number" data-count-to="284" aria-live="polite">0</span>
+        <span class="panel__unit">min</span>
+      </div>
 
-        <article>
-            <h2>Installation and System Requirements</h2>
-            <p>
-                focusd requires Windows 10 or later. The installer (<code>focusd_setup.exe</code>) is under 12 MB and installs both binaries to <code>%APPDATA%\focusd\</code>. It automatically adds focusd to your PATH, registers for auto-start via the Windows Registry, and launches the daemon. No runtime dependencies, no CGO, no Electron.
-            </p>
-            <p>
-                Install via PowerShell: <code>iwr "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" -OutFile focusd_setup.exe; ./focusd_setup.exe</code>
-            </p>
-        </article>
+      <ol class="apps" aria-label="Top applications today">
+        <li class="app" style="--pct:88">
+          <span class="app__name">code.exe</span>
+          <span class="app__bar"><i></i></span>
+          <span class="app__t">2h 30m</span>
+        </li>
+        <li class="app" style="--pct:52">
+          <span class="app__name">chrome.exe <em>· GitHub</em></span>
+          <span class="app__bar"><i></i></span>
+          <span class="app__t">1h 27m</span>
+        </li>
+        <li class="app" style="--pct:34">
+          <span class="app__name">windowsterminal.exe</span>
+          <span class="app__bar"><i></i></span>
+          <span class="app__t">57m</span>
+        </li>
+        <li class="app" style="--pct:22">
+          <span class="app__name">chrome.exe <em>· YouTube</em></span>
+          <span class="app__bar"><i></i></span>
+          <span class="app__t">38m</span>
+        </li>
+        <li class="app" style="--pct:14">
+          <span class="app__name">slack.exe</span>
+          <span class="app__bar"><i></i></span>
+          <span class="app__t">22m</span>
+        </li>
+      </ol>
 
-        <h2>CLI Commands</h2>
-        <p>
-            focusd provides 17 CLI commands: <code>focusd</code> (launch TUI), <code>start</code>, <code>stop</code>, <code>status</code>, <code>stats</code>, <code>pause</code>, <code>resume</code>, <code>focus</code>, <code>limit</code>, <code>browser</code>, <code>retention</code>, <code>autostart</code>, <code>path</code>, <code>update</code>, <code>stop-timer</code>, <code>version</code>, and <code>help</code>. Many commands support short aliases like <code>s</code> for status, <code>st</code> for stats, and <code>p</code> for pause.
-        </p>
+      <footer class="panel__foot">
+        <span class="tick" aria-hidden="true"></span>
+        This data never left your machine.
+      </footer>
+    </aside>
 
-        <h2>Open Source</h2>
-        <p>
-            focusd is open source under the MIT License. The source code is available on GitHub at <a href="https://github.com/0xarchit/focusd">github.com/0xarchit/focusd</a>. Contributions, bug reports, and feature suggestions are welcome.
-        </p>
+    <div class="hero__actions">
+      <a class="btn btn--solid" href="https://github.com/0xarchit/focusd/releases/latest" rel="noopener">
+        Download for Windows
+      </a>
+      <a class="btn btn--ghost" href="https://github.com/0xarchit/focusd" rel="noopener">
+        View on GitHub
+      </a>
     </div>
 
-    <!-- Visible UI -->
-    <canvas id="matrix-canvas"></canvas>
-    <button id="sfx-btn" class="theme-toggle" onclick="toggleSFX()">[SFX: OFF]</button>
-    <button id="theme-btn" class="theme-toggle" onclick="toggleTheme()">[LIGHT MODE]</button>
-    <div class="crt-overlay"></div>
-    <div id="toast">[SYSTEM] Copied to clipboard</div>
+    <dl class="hero__stats" aria-label="At a glance">
+      <div><dt>Installer</dt><dd>~9 MB</dd></div>
+      <div><dt>CLI binary</dt><dd>~12 MB</dd></div>
+      <div><dt>Storage</dt><dd>Local SQLite</dd></div>
+      <div><dt>Network</dt><dd>Update check only</dd></div>
+    </dl>
+  </div>
+</section>
 
-    <div id="start-overlay" onclick="startSystem()">
-        <div class="blink">SYSTEM STANDBY<br><br>[ CLICK TO INITIALIZE ]</div>
-    </div>
+<section class="strip" aria-label="Positioning" data-reveal>
+  <p>
+    A free alternative to <span>RescueTime</span> · <span>StayFree</span> ·
+    <span>Toggl Track</span> - for people who would rather not hand their
+    keystrokes to a SaaS.
+  </p>
+</section>
 
-    <div class="terminal">
-        <header>
-            <div class="logo">
-                <pre>
-   __                           _
-  / _|                         | |
- | |_ ___   ___ _   _ ___  ____| |
- |  _/ _ \ / __| | | / __|/ _  | |
- | || (_) | (__| |_| \__ \ (_| |_|
- |_| \___/ \___|\__,_|___/\____(_)
+<section id="capabilities" class="caps" aria-labelledby="caps-h">
+  <header class="section__head" data-reveal>
+    <span class="section__kicker">The workflow</span>
+    <h2 id="caps-h" class="display display--md">Four things it does, in the order you'd meet them.</h2>
+  </header>
 
-</pre>
-            </div>
-            <nav class="nav-links">
-                <a href="https://github.com/0xarchit/focusd" target="_blank" rel="noopener">[GITHUB]</a>
-                <a href="https://github.com/0xarchit/focusd/releases" target="_blank" rel="noopener">[DOWNLOAD]</a>
-                <span id="github-badge">Latest: checking...</span>
-            </nav>
-        </header>
+  <ol class="caps__list">
+    <li class="cap" data-reveal>
+      <span class="cap__num">01</span>
+      <div>
+        <h3>Track</h3>
+        <p>A silent daemon polls the foreground window on a configurable interval (default 5 s) via Win32 syscalls. Per-app and per-browser-tab time land in a local SQLite database. Browser titles are matched against 74 hard-coded categories - YouTube, GitHub, ChatGPT, Reddit, Netflix, Spotify, and so on - so the report reads like a story, not a title dump.</p>
+        <code>focusd stats</code>
+      </div>
+    </li>
+    <li class="cap" data-reveal>
+      <span class="cap__num">02</span>
+      <div>
+        <h3>Limit</h3>
+        <p>Set a per-executable ceiling in minutes. When today's usage crosses the line, a Windows toast notification interrupts you - with a Snooze action that suppresses repeats for the configured snooze window. Limits reset at local midnight. Whitelisted apps are skipped by the tracker entirely - never recorded.</p>
+        <code>focusd limit chrome.exe 60</code>
+      </div>
+    </li>
+    <li class="cap" data-reveal>
+      <span class="cap__num">03</span>
+      <div>
+        <h3>Focus</h3>
+        <p>A file-backed Pomodoro at <code>%APPDATA%\focusd\pomodoro.json</code> - state survives process restarts. Default 25 min, configurable. Break reminders fire after N minutes of continuous use. Completion arrives as a Windows toast, not a modal that seizes your desktop.</p>
+        <code>focusd focus 45</code>
+      </div>
+    </li>
+    <li class="cap" data-reveal>
+      <span class="cap__num">04</span>
+      <div>
+        <h3>Export</h3>
+        <p>Your data leaves only when you say so. Export CSV or JSON from the TUI's Settings tab; files land on your Desktop. Or open <code>%APPDATA%\focusd\focusd.db</code> in any SQLite browser and query it yourself - the schema is documented.</p>
+        <code>Settings → Export → CSV</code>
+      </div>
+    </li>
+  </ol>
+</section>
 
-        <main>
-            <section class="hero">
-                <div id="terminal-history"></div>
-                <div class="terminal-input-area">
-                    <span class="terminal-prompt">C:\Users\You></span>
-                    <input type="text" id="cmd-input" autocomplete="off" spellcheck="false" autofocus aria-label="Terminal input">
-                </div>
-            </section>
+<section id="compare" class="compare" aria-labelledby="compare-h">
+  <header class="section__head" data-reveal>
+    <span class="section__kicker">Head to head</span>
+    <h2 id="compare-h" class="display display--md">Local by default, not by upgrade.</h2>
+    <p class="section__lede">Most trackers ship cloud sync or accounts as the primary mode. focusd doesn't have a cloud path at all.</p>
+  </header>
 
-            <section class="install-block delayed-reveal">
-                <p class="prompt">C:\Users\You> Download Installer</p>
-                <div class="code-box">
-                    <code>iwr "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" -OutFile focusd_setup.exe; ./focusd_setup.exe</code>
-                    <button class="copy-btn" onclick="copyCommand()" aria-label="Copy PowerShell install command">[COPY]</button>
-                </div>
+  <div class="table-wrap" data-reveal>
+    <table class="table" aria-describedby="compare-h">
+      <thead>
+        <tr>
+          <th scope="col">App</th>
+          <th scope="col">Distribution</th>
+          <th scope="col">Sync model</th>
+          <th scope="col">Account required</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="table__row--own">
+          <th scope="row">focusd</th>
+          <td><b>Standalone binary (~9 MB installer)</b></td>
+          <td><b>None - local SQLite only</b></td>
+          <td><span class="chip chip--y">No</span></td>
+        </tr>
+        <tr>
+          <th scope="row">StayFree</th>
+          <td>Microsoft Store / UWP + Electron desktop</td>
+          <td>Cross-device sync</td>
+          <td><span class="chip">Yes</span></td>
+        </tr>
+        <tr>
+          <th scope="row">Toggl Track</th>
+          <td>Native C++/.NET desktop client</td>
+          <td>Cloud sync (Toggl account)</td>
+          <td><span class="chip">Yes</span></td>
+        </tr>
+        <tr>
+          <th scope="row">RescueTime</th>
+          <td>Native Windows client + web dashboard</td>
+          <td>Cloud sync (RescueTime account)</td>
+          <td><span class="chip">Yes</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="table__note">Sources for competing products: their own product pages and public repositories. focusd figures are from this build.</p>
+  </div>
+</section>
 
-                <p class="prompt brs">C:\Users\You> Or via CMD</p>
-                <div class="code-box">
-                    <code>curl -L -o focusd_setup.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" && focusd_setup.exe</code>
-                    <button class="copy-btn" onclick="copyCurl()" aria-label="Copy CMD install command">[COPY]</button>
-                </div>
-                <p class="prompt" style="margin-top:1rem; font-size:0.85rem;">Run the installer. Adds focusd to PATH automatically. Open Terminal and type 'focusd' to launch.</p>
-            </section>
+<section id="commands" class="commands" aria-labelledby="cmd-h">
+  <header class="section__head" data-reveal>
+    <span class="section__kicker">The whole surface</span>
+    <h2 id="cmd-h" class="display display--md">One binary. Everything through the shell.</h2>
+  </header>
 
-            <section class="features delayed-reveal">
-                <p class="prompt">C:\Users\You> focusd --features</p>
-                <div class="grid">
-                    <div class="card">
-                        <h3>[PRIVACY]</h3>
-                        <p>All data stored locally in SQLite at %APPDATA%\focusd\. No cloud, no accounts, no telemetry. MIT licensed and open source.</p>
-                    </div>
-                    <div class="card">
-                        <h3>[TUI DASHBOARD]</h3>
-                        <p>5-tab terminal UI: Dashboard, Stats, Focus Timer, Limits, and Settings. Mouse and keyboard navigation.</p>
-                    </div>
-                    <div class="card">
-                        <h3>[BROWSER TRACKING]</h3>
-                        <p>Tracks time per browser tab by page title. Smart grouping for 70+ sites (YouTube, GitHub, ChatGPT, Spotify, Netflix, etc).</p>
-                    </div>
-                    <div class="card">
-                        <h3>[POMODORO TIMER]</h3>
-                        <p>Built-in focus sessions with system notifications. Configurable 1-180 minute durations and break reminders.</p>
-                    </div>
-                    <div class="card">
-                        <h3>[APP LIMITS]</h3>
-                        <p>Set daily time limits per application. Get notified when limits are exceeded with snooze option.</p>
-                    </div>
-                    <div class="card">
-                        <h3>[PERFORMANCE]</h3>
-                        <p>Written in Go with native Win32 syscalls. CLI + silent daemon under ~12MB total. ~10-25MB RAM idle. No CGO, no runtime dependencies.</p>
-                    </div>
-                    <div class="card">
-                        <h3>[BREAK REMINDERS]</h3>
-                        <p>Configurable reminders after N minutes of continuous use. Snooze or disable per session.</p>
-                    </div>
-                    <div class="card">
-                        <h3>[DATA CONTROL]</h3>
-                        <p>Configurable retention (1-30 days). Export to CSV or JSON. Open SQLite directly. Wipe data anytime.</p>
-                    </div>
-                    <div class="card">
-                        <h3>[AUTO-START]</h3>
-                        <p>Daemon registered in HKCU\...\Run on install. Runs silently in background. Toggle via focusd autostart.</p>
-                    </div>
-                    <div class="card">
-                        <h3>[WHITELIST]</h3>
-                        <p>Add executables that should never be tracked. Whitelisted apps are skipped entirely by the poller.</p>
-                    </div>
-                    <div class="card">
-                        <h3>[AUTO-UPDATE]</h3>
-                        <p>focusd update checks GitHub Releases, verifies SHA-256 checksum, and runs installer silently with UAC elevation.</p>
-                    </div>
-                    <div class="card">
-                        <h3>[ACTIVITY HEATMAP]</h3>
-                        <p>24-hour bar chart showing usage density across the day. Identify your most and least productive hours.</p>
-                    </div>
-                </div>
-            </section>
+  <div class="commands__grid">
+    <pre class="code" data-reveal aria-label="Core commands"><code><span class="c-com"># daily</span>
+focusd                       <span class="c-com">launch interactive TUI</span>
+focusd start                 <span class="c-com">start background daemon</span>
+focusd stop                  <span class="c-com">graceful shutdown</span>
+focusd status        (s)     <span class="c-com">today's top 5 apps</span>
+focusd stats         (st)    <span class="c-com">full daily breakdown</span>
 
-            <section class="usage delayed-reveal">
-                <p class="prompt">C:\Users\You> focusd --help</p>
-                <div class="grid-table">
-                    <div class="row header">
-                        <span class="col-cmd">COMMAND</span>
-                        <span class="col-alias">ALIAS</span>
-                        <span class="col-desc">DESCRIPTION</span>
-                    </div>
-                    <div class="row"><span class="col-cmd">focusd</span><span class="col-alias"></span><span
-                            class="col-desc">Open interactive TUI menu</span></div>
-                    <div class="row"><span class="col-cmd">focusd start</span><span class="col-alias"></span><span
-                            class="col-desc">Start background tracking daemon</span></div>
-                    <div class="row"><span class="col-cmd">focusd stop</span><span class="col-alias"></span><span
-                            class="col-desc">Stop tracking daemon gracefully</span></div>
-                    <div class="row"><span class="col-cmd">focusd status</span><span class="col-alias">s</span><span
-                            class="col-desc">Show tracking status and today's summary</span></div>
-                    <div class="row"><span class="col-cmd">focusd stats</span><span class="col-alias">st</span><span
-                            class="col-desc">Detailed usage breakdown</span></div>
-                    <div class="row"><span class="col-cmd">focusd focus [mins]</span><span class="col-alias"></span><span
-                            class="col-desc">Start Pomodoro focus timer</span></div>
-                    <div class="row"><span class="col-cmd">focusd limit [app] [mins]</span><span class="col-alias"></span><span
-                            class="col-desc">Set daily app time limit</span></div>
-                    <div class="row"><span class="col-cmd">focusd browser</span><span class="col-alias"></span><span
-                            class="col-desc">Add/remove custom tracked browsers</span></div>
-                    <div class="row"><span class="col-cmd">focusd pause</span><span class="col-alias">p</span><span
-                            class="col-desc">Pause tracking temporarily</span></div>
-                    <div class="row"><span class="col-cmd">focusd resume</span><span class="col-alias">r</span><span
-                            class="col-desc">Resume tracking</span></div>
-                    <div class="row"><span class="col-cmd">focusd retention</span><span class="col-alias">ret</span><span
-                            class="col-desc">Manage data retention (status/set/reset)</span></div>
-                    <div class="row"><span class="col-cmd">focusd autostart</span><span class="col-alias">auto</span><span
-                            class="col-desc">Manage auto-start (status/enable/disable)</span></div>
-                    <div class="row"><span class="col-cmd">focusd path</span><span class="col-alias"></span><span
-                            class="col-desc">Manage PATH (status/enable/disable)</span></div>
-                    <div class="row"><span class="col-cmd">focusd stop-timer</span><span class="col-alias"></span><span
-                            class="col-desc">Stop running Pomodoro timer</span></div>
-                    <div class="row"><span class="col-cmd">focusd update</span><span class="col-alias"></span><span
-                            class="col-desc">Check for updates from GitHub</span></div>
-                    <div class="row"><span class="col-cmd">focusd version</span><span class="col-alias">-v</span><span
-                            class="col-desc">Show version</span></div>
-                    <div class="row"><span class="col-cmd">focusd help</span><span class="col-alias">h</span><span
-                            class="col-desc">Show built-in help</span></div>
-                </div>
-            </section>
+<span class="c-com"># flow</span>
+focusd pause         (p)     <span class="c-com">pause tracking</span>
+focusd resume        (r)     <span class="c-com">resume tracking</span>
+focusd focus [min]           <span class="c-com">start Pomodoro (default 25)</span>
+focusd stop-timer            <span class="c-com">cancel Pomodoro</span>
+focusd limit &lt;app&gt; &lt;min&gt;     <span class="c-com">daily cap for an executable</span>
 
-            <section class="roadmap delayed-reveal">
-                <p class="prompt">C:\Users\You> cat roadmap.txt</p>
-                <div class="grid">
-                    <div class="card planned">
-                        <h3>[PLANNED] WEB UI</h3>
-                        <p>Localhost web interface with charts and visualizations.</p>
-                    </div>
-                    <div class="card planned">
-                        <h3>[PLANNED] GAMIFICATION</h3>
-                        <p>Daily productivity streaks and focus scores.</p>
-                    </div>
-                </div>
-                <div class="contribute">
-                    <p class="prompt">C:\Users\You> git commit -m "suggestion"</p>
-                    <p>Have an idea? <a href="https://github.com/0xarchit/focusd/issues" target="_blank" rel="noopener">[SUGGEST A
-                            FEATURE]</a></p>
-                </div>
-            </section>
-    </div>
-    </section>
-    </main>
+<span class="c-com"># housekeeping</span>
+focusd update                <span class="c-com">verified auto-update</span>
+focusd retention set 14      <span class="c-com">keep 14 days of history</span>
+focusd autostart enable      <span class="c-com">launch daemon at login</span>
+focusd path enable           <span class="c-com">add to user PATH</span>
+focusd browser add zen.exe   <span class="c-com">register a custom browser</span></code></pre>
 
-    <footer>
-        <p>MIT License. Copyright &copy; 2026 0xArchit.</p>
-        <p class="status">STATUS: ONLINE | LATENCY: 12ms</p>
-    </footer>
-    </div>
-    <script src="script.js"></script>
+    <aside class="arch" data-reveal aria-label="Architecture">
+      <h3 class="arch__h">How the pieces fit</h3>
+      <svg class="arch__svg" role="img"
+           aria-label="Architecture: focusd.exe (CLI + TUI) exchanges 'stop' and 'flush' messages with focusd_daemon.exe over TCP 127.0.0.1:48321. Both processes read and write %APPDATA%\focusd\ which holds focusd.db, config.json, and pomodoro.json."
+           viewBox="0 0 820 300" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <marker id="arch-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+                  markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <!-- IPC label -->
+        <text class="arch__t arch__t--lbl" x="410" y="30" text-anchor="middle">
+          TCP 127.0.0.1:48321
+        </text>
+
+        <!-- Left process box -->
+        <rect class="arch__box arch__box--own" x="20" y="46" width="240" height="92" rx="12"/>
+        <text class="arch__t arch__t--head" x="140" y="82" text-anchor="middle">focusd.exe</text>
+        <text class="arch__t arch__t--sub"  x="140" y="106" text-anchor="middle">CLI + TUI</text>
+
+        <!-- Right process box -->
+        <rect class="arch__box" x="560" y="46" width="240" height="92" rx="12"/>
+        <text class="arch__t arch__t--head" x="680" y="82" text-anchor="middle">focusd_daemon.exe</text>
+        <text class="arch__t arch__t--sub"  x="680" y="106" text-anchor="middle">windowsgui, no UI</text>
+
+        <!-- Top arrow: → "stop" -->
+        <line class="arch__line" x1="266" y1="78" x2="554" y2="78" marker-end="url(#arch-arrow)"/>
+        <text class="arch__t arch__t--acc" x="410" y="70" text-anchor="middle">"stop"</text>
+
+        <!-- Bottom arrow: ← "flush" / "ok" -->
+        <line class="arch__line" x1="554" y1="106" x2="266" y2="106" marker-end="url(#arch-arrow)"/>
+        <text class="arch__t arch__t--acc" x="410" y="124" text-anchor="middle">"flush" / "ok"</text>
+
+        <!-- Vertical connectors to storage -->
+        <line class="arch__line arch__line--dash" x1="140" y1="138" x2="140" y2="212" marker-end="url(#arch-arrow)"/>
+        <line class="arch__line arch__line--dash" x1="680" y1="138" x2="680" y2="212" marker-end="url(#arch-arrow)"/>
+
+        <!-- Storage box -->
+        <rect class="arch__box" x="80" y="212" width="660" height="72" rx="12"/>
+        <text class="arch__t arch__t--sub"  x="410" y="238" text-anchor="middle">%APPDATA%\focusd\</text>
+        <text class="arch__t arch__t--head" x="410" y="262" text-anchor="middle">focusd.db · config.json · pomodoro.json</text>
+      </svg>
+      <p class="arch__note">
+        The CLI calls <code>flush</code> over local TCP before every report,
+        so <code>stats</code> is always caught up on the in-flight session.
+      </p>
+    </aside>
+  </div>
+</section>
+
+<section class="trust" aria-labelledby="trust-h">
+  <div data-reveal>
+    <span class="section__kicker">The quiet part, loud</span>
+    <h2 id="trust-h" class="display display--md">One network call. And you can turn it off.</h2>
+    <p>
+      The only outbound request focusd ever makes is an update check against
+      <code>api.github.com/repos/0xarchit/focusd/releases/latest</code>.
+      If you never call <code>focusd update</code>, focusd never opens a
+      socket. Everything else - tracking, limits, Pomodoro, export - stays
+      on your machine.
+    </p>
+  </div>
+  <ul class="trust__list" data-reveal aria-label="Guarantees">
+    <li><b>MIT licensed.</b> Read the source, ship it in a fork, resell it if you like.</li>
+    <li><b>No account.</b> There is no server to sign up for.</li>
+    <li><b>No analytics.</b> No page pings, no crash uploads, no "improve the product" checkbox.</li>
+    <li><b>You control updates.</b> The updater only runs when you invoke <code>focusd update</code>. Nothing checks silently in the background.</li>
+  </ul>
+</section>
+
+<section id="faq" class="faq" aria-labelledby="faq-h">
+  <header class="section__head" data-reveal>
+    <span class="section__kicker">FAQ</span>
+    <h2 id="faq-h" class="display display--md">Common questions.</h2>
+  </header>
+
+  <div class="faq__list" data-reveal>
+    <details>
+      <summary>Does focusd send my data anywhere?</summary>
+      <p>No. Sessions are written to <code>%APPDATA%\focusd\focusd.db</code>. The only outbound network call is an optional update check against the GitHub Releases API.</p>
+    </details>
+    <details>
+      <summary>How is this different from RescueTime, StayFree, or Toggl Track?</summary>
+      <p>focusd has no cloud sync, no account, and no telemetry - all three competitors listed require an account and sync your data to their servers. focusd writes tracking data only to a local SQLite database and never leaves the machine.</p>
+    </details>
+    <details>
+      <summary>Which browsers can it group tabs for?</summary>
+      <p>Chrome, Firefox, Edge, Brave, Opera, Vivaldi, Waterfox, Arc, Safari, Whale, Yandex, Thorium, LibreWolf, Chromium, Floorp, Zen, and any custom executable you register with <code>focusd browser add</code>.</p>
+    </details>
+    <details>
+      <summary>Does it run on macOS or Linux?</summary>
+      <p>Not yet. The tracker uses Win32 syscalls directly (<code>user32</code>, <code>kernel32</code>, <code>psapi</code>). The code compiles on other platforms via build stubs, but the daemon refuses to run.</p>
+    </details>
+    <details>
+      <summary>What happens to my data if I uninstall?</summary>
+      <p>The installer leaves <code>%APPDATA%\focusd\</code> in place so you can reinstall without losing history. Delete that directory manually if you want a clean slate.</p>
+    </details>
+    <details>
+      <summary>How does the auto-update work?</summary>
+      <p>Run <code>focusd update</code>. It queries <code>api.github.com/repos/0xarchit/focusd/releases/latest</code>, downloads <code>focusd_setup.exe</code> for that tag, stops the running daemon, and launches the NSIS installer with a UAC elevation prompt. The daemon restarts after the install completes. Nothing runs automatically - you invoke it when you want it.</p>
+    </details>
+  </div>
+</section>
+
+<section class="close" aria-labelledby="close-h" data-reveal>
+  <h2 id="close-h" class="display display--lg">
+    Track it.<br>
+    Own it.<br>
+    <em>That's the whole product.</em>
+  </h2>
+  <div class="close__actions">
+    <a class="btn btn--solid btn--lg" href="https://github.com/0xarchit/focusd/releases/latest" rel="noopener">Download focusd</a>
+    <a class="btn btn--ghost btn--lg" href="https://github.com/0xarchit/focusd" rel="noopener">Read the source</a>
+  </div>
+  <p class="close__foot"><code>focusd_setup.exe</code> · Windows 10 / 11 · x64 · MIT</p>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot__row">
+    <a class="brand brand--sm" href="/" aria-label="focusd home">
+      <img class="brand__mark" src="assets/focusd-icon.svg" alt="" width="24" height="24" decoding="async">
+      <span class="brand__word">focusd</span>
+    </a>
+    <p class="foot__note">Built by <a href="https://github.com/0xarchit" rel="noopener">0xarchit</a>. Native Win32. MIT licensed.</p>
+  </div>
+  <nav class="foot__nav" aria-label="Footer">
+    <a href="https://github.com/0xarchit/focusd" rel="noopener">GitHub</a>
+    <a href="https://github.com/0xarchit/focusd/releases" rel="noopener">Releases</a>
+    <a href="https://github.com/0xarchit/focusd/blob/main/LICENSE" rel="noopener">License</a>
+    <a href="https://github.com/0xarchit/focusd/issues" rel="noopener">Report an issue</a>
+  </nav>
+</footer>
+
+<!-- Floating star-the-repo widget. Hidden until the API returns a count so the
+     first paint doesn't show a placeholder. -->
+<a class="starw" href="https://github.com/0xarchit/focusd" rel="noopener"
+   aria-label="Star focusd on GitHub" data-js="starw" hidden>
+  <span class="starw__spark" aria-hidden="true"></span>
+  <svg class="starw__icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+    <path fill="currentColor" d="M12 2.5l2.9 6.9 7.6.6-5.8 4.9 1.8 7.3L12 18.4 5.5 22.2l1.8-7.3-5.8-4.9 7.6-.6L12 2.5z"/>
+  </svg>
+  <span class="starw__label">Star on GitHub</span>
+  <span class="starw__count" data-js="stars">-</span>
+</a>
+
+<script src="script.js" defer></script>
 </body>
-
 </html>

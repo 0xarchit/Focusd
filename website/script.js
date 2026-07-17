@@ -1,447 +1,147 @@
-const commands = {
-  help: "Available commands: [help] [status] [features] [download] [clear] [theme]",
-  status: "focusd is ONLINE. Privacy protocols active. Zero data exfiltration.",
-  features:
-    "Features: [PRIVACY] [TUI DASHBOARD] [BROWSER TRACKING] [POMODORO] [APP LIMITS] [BREAK REMINDERS] [DATA CONTROL] [AUTO-START]",
-  download: "Redirecting to GitHub releases...",
-  clear: "CLEAR_ACTION",
-  theme: "THEME_ACTION",
-  focusd:
-    "<span style='color:#0f0'>Launching focusd TUI...</span><br><span style='color:#888'>  ___  ___  ___  ___  ___  ___  ___<br> | F || O || C || U || S || D || ↑ |<br> |___||___||___||___||___||___||___|</span><br><span style='color:#0f0'>● Dashboard  ○ Stats  ○ Focus  ○ Limits  ○ Settings</span><br><span style='color:#555'>(simulation — install focusd to experience the real TUI)</span>",
-};
+// focusd landing — hero panel animation + live GitHub numbers.
+// no framework, no libs. respects prefers-reduced-motion.
 
-let matrixInterval;
-let matrixSpeed = 50;
-let sfxEnabled = false;
-let audioCtx;
-let noiseBuffer = null;
-let systemStarted = false;
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const GH_REPO = '0xarchit/focusd';
+  const CACHE_KEY = 'focusd:gh:v1';
+  const TTL = 6 * 60 * 60 * 1000; // 6 hours
 
-document.addEventListener("DOMContentLoaded", () => {
-  const prefersReducedMotion = window.matchMedia(
-    "(prefers-reduced-motion: reduce)",
-  ).matches;
+  // ---- panel bars: staggered reveal ------------------------------------
+  const bars = document.querySelectorAll('.panel .app');
+  bars.forEach((el, i) => {
+    el.style.setProperty('--i', i);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('is-in')));
+  });
 
-  initTheme();
-  initSFX();
-  fetchLatestVersion();
-
-  if (prefersReducedMotion) {
-    document.getElementById("start-overlay").style.display = "none";
-    revealSections();
-    document.querySelector(".terminal-input-area").classList.remove("hidden");
-  }
-
-  initTerminal();
-});
-
-async function startSystem() {
-  if (systemStarted) return;
-  systemStarted = true;
-
-  const overlay = document.getElementById("start-overlay");
-  overlay.style.opacity = "0";
-  setTimeout(() => overlay.remove(), 500);
-
-  if (sfxEnabled || localStorage.getItem("sfx") !== "false") {
-    initAudioContext();
-    if (audioCtx.state === "suspended") await audioCtx.resume();
-    sfxEnabled = true;
-  }
-
-  initMatrix();
-  runBootSequence();
-}
-
-async function runBootSequence() {
-  const history = document.getElementById("terminal-history");
-  const inputArea = document.querySelector(".terminal-input-area");
-
-  inputArea.classList.add("hidden");
-
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-  async function typeLine(text, element) {
-    element.innerHTML = 'C:\\Users\\You> <span class="typing-cursor"></span>';
-
-    let currentText = "C:\\Users\\You> ";
-    element.textContent = currentText;
-
-    const span = document.createElement("span");
-    span.className = "typing-cursor";
-    element.appendChild(span);
-
-    for (let char of text) {
-      await wait(Math.random() * 30 + 10);
-      if (sfxEnabled) playClick();
-      currentText += char;
-      element.firstChild.textContent = currentText;
-    }
-
-    await wait(100);
-    span.remove();
-    element.innerHTML += "<br>";
-  }
-
-  await wait(100);
-  const bootLine = document.createElement("div");
-  bootLine.className = "command-output";
-  history.appendChild(bootLine);
-  await typeLine("focusd.exe", bootLine);
-
-  const logs = [
-    "Initializing daemon core...",
-    "Loading local SQLite database... [OK]",
-    "Starting background tracker...",
-    "<span style='color: #0f0'>SUCCESS: focusd installed. Type 'focusd' in Terminal to launch.</span>",
-  ];
-
-  for (let log of logs) {
-    await wait(100);
-
-    if (log.includes("SUCCESS")) {
-      if (sfxEnabled) playSuccess();
+  // ---- panel counter: ease 0 → target ----------------------------------
+  const num = document.querySelector('.panel__number[data-count-to]');
+  if (num) {
+    const target = parseInt(num.dataset.countTo, 10) || 0;
+    if (reduce) {
+      num.textContent = target;
     } else {
-      if (sfxEnabled && Math.random() > 0.5) playClick();
+      const start = performance.now();
+      const dur = 1400;
+      const ease = (t) => 1 - Math.pow(1 - t, 3);
+      const step = (now) => {
+        const p = Math.min(1, (now - start) / dur);
+        num.textContent = Math.round(target * ease(p));
+        if (p < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
     }
-
-    addToHistory(log, true);
   }
 
-  await wait(300);
-
-  revealSections();
-
-  await wait(200);
-  inputArea.classList.remove("hidden");
-  document.getElementById("cmd-input").focus();
-  addToHistory(
-    "<br>Interactive shell ready. Type 'help' for commands.<br>",
-    true,
-  );
-}
-
-function initSFX() {
-  const btn = document.getElementById("sfx-btn");
-  const saved = localStorage.getItem("sfx");
-
-  if (saved === null || saved === "true") {
-    sfxEnabled = true;
-    btn.innerText = "[SFX: ON]";
-  } else {
-    sfxEnabled = false;
-    btn.innerText = "[SFX: OFF]";
-  }
-}
-
-function initAudioContext() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-      latencyHint: "interactive",
+  // ---- FAQ: single-open enforcement ------------------------------------
+  const items = document.querySelectorAll('.faq details');
+  items.forEach((d) => {
+    d.addEventListener('toggle', () => {
+      if (d.open) items.forEach((o) => { if (o !== d) o.open = false; });
     });
-
-    const bufferSize = audioCtx.sampleRate;
-    noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-    const data = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
-    }
-  }
-  if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
-}
-
-function toggleSFX() {
-  sfxEnabled = !sfxEnabled;
-  const btn = document.getElementById("sfx-btn");
-  btn.innerText = sfxEnabled ? "[SFX: ON]" : "[SFX: OFF]";
-  localStorage.setItem("sfx", sfxEnabled);
-
-  if (sfxEnabled) {
-    initAudioContext();
-    playClick();
-  }
-}
-
-function playClick() {
-  if (!sfxEnabled) return;
-  initAudioContext();
-  const t = audioCtx.currentTime;
-
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-
-  osc.type = "square";
-  osc.frequency.setValueAtTime(600, t);
-  osc.frequency.exponentialRampToValueAtTime(100, t + 0.015);
-
-  gain.gain.setValueAtTime(0.08, t);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.015);
-
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-
-  osc.start();
-  osc.stop(t + 0.02);
-
-  if (noiseBuffer) {
-    const noise = audioCtx.createBufferSource();
-    noise.buffer = noiseBuffer;
-
-    const noiseFilter = audioCtx.createBiquadFilter();
-    noiseFilter.type = "lowpass";
-    noiseFilter.frequency.value = 2500;
-
-    const noiseGain = audioCtx.createGain();
-    noiseGain.gain.setValueAtTime(0.12, t);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
-
-    noise.connect(noiseFilter);
-    noiseFilter.connect(noiseGain);
-    noiseGain.connect(audioCtx.destination);
-
-    noise.start();
-    noise.stop(t + 0.025);
-  }
-}
-
-function playSuccess() {
-  if (!sfxEnabled) return;
-  initAudioContext();
-  const t = audioCtx.currentTime;
-
-  const freqs = [523.25, 659.25, 783.99, 987.77];
-
-  freqs.forEach((f, i) => {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(f, t);
-
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.15, t + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
-
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-
-    const delay = i * 0.04;
-    osc.start(t + delay);
-    osc.stop(t + delay + 1.3);
   });
-}
 
-function initMatrix() {
-  const canvas = document.getElementById("matrix-canvas");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-
-  const katakana =
-    "アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン";
-  const latin = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const nums = "0123456789";
-  const alphabet = katakana + latin + nums;
-
-  const fontSize = 16;
-  const columns = canvas.width / fontSize;
-  const drops = [];
-
-  for (let x = 0; x < columns; x++) {
-    drops[x] = 1;
-  }
-
-  function draw() {
-    ctx.fillStyle = document.body.classList.contains("paper-mode")
-      ? "rgba(240, 240, 240, 0.1)"
-      : "rgba(12, 12, 12, 0.05)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    if (document.body.classList.contains("god-mode")) {
-      ctx.fillStyle = "#ff0000";
-    } else if (document.body.classList.contains("paper-mode")) {
-      ctx.fillStyle = "#000";
+  // ---- Scroll reveal: cascade [data-reveal] elements into view ---------
+  // ponytail: one observer for the whole page; each element unobserves
+  //           once revealed so we don't pay for scroll frames forever.
+  const targets = document.querySelectorAll('[data-reveal]');
+  if (targets.length) {
+    if (reduce || !('IntersectionObserver' in window)) {
+      targets.forEach((el) => el.classList.add('is-visible'));
     } else {
-      ctx.fillStyle = "#0F0";
-    }
-
-    ctx.font = fontSize + "px monospace";
-
-    for (let i = 0; i < drops.length; i++) {
-      const text = alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-      ctx.fillText(text, i * fontSize, drops[i] * fontSize);
-
-      if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
-        drops[i] = 0;
-      }
-      drops[i]++;
-    }
-  }
-
-  startMatrixLoop(draw);
-
-  window.addEventListener("resize", () => {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-  });
-}
-
-function startMatrixLoop(drawFn) {
-  if (matrixInterval) clearInterval(matrixInterval);
-  matrixInterval = setInterval(drawFn, matrixSpeed);
-}
-
-function initTerminal() {
-  const input = document.getElementById("cmd-input");
-  const history = document.getElementById("terminal-history");
-
-  input.addEventListener("keydown", function (e) {
-    if (sfxEnabled) playClick();
-
-    if (e.key === "Enter") {
-      const cmd = this.value.trim().toLowerCase();
-      this.value = "";
-
-      addToHistory(`C:\\Users\\You> ${cmd}`);
-
-      if (cmd === "") return;
-
-      if (commands[cmd]) {
-        const response = commands[cmd];
-        if (response === "CLEAR_ACTION") {
-          history.innerHTML = "";
-        } else if (response === "THEME_ACTION") {
-          toggleTheme();
-          addToHistory("Theme toggled.");
-        } else {
-          const allowedHTMLKeys = ["focusd"];
-          const isAllowedHTML = allowedHTMLKeys.includes(cmd);
-          addToHistory(response, isAllowedHTML);
-          if (cmd === "download") {
-            setTimeout(() => {
-              window.open(
-                "https://github.com/0xarchit/focusd/releases",
-                "_blank",
-              );
-            }, 1000);
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add('is-visible');
+            io.unobserve(e.target);
           }
-        }
-      } else if (cmd.startsWith("focusd")) {
-        addToHistory(commands.focusd, true);
-      } else {
-        addToHistory(
-          `'${cmd}' is not recognized as an internal or external command.`,
-        );
-      }
-
-      const offset = input.parentElement.offsetTop;
-      window.scrollTo({ top: offset - 200, behavior: "smooth" });
+        });
+      }, { rootMargin: '0px 0px -12% 0px', threshold: 0.12 });
+      targets.forEach((el) => io.observe(el));
     }
-  });
+  }
 
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest("button") && !e.target.closest("a")) {
-      const input = document.getElementById("cmd-input");
-      if (input && !input.parentElement.classList.contains("hidden")) {
-        input.focus();
-      }
+  // ---- GitHub API: version + downloads + stars -------------------------
+  // ponytail: two unauthenticated calls, cached in localStorage 6h.
+  //           silent fail keeps the static fallbacks visible.
+  const setText = (sel, val) => {
+    document.querySelectorAll(sel).forEach(el => { el.textContent = val; });
+  };
+  const compact = (n) => {
+    if (n >= 1000) return (n / 1000).toFixed(n < 10000 ? 1 : 0).replace(/\.0$/, '') + 'k';
+    return String(n);
+  };
+  const nf = new Intl.NumberFormat('en');
+
+  function apply(d) {
+    if (d.version) setText('[data-js="version"]', d.version);
+    if (d.downloads > 0) {
+      setText('[data-js="downloads"]', nf.format(d.downloads));
+      document.querySelector('[data-js="downloads-wrap"]')?.removeAttribute('hidden');
     }
-  });
-}
-
-function addToHistory(text, isHTML = false) {
-  const history = document.getElementById("terminal-history");
-  if (!history) return;
-  const p = document.createElement("div");
-  p.className = "command-output";
-  if (isHTML) {
-    p.innerHTML = text;
-  } else {
-    p.textContent = text;
+    revealStar(d.stars);
   }
-  history.appendChild(p);
-}
 
-function fetchLatestVersion() {
-  const badge = document.getElementById("github-badge");
-  fetch("https://api.github.com/repos/0xarchit/focusd/releases/latest")
-    .then((response) => response.json())
-    .then((data) => {
-      if (data.tag_name) {
-        const ver = data.tag_name;
-        badge.textContent = `Latest: ${ver}`;
-        commands.status = `focusd ${ver} is ONLINE. Privacy protocols active. Zero data exfiltration.`;
-      }
-    })
-    .catch((err) => {
-      console.error("Failed to fetch release:", err);
-      badge.textContent = "Latest: (offline)";
-    });
-}
-
-function copyToClipboard(text, successMsg) {
-  if (!navigator.clipboard || !navigator.clipboard.writeText) {
-    showToast("Failed to copy: Clipboard API unavailable");
-    return;
+  function revealStar(stars) {
+    const el = document.querySelector('[data-js="starw"]');
+    if (!el) return;
+    if (typeof stars === 'number' && stars >= 0) {
+      setText('[data-js="stars"]', compact(stars));
+    } else {
+      setText('[data-js="stars"]', '★');
+    }
+    el.hidden = false;
+    // wait a frame so transition catches
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('is-in')));
   }
-  navigator.clipboard
-    .writeText(text)
-    .then(() => {
-      showToast(successMsg);
-    })
-    .catch((err) => {
-      console.error("Could not copy text: ", err);
-      showToast("Failed to copy command");
-    });
-}
 
-function copyCommand() {
-  const cmd = `iwr "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" -OutFile focusd_setup.exe; ./focusd_setup.exe`;
-  copyToClipboard(cmd, "PowerShell command copied");
-}
-
-function copyCurl() {
-  const cmd = `curl -L -o focusd_setup.exe "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" && focusd_setup.exe`;
-  copyToClipboard(cmd, "CMD command copied");
-}
-
-function showToast(msg) {
-  const x = document.getElementById("toast");
-  x.innerText = "[SYSTEM] " + msg;
-  x.className = "show";
-  setTimeout(function () {
-    x.className = x.className.replace("show", "");
-  }, 3000);
-}
-
-function initTheme() {
-  const saved = localStorage.getItem("theme");
-  const btn = document.getElementById("theme-btn");
-  if (saved === "paper") {
-    document.body.classList.add("paper-mode");
-    btn.innerText = "[DARK MODE]";
+  function readCache() {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      if (!d || (Date.now() - d.ts) > TTL) return null;
+      return d;
+    } catch { return null; }
   }
-}
-
-function toggleTheme() {
-  const body = document.body;
-  const btn = document.getElementById("theme-btn");
-  body.classList.toggle("paper-mode");
-
-  if (body.classList.contains("paper-mode")) {
-    localStorage.setItem("theme", "paper");
-    btn.innerText = "[DARK MODE]";
-  } else {
-    localStorage.setItem("theme", "dark");
-    btn.innerText = "[LIGHT MODE]";
+  function writeCache(d) {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); } catch {}
   }
-}
 
-function revealSections() {
-  const sections = document.querySelectorAll(".delayed-reveal");
-  sections.forEach((sec, index) => {
-    sec.classList.add("visible");
-  });
-}
+  async function loadGitHub() {
+    const cached = readCache();
+    if (cached) { apply(cached); return; }
+
+    // Ensure the widget shows even if the network is dead — fall back to
+    // an unknown count after a short timeout.
+    const fallback = setTimeout(() => revealStar(null), 1200);
+
+    try {
+      const [repoRes, relRes] = await Promise.all([
+        fetch(`https://api.github.com/repos/${GH_REPO}`, { headers: { Accept: 'application/vnd.github+json' } }),
+        fetch(`https://api.github.com/repos/${GH_REPO}/releases?per_page=100`, { headers: { Accept: 'application/vnd.github+json' } })
+      ]);
+      if (!repoRes.ok || !relRes.ok) throw new Error('gh api');
+
+      const repo = await repoRes.json();
+      const releases = await relRes.json();
+      clearTimeout(fallback);
+
+      const stars = repo.stargazers_count | 0;
+      const latest = Array.isArray(releases) && releases.length ? releases[0] : null;
+      const version = latest?.tag_name || null;
+      const downloads = Array.isArray(releases)
+        ? releases.reduce((sum, r) =>
+            sum + (r.assets || []).reduce((s, a) => s + (a.download_count | 0), 0), 0)
+        : 0;
+
+      const data = { stars, version, downloads, ts: Date.now() };
+      writeCache(data);
+      apply(data);
+    } catch {
+      /* keep static fallbacks — widget still reveals via `fallback` */
+    }
+  }
+
+  loadGitHub();
+})();
