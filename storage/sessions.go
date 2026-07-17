@@ -74,9 +74,6 @@ type AppDailyStat struct {
 	OpenCount         int
 }
 
-func GetAppUsageTodayMinutes(exeName string) int {
-	return GetAppUsageTodaySeconds(exeName) / 60
-}
 
 func checkAndRotateActiveSession(today string) (string, string, int64) {
 	var appName, activeExe, windowTitle, activeDate string
