@@ -2,7 +2,7 @@ package tui
 
 import (
 	"fmt"
-	"focusd/core"
+	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
 	"log"
@@ -182,7 +182,7 @@ func secondTick() tea.Cmd {
 
 func flushCmd() tea.Cmd {
 	return func() tea.Msg {
-		core.SendIPCCmd("flush")
+		coreapi.SendIPCCmd("flush")
 		return flushDoneMsg{}
 	}
 }
@@ -230,7 +230,7 @@ func statsRangeDates(rangeIndex int, customFrom, customTo string, now time.Time)
 			return today, today, 1
 		}
 		days := int(toTime.Sub(fromTime).Hours()/24) + 1
-		return customFrom, customTo, min(max(days, 1), 30)
+		return customFrom, customTo, min(max(days, 1), storage.MaxRetentionDays)
 	default:
 		return today, today, 1
 	}

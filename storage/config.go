@@ -12,7 +12,7 @@ const (
 	configKeyTrackingInterval = "tracking_interval_seconds"
 
 	DefaultRetentionDays = 7
-	MaxRetentionDays     = 30
+	MaxRetentionDays     = 365
 	MinRetentionDays     = 1
 
 	DefaultTrackingIntervalSeconds = 5
