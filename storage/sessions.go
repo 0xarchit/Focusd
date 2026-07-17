@@ -9,15 +9,13 @@ import (
 )
 
 type Session struct {
-	AppName       string
-	ExeName       string
-	WindowTitle   string
-	StartTime     time.Time
-	EndTime       time.Time
-	DurationSecs  int
-	Date          string
-	RetryCount    int
-	NextRetryTime time.Time
+	AppName      string
+	ExeName      string
+	WindowTitle  string
+	StartTime    time.Time
+	EndTime      time.Time
+	DurationSecs int
+	Date         string
 }
 
 func InsertSessionWithDaily(s *Session, cleanBrowserTitle string) error {
@@ -76,9 +74,6 @@ type AppDailyStat struct {
 	OpenCount         int
 }
 
-func GetAppUsageTodayMinutes(exeName string) int {
-	return GetAppUsageTodaySeconds(exeName) / 60
-}
 
 func checkAndRotateActiveSession(today string) (string, string, int64) {
 	var appName, activeExe, windowTitle, activeDate string

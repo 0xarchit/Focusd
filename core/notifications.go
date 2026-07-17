@@ -1,15 +1,12 @@
 package core
 
 import (
-	"encoding/base64"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
-
-	_ "github.com/go-toast/toast"
 )
 
 var (
@@ -35,15 +32,13 @@ func showNotification(title, message string) bool {
 			m = m[:200]
 		}
 
-		xmlStr := `<toast><header id='focusd_group' title='Focusd'/><visual><binding template='ToastGeneric'><text id='1'></text><text id='2'></text></binding></visual></toast>`
-		b64XML := base64.StdEncoding.EncodeToString([]byte(xmlStr))
+		xmlStr := `<toast><header id="focusd_group" title="Focusd"/><visual><binding template="ToastGeneric"><text id="1"></text><text id="2"></text></binding></visual></toast>`
 
 		cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", `
 [void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
 [void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
 $xml = [Windows.Data.Xml.Dom.XmlDocument]::new()
-$decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("`+b64XML+`"))
-$xml.LoadXml($decoded)
+$xml.LoadXml('`+xmlStr+`')
 $xml.GetElementsByTagName('text').Item(0).InnerText = $env:TTL
 $xml.GetElementsByTagName('text').Item(1).InnerText = $env:MSG
 $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
@@ -74,15 +69,13 @@ func showNotificationWithAction(title, message string, callback func(disable boo
 			m = m[:200]
 		}
 
-		xmlStr := `<toast><header id='focusd_group' title='Focusd'/><visual><binding template='ToastGeneric'><text id='1'></text><text id='2'></text></binding></visual><actions><action content='Disable this reminder' arguments='disable' activationType='background'/><action content='Just close' arguments='close' activationType='background'/></actions></toast>`
-		b64XML := base64.StdEncoding.EncodeToString([]byte(xmlStr))
+		xmlStr := `<toast><header id="focusd_group" title="Focusd"/><visual><binding template="ToastGeneric"><text id="1"></text><text id="2"></text></binding></visual><actions><action content="Disable this reminder" arguments="disable" activationType="background"/><action content="Just close" arguments="close" activationType="background"/></actions></toast>`
 
 		cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", `
 [void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
 [void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
 $xml = [Windows.Data.Xml.Dom.XmlDocument]::new()
-$decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("`+b64XML+`"))
-$xml.LoadXml($decoded)
+$xml.LoadXml('`+xmlStr+`')
 $xml.GetElementsByTagName('text').Item(0).InnerText = $env:TTL
 $xml.GetElementsByTagName('text').Item(1).InnerText = $env:MSG
 $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)

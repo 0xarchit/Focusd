@@ -1,4 +1,4 @@
-package core
+package coreapi
 
 import (
 	"focusd/storage"

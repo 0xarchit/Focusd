@@ -3,7 +3,7 @@ package tui
 import (
 	"encoding/csv"
 	"encoding/json"
-	"focusd/core"
+	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
 	"fmt"
@@ -85,7 +85,7 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 
 	switch key {
 	case "j", "down":
-		m.settingsSelected = min(m.settingsSelected+1, 8)
+		m.settingsSelected = min(m.settingsSelected+1, 9)
 	case "k", "up":
 		m.settingsSelected = max(0, m.settingsSelected-1)
 	case "h", "left":
@@ -94,6 +94,11 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			m.settingsBrowserSelected = max(0, m.settingsBrowserSelected-1)
 		case 3:
 			m.settingsWhitelistSelected = max(0, m.settingsWhitelistSelected-1)
+		case 5:
+			days := max(storage.MinRetentionDays, storage.GetRetentionDays()-1)
+			if err := storage.SetRetentionDays(days); err == nil {
+				m.addToast(fmt.Sprintf("Retention set to %d days", days), toastInfo)
+			}
 		case 7:
 			m.settingsExportSelected = 0
 		}
@@ -105,6 +110,11 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 		case 3:
 			whitelist := system.GetWhitelistApps()
 			m.settingsWhitelistSelected = min(m.settingsWhitelistSelected+1, max(0, len(whitelist)-1))
+		case 5:
+			days := min(storage.MaxRetentionDays, storage.GetRetentionDays()+1)
+			if err := storage.SetRetentionDays(days); err == nil {
+				m.addToast(fmt.Sprintf("Retention set to %d days", days), toastInfo)
+			}
 		case 7:
 			m.settingsExportSelected = 1
 		}
@@ -112,7 +122,7 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 		switch m.settingsSelected {
 		case 0:
 			if m.daemonActive {
-				if core.SendIPCCmd("stop") {
+				if coreapi.SendIPCCmd("stop") {
 					m.addToast("Daemon stopped gracefully", toastSuccess)
 				} else {
 					m.addToast("Failed to stop daemon gracefully", toastError)
@@ -157,8 +167,25 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			m.settingsAddingBrowser = true
 			m.settingsBrowserInput = ""
 		case 5:
-			openDBFolder()
+			current := storage.GetRetentionDays()
+			next := 30
+			if current < 30 {
+				next = 30
+			} else if current < 90 {
+				next = 90
+			} else if current < 180 {
+				next = 180
+			} else if current < 365 {
+				next = 365
+			} else {
+				next = 30
+			}
+			if err := storage.SetRetentionDays(next); err == nil {
+				m.addToast(fmt.Sprintf("Retention set to %d days", next), toastInfo)
+			}
 		case 6:
+			openDBFolder()
+		case 7:
 			jsonOut := m.settingsExportSelected == 1
 			path, err := exportData(jsonOut)
 			if err != nil {
@@ -166,13 +193,13 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			} else {
 				m.addToast("Exported to "+filepath.Base(path), toastSuccess)
 			}
-		case 7:
+		case 8:
 			if err := launchGitHubUpdate(); err != nil {
 				m.addToast("Failed to launch updater", toastError)
 			} else {
 				m.addToast("Updater opened in new window", toastSuccess)
 			}
-		case 8:
+		case 9:
 			m.modal = modal{
 				Active: true, Title: "WIPE DATA", Required: "DELETE",
 				Message: "This will delete all tracking data and cannot be undone.",
@@ -251,12 +278,19 @@ func (m *Model) renderSettings(width, height int) string {
 		m.settingRow(4, m.settingsSelected, "Tracked browsers", browserValue, inner),
 		"",
 		"DATA",
-		m.settingRow(5, m.settingsSelected, "Database path", mutedStyle.Render(truncate(dbPath, max(10, inner-45)))+"   "+buttonText("Open Folder"), inner),
-		m.settingRow(6, m.settingsSelected, "Export data", renderExportButtons(m.settingsSelected == 6, m.settingsExportSelected), inner),
-		m.settingRow(7, m.settingsSelected, "Update app", buttonText("Update from GitHub"), inner),
+		m.settingRow(5, m.settingsSelected, "Data retention", func() string {
+			days := storage.GetRetentionDays()
+			if m.settingsSelected == 5 {
+				return cyanStyle.Render(fmt.Sprintf("[ ← %d days → ]", days)) + " " + buttonText("Cycle Preset")
+			}
+			return fmt.Sprintf("%d days", days)
+		}(), inner),
+		m.settingRow(6, m.settingsSelected, "Database path", mutedStyle.Render(truncate(dbPath, max(10, inner-45)))+"   "+buttonText("Open Folder"), inner),
+		m.settingRow(7, m.settingsSelected, "Export data", renderExportButtons(m.settingsSelected == 7, m.settingsExportSelected), inner),
+		m.settingRow(8, m.settingsSelected, "Update app", buttonText("Update from GitHub"), inner),
 		"",
 		"DANGER ZONE",
-		m.settingRow(8, m.settingsSelected, "Danger zone", redStyle.Bold(true).Render("[ Uninstall / Wipe All Data ]"), inner),
+		m.settingRow(9, m.settingsSelected, "Danger zone", redStyle.Bold(true).Render("[ Uninstall / Wipe All Data ]"), inner),
 	}
 	for i, line := range lines {
 		switch line {

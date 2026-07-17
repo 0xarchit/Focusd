@@ -65,8 +65,6 @@ func Run(args []string) {
 		runStart()
 	case "stop":
 		runStop()
-	case "--daemon":
-		RunDaemon()
 	case "status", "s":
 		runStatus()
 	case "stats", "st":
