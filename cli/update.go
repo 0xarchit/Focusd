@@ -2,8 +2,6 @@ package cli
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"focusd/system"
@@ -106,51 +104,6 @@ func fetchLatestVersion() (string, error) {
 	return strings.TrimPrefix(release.TagName, "v"), nil
 }
 
-func fetchChecksum(version string) (string, error) {
-	checksumURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s/checksums.txt",
-		system.RepoOwner, system.RepoName, version)
-
-	resp, err := httpClient.Get(checksumURL)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("checksums not available (status %d)", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return "", err
-	}
-
-	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
-	for _, line := range lines {
-		parts := strings.Fields(strings.TrimSpace(line))
-		if len(parts) >= 2 {
-			filename := strings.TrimPrefix(strings.TrimPrefix(parts[1], "*"), "./")
-			if strings.EqualFold(filename, "focusd_setup.exe") {
-				return strings.ToLower(parts[0]), nil
-			}
-		}
-	}
-	return "", fmt.Errorf("focusd_setup.exe checksum not found in checksums.txt")
-}
-
-func calculateFileHash(filePath string) (string, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
 func performUpdate(version string) (err error) {
 	ui.PrintStatus("Downloading update...", "0%", false)
 
@@ -184,20 +137,6 @@ func performUpdate(version string) (err error) {
 		return fmt.Errorf("write failed: %w", err)
 	}
 	tmpFile.Close()
-
-	ui.PrintStatus("Verifying checksum...", "", false)
-	expectedHash, err := fetchChecksum(version)
-	if err != nil {
-		return fmt.Errorf("cannot verify update integrity: %w", err)
-	}
-	actualHash, err := calculateFileHash(tmpPath)
-	if err != nil {
-		return fmt.Errorf("failed to calculate hash: %w", err)
-	}
-	if actualHash != expectedHash {
-		return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actualHash)
-	}
-	ui.PrintOK("Checksum verified")
 
 	ui.PrintStatus("Installing...", "", false)
 

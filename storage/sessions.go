@@ -9,15 +9,13 @@ import (
 )
 
 type Session struct {
-	AppName       string
-	ExeName       string
-	WindowTitle   string
-	StartTime     time.Time
-	EndTime       time.Time
-	DurationSecs  int
-	Date          string
-	RetryCount    int
-	NextRetryTime time.Time
+	AppName      string
+	ExeName      string
+	WindowTitle  string
+	StartTime    time.Time
+	EndTime      time.Time
+	DurationSecs int
+	Date         string
 }
 
 func InsertSessionWithDaily(s *Session, cleanBrowserTitle string) error {
