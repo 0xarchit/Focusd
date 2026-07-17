@@ -345,6 +345,9 @@ func (t *Tracker) flushPendingSessions() {
 		if err := storage.InsertSessionWithDaily(s, cleanBrowserTitle); err != nil {
 			log.Printf("ERROR: failed to insert session with daily (exe: %s, date: %s, start: %s): %v",
 				s.ExeName, s.Date, s.StartTime.Format(time.RFC3339), err)
+			t.mu.Lock()
+			t.pendingSessions = append(t.pendingSessions, s)
+			t.mu.Unlock()
 		}
 	}
 }

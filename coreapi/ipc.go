@@ -10,13 +10,13 @@ import (
 const IPCAddress = "127.0.0.1:48321"
 
 func SendIPCCmd(cmd string) bool {
-	conn, err := net.DialTimeout("tcp", IPCAddress, 1*time.Second)
+	conn, err := net.DialTimeout("tcp", IPCAddress, 5*time.Second)
 	if err != nil {
 		return false
 	}
 	defer conn.Close()
 
-	if err := conn.SetDeadline(time.Now().Add(1 * time.Second)); err != nil {
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return false
 	}
 

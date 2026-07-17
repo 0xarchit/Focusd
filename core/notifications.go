@@ -32,14 +32,13 @@ func showNotification(title, message string) bool {
 			m = m[:200]
 		}
 
-		xmlStr := `<toast><header id='focusd_group' title='Focusd'/><visual><binding template='ToastGeneric'><text id='1'></text><text id='2'></text></binding></visual></toast>`
-		xmlEscaped := strings.ReplaceAll(xmlStr, "'", "''")
+		xmlStr := `<toast><header id="focusd_group" title="Focusd"/><visual><binding template="ToastGeneric"><text id="1"></text><text id="2"></text></binding></visual></toast>`
 
 		cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", `
 [void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
 [void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
 $xml = [Windows.Data.Xml.Dom.XmlDocument]::new()
-$xml.LoadXml('`+xmlEscaped+`')
+$xml.LoadXml('`+xmlStr+`')
 $xml.GetElementsByTagName('text').Item(0).InnerText = $env:TTL
 $xml.GetElementsByTagName('text').Item(1).InnerText = $env:MSG
 $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
@@ -70,14 +69,13 @@ func showNotificationWithAction(title, message string, callback func(disable boo
 			m = m[:200]
 		}
 
-		xmlStr := `<toast><header id='focusd_group' title='Focusd'/><visual><binding template='ToastGeneric'><text id='1'></text><text id='2'></text></binding></visual><actions><action content='Disable this reminder' arguments='disable' activationType='background'/><action content='Just close' arguments='close' activationType='background'/></actions></toast>`
-		xmlEscaped := strings.ReplaceAll(xmlStr, "'", "''")
+		xmlStr := `<toast><header id="focusd_group" title="Focusd"/><visual><binding template="ToastGeneric"><text id="1"></text><text id="2"></text></binding></visual><actions><action content="Disable this reminder" arguments="disable" activationType="background"/><action content="Just close" arguments="close" activationType="background"/></actions></toast>`
 
 		cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", `
 [void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
 [void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
 $xml = [Windows.Data.Xml.Dom.XmlDocument]::new()
-$xml.LoadXml('`+xmlEscaped+`')
+$xml.LoadXml('`+xmlStr+`')
 $xml.GetElementsByTagName('text').Item(0).InnerText = $env:TTL
 $xml.GetElementsByTagName('text').Item(1).InnerText = $env:MSG
 $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
