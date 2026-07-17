@@ -24,16 +24,18 @@
 
 Focusd is a native Windows **screen time tracker** and **digital wellbeing** tool written in Go. A lightweight background daemon (`focusd_daemon.exe`) polls the foreground window via Win32 syscalls and records per-app and per-browser-tab usage into a local SQLite database. A separate CLI/TUI binary (`focusd.exe`) renders dashboards, manages limits, and controls the daemon over a local TCP IPC channel.
 
-It functions as an **app usage monitor**, **browser time tracker**, **Pomodoro focus timer**, and **productivity dashboard** — all in one under-12 MB binary with no runtime dependencies. If you're looking for a **free alternative to RescueTime, StayFree, or Toggl Track** that keeps your data local, focusd is built for that.
+It functions as an **app usage monitor**, **browser time tracker**, **Pomodoro focus timer**, and **productivity dashboard** — a ~9 MB installer with a ~12 MB CLI binary and a ~8 MB daemon, no runtime dependencies. If you're looking for a **local, no-account alternative to RescueTime, StayFree, or Toggl Track**, focusd is built for that.
 
 Nothing leaves your machine. The only network traffic is the optional update check against the GitHub Releases API.
 
-| App | Installer / Disk Size | RAM Usage (Idle) | Tech Stack |
-|-----|----------------------|------------------|------------|
-| StayFree (Windows) | ~164 MB | 150 – 400 MB | likely Electron / UWP |
-| Toggl Track | ~100 MB | 200 – 500 MB | Electron (Chromium bundled) |
-| RescueTime (Classic) | ~25 MB | 20 – 50 MB | Native C++ / Qt |
-| **Focusd** | **< 12 MB** | **~10 – 25 MB** | **Go (Native Win32 syscalls)** |
+| App | Distribution | Sync model | Account required |
+|-----|-------------|-----------|-----------------|
+| StayFree (Windows) | Microsoft Store (UWP) + Electron desktop | Cross-device sync | Yes |
+| Toggl Track | Native C++/.NET desktop client ([source](https://github.com/toggl/toggldesktop)) | Cloud sync (Toggl account) | Yes |
+| RescueTime | Native Windows client + web dashboard | Cloud sync (RescueTime account) | Yes |
+| **Focusd** | **Standalone binary (~9 MB installer)** | **None — local SQLite only** | **No** |
+
+Competitor distribution details come from each vendor's own product pages and repos. RAM figures were dropped from this table because they cannot be reproducibly sourced — measure on your own machine if you need them.
 
 ---
 
@@ -42,8 +44,8 @@ Nothing leaves your machine. The only network traffic is the optional update che
 | Problem | How focusd solves it |
 |---------|---------------------|
 | Screen time trackers that send your data to the cloud | All data stays in a local SQLite database — no accounts, no telemetry |
-| Heavy Electron-based trackers (100-400 MB RAM) | Under 12 MB installer, 10-25 MB RAM idle, native Win32 syscalls |
-| No visibility into browser tab usage | Tracks time per tab via window title, groups 70+ sites automatically |
+| Trackers that ship a bundled browser or heavy runtime | Two small native Go binaries (~12 MB CLI, ~8 MB daemon); ~9 MB installer |
+| No visibility into browser tab usage | Tracks time per tab via window title, grouped under 74 hard-coded categories |
 | No way to limit distracting apps | Set daily per-app time limits with notifications |
 | Hard to stay focused | Built-in Pomodoro timer with break reminders |
 
@@ -79,13 +81,13 @@ Launching `focusd` with no arguments opens a Bubble Tea / Lipgloss terminal UI w
 The daemon reads the foreground window's title and process executable using `GetForegroundWindow`, `GetWindowTextW`, and `GetModuleBaseNameW`. App sessions are written to the `sessions` table; daily totals are upserted into `apps_daily`. When the foreground process is a recognised browser, the cleaned window **title** (not URL) is upserted into `browsing_daily`.
 
 ### Smart browser-tab grouping
-Tab titles are matched against ~74 hard-coded URL/title patterns in `core/app_groups.go` and grouped under a parent category (YouTube, GitHub, LeetCode, ChatGPT, Claude, Notion, Figma, AWS, Coursera, Discord, Gmail, Reddit, etc.). Sub-entries are listed under each category in stats output.
+Tab titles are matched against 74 hard-coded categories (91 pattern strings) in `coreapi/app_groups.go` and grouped under a parent (YouTube, GitHub, LeetCode, ChatGPT, Claude, Notion, Figma, AWS, Coursera, Discord, Gmail, Reddit, and so on). Sub-entries are listed under each category in stats output.
 
 ### Default browser detection
 `chrome`, `firefox`, `msedge`, `brave`, `opera`, `vivaldi`, `waterfox`, `arc`, `iexplore`, `safari`, `whale`, `yandex`, `thorium`, `librewolf`, `chromium`, `floorp`, `zen`. Add others with `focusd browser add <name>.exe`.
 
 ### Pomodoro timer
-File-backed timer at `%APPDATA%\focusd\pomodoro.json` so state survives across processes. Default 25 minutes; configurable. Completion is announced through a Win32 `MessageBoxW` notification with a 10-second cooldown.
+File-backed timer at `%APPDATA%\focusd\pomodoro.json` so state survives across processes. Default 25 minutes; configurable. Completion is announced through a Windows Toast (`Windows.UI.Notifications.ToastNotification`, invoked from `core/notifications.go` via a short PowerShell command). A 10-second cooldown suppresses duplicate toasts.
 
 ### Break reminders
 When enabled, the daemon notifies after a configurable number of minutes of continuous use (default 60). The reminder can be snoozed for the global snooze duration (default 60 min).
@@ -100,7 +102,9 @@ Whitelisted executables are skipped entirely by the tracker (never recorded).
 Export tracking data to CSV or JSON from the TUI Settings tab. Files are saved to `%USERPROFILE%\Desktop`. You can also open the SQLite database directly at `%APPDATA%\focusd\focusd.db`.
 
 ### Auto-update
-`focusd update` queries `api.github.com/repos/0xarchit/focusd/releases/latest`, downloads `focusd_setup.exe` for that tag, verifies its SHA-256 against `checksums.txt`, then invokes the installer silently (`/S`) with a UAC elevation prompt via `ShellExecute("runas")`. The daemon is stopped before install and restarted afterwards.
+`focusd update` queries `api.github.com/repos/0xarchit/focusd/releases/latest`, downloads `focusd_setup.exe` for that tag, then invokes the installer silently (`/S`) with a UAC elevation prompt via `ShellExecute("runas")`. The daemon is stopped before install and restarted afterwards.
+
+> **Verification is up to you.** The auto-updater does **not** verify the downloaded installer's SHA-256 at runtime. Each release also publishes a `checksums.txt` file (SHA-256 of `focusd_setup.exe`, generated by the release workflow) so you can verify manually before installing.
 
 ---
 
@@ -169,7 +173,8 @@ focusd browser remove <exe>  Remove a custom browser
 | `cmd/focusd_daemon` | Entry point for the silent daemon. Calls `cli.RunDaemon`. |
 | `cmd/release_notes` | Build-time helper that generates `release_notes.md` from `git log` via the GitHub Models API. |
 | `cli` | Command parsing, interactive menu, update flow, status / stats / export commands. |
-| `core` | Tracker loop, IPC server/client, app classification, browser-tab grouping, title cleaner, Pomodoro state, notifications. |
+| `core` | Tracker loop, IPC client helpers, app classification, title cleaner, notifications (Windows Toast). |
+| `coreapi` | Shared cross-package data: IPC address/constants, browser-tab group definitions, Pomodoro state on disk, aggregation. |
 | `storage` | SQLite schema and queries, retention enforcement, browser registry, durable config. |
 | `system` | All Windows-specific code: Win32 syscalls (`user32`, `kernel32`, `psapi`), process enumeration, registry (autostart + PATH), user-config file, daemon process spawn. Stubs exist for non-Windows builds so `go build` still passes on other OSes (the daemon refuses to run). |
 | `tui` | Bubble Tea / Lipgloss model, splash, tabs, dashboard, stats, focus, limits, settings panels. |
