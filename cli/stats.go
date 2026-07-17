@@ -2,7 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"focusd/core"
+	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/ui"
 	"os"
@@ -15,10 +15,10 @@ func runStats() {
 	}
 	defer storage.Close()
 
-	core.SendIPCCmd("flush")
+	coreapi.SendIPCCmd("flush")
 
 	today := storage.Today()
-	summary, err := core.GetDailySummary(today)
+	summary, err := coreapi.GetDailySummary(today)
 	if err != nil || summary.AppCount == 0 {
 		ui.PrintInfo("No data recorded yet. Start tracking with 'focusd' command.")
 		return
@@ -27,7 +27,7 @@ func runStats() {
 	displayStats(summary)
 }
 
-func displayStats(summary *core.DailySummary) {
+func displayStats(summary *coreapi.DailySummary) {
 	header := fmt.Sprintf("Stats: %s", summary.Date)
 	ui.PrintSectionHeader(header)
 

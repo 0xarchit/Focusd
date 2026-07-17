@@ -2,7 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"focusd/core"
+	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
 	"focusd/ui"
@@ -17,7 +17,7 @@ func runStatus() {
 	}
 	defer storage.Close()
 
-	core.SendIPCCmd("flush")
+	coreapi.SendIPCCmd("flush")
 
 	ui.PrintHeader()
 
@@ -43,7 +43,7 @@ func runStatus() {
 
 	fmt.Println()
 
-	summary, err := core.GetDailySummary(storage.Today())
+	summary, err := coreapi.GetDailySummary(storage.Today())
 	if err != nil {
 		ui.PrintWarn("No data for today yet")
 		return

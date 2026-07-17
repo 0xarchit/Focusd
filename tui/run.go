@@ -1,12 +1,16 @@
 package tui
 
 import (
+	"focusd/system"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 func StartTUI() error {
+	w, h := system.DisableConsoleScrollback()
+	defer system.RestoreConsoleBufferSize(w, h)
+
 	m := NewModel()
 	p := tea.NewProgram(
 		&m,

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
 	"log"
@@ -17,29 +18,6 @@ import (
 	"syscall"
 	"time"
 )
-
-// IPCAddress is the TCP address for IPC between CLI and daemon.
-const IPCAddress = "127.0.0.1:48321"
-
-func SendIPCCmd(cmd string) bool {
-	conn, err := net.DialTimeout("tcp", IPCAddress, 1*time.Second)
-	if err != nil {
-		return false
-	}
-	defer conn.Close()
-
-	if err := conn.SetDeadline(time.Now().Add(1 * time.Second)); err != nil {
-		return false
-	}
-
-	_, err = conn.Write([]byte(cmd + "\n"))
-	if err != nil {
-		return false
-	}
-
-	response, err := bufio.NewReader(conn).ReadString('\n')
-	return err == nil && strings.TrimSpace(response) == "ok"
-}
 
 type activeSession struct {
 	AppName     string
@@ -72,7 +50,7 @@ func NewTracker() *Tracker {
 }
 
 func (t *Tracker) Start() error {
-	listener, err := net.Listen("tcp", IPCAddress)
+	listener, err := net.Listen("tcp", coreapi.IPCAddress)
 	if err != nil {
 		return err
 	}

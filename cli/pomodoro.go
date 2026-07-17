@@ -2,7 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"focusd/core"
+	"focusd/coreapi"
 	"focusd/ui"
 	"strconv"
 )
@@ -15,7 +15,7 @@ func runFocus(args []string) {
 		}
 	}
 
-	if err := core.StartPomodoro(minutes); err != nil {
+	if err := coreapi.StartPomodoro(minutes); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to start timer: %v", err))
 		return
 	}
@@ -26,7 +26,7 @@ func runFocus(args []string) {
 }
 
 func runStopTimer() {
-	if err := core.StopPomodoro(); err != nil {
+	if err := coreapi.StopPomodoro(); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to stop timer: %v", err))
 		return
 	}

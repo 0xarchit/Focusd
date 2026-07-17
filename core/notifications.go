@@ -8,8 +8,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	_ "github.com/go-toast/toast"
 )
 
 var (

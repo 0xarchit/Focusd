@@ -2,7 +2,7 @@ package tui
 
 import (
 	"fmt"
-	"focusd/core"
+	"focusd/coreapi"
 	"focusd/system"
 	"strings"
 	"time"
@@ -80,7 +80,7 @@ func (m *Model) triggerFocusButton() (Model, tea.Cmd) {
 			toastType = toastInfo
 			msg = "Focus timer reset"
 		}
-		if err := core.StopPomodoro(); err != nil {
+		if err := coreapi.StopPomodoro(); err != nil {
 			m.addToast(fmt.Sprintf("Failed to %s timer: %v", action, err), toastError)
 		} else {
 			m.addToast(msg, toastType)
@@ -90,7 +90,7 @@ func (m *Model) triggerFocusButton() (Model, tea.Cmd) {
 }
 
 func (m *Model) startFocus() (Model, tea.Cmd) {
-	if err := core.StartPomodoro(m.focusDuration); err != nil {
+	if err := coreapi.StartPomodoro(m.focusDuration); err != nil {
 		m.addToast("Could not start focus timer", toastError)
 	} else {
 		system.SetPomodoroMinutes(m.focusDuration)
@@ -100,7 +100,7 @@ func (m *Model) startFocus() (Model, tea.Cmd) {
 }
 
 func (m *Model) renderFocus(width, height int) string {
-	active, remaining, total := core.GetPomodoroStatus()
+	active, remaining, total := coreapi.GetPomodoroStatus()
 	if total == 0 {
 		total = m.focusDuration
 		remaining = time.Duration(total) * time.Minute
