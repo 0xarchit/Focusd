@@ -11,6 +11,7 @@ var (
 	procAttachConsole              = kernel32.NewProc("AttachConsole")
 	procGetConsoleScreenBufferInfo = kernel32.NewProc("GetConsoleScreenBufferInfo")
 	procSetConsoleScreenBufferSize = kernel32.NewProc("SetConsoleScreenBufferSize")
+	procGetStdHandle               = kernel32.NewProc("GetStdHandle")
 )
 
 type coord struct {
@@ -34,7 +35,6 @@ func AttachParentConsole() {
 			stdOutputHandle = 0xFFFFFFF5
 			stdErrorHandle  = 0xFFFFFFF4
 		)
-		procGetStdHandle := kernel32.NewProc("GetStdHandle")
 
 		hIn, _, _ := procGetStdHandle.Call(uintptr(stdInputHandle))
 		hOut, _, _ := procGetStdHandle.Call(uintptr(stdOutputHandle))
@@ -54,7 +54,6 @@ func AttachParentConsole() {
 
 func DisableConsoleScrollback() (int16, int16) {
 	const stdOutputHandle = 0xFFFFFFF5
-	procGetStdHandle := kernel32.NewProc("GetStdHandle")
 	hOut, _, _ := procGetStdHandle.Call(uintptr(stdOutputHandle))
 	if hOut == 0 || hOut == ^uintptr(0) {
 		return 0, 0
@@ -80,7 +79,6 @@ func RestoreConsoleBufferSize(width, height int16) {
 		return
 	}
 	const stdOutputHandle = 0xFFFFFFF5
-	procGetStdHandle := kernel32.NewProc("GetStdHandle")
 	hOut, _, _ := procGetStdHandle.Call(uintptr(stdOutputHandle))
 	if hOut == 0 || hOut == ^uintptr(0) {
 		return

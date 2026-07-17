@@ -111,3 +111,25 @@ func GetPomodoroStatus() (active bool, remaining time.Duration, total int) {
 
 	return true, remaining, state.Duration
 }
+
+func CheckPomodoroAndNotify(notifyFn func(title, msg string) bool) {
+	pomodoroMu.Lock()
+	defer pomodoroMu.Unlock()
+
+	state := LoadPomodoroStateFresh()
+	if !state.Active || state.Notified {
+		return
+	}
+
+	elapsed := time.Since(state.StartTime)
+	totalDuration := time.Duration(state.Duration) * time.Minute
+
+	if elapsed >= totalDuration {
+		_ = notifyFn("Pomodoro Complete!", "Great work! Take a break.")
+		state.Notified = true
+		state.Active = false
+		if err := SavePomodoroState(state); err != nil {
+			log.Printf("ERROR: failed to save pomodoro state: %v", err)
+		}
+	}
+}
