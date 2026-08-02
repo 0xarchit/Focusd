@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	ModelURL         = "https://models.github.ai/inference/chat/completions"
-	ModelName        = "gpt-4o-mini"
-	MaxCharsPerChunk = 15000
-	MaxDiffChars     = 1500
+	ModelURL         = "https://openrouter.ai/api/v1/chat/completions"
+	ModelName        = "openrouter/free"
+	MaxCharsPerChunk = 60000
+	MaxDiffChars     = 5000
 	OutputFile       = "release_notes.md"
 )
 
@@ -44,6 +44,10 @@ type ChatResponse struct {
 
 func main() {
 	apiKey := os.Getenv("GH_MODELS_API_KEY")
+	if apiKey == "" {
+		apiKey = os.Getenv("OPENROUTER_API_KEY")
+	}
+
 	commitData := getCommitData()
 
 	var rawLines []string
@@ -62,7 +66,7 @@ func main() {
 	}
 
 	if apiKey == "" {
-		fmt.Println("No GH_MODELS_API_KEY environment variable found. Writing raw changelog fallback...")
+		fmt.Println("No GH_MODELS_API_KEY or OPENROUTER_API_KEY environment variable found. Writing raw changelog fallback...")
 		_ = os.WriteFile(OutputFile, []byte(rawChangelog), 0644)
 		return
 	}
@@ -78,7 +82,7 @@ func main() {
 		fmt.Printf("AI generation failed (falling back to commit messages): %v\n", err)
 		_ = os.WriteFile(OutputFile, []byte(rawChangelog), 0644)
 	} else {
-		fmt.Println("Successfully generated release notes via AI!")
+		fmt.Println("Successfully generated release notes via OpenRouter AI!")
 	}
 }
 
@@ -201,7 +205,7 @@ func generateAIReleaseNotes(commitData []string, apiKey string) error {
 }
 
 func callAIWithRetries(payload ChatPayload, apiKey string) (string, error) {
-	client := &http.Client{Timeout: 45 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 	jsonData, _ := json.Marshal(payload)
 
 	for attempt := 0; attempt < 3; attempt++ {
