@@ -189,9 +189,9 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			jsonOut := m.settingsExportSelected == 1
 			path, err := exportData(jsonOut)
 			if err != nil {
-				m.addToast("Export failed", toastError)
+				m.addToast("Export failed: "+err.Error(), toastError)
 			} else {
-				m.addToast("Exported to "+filepath.Base(path), toastSuccess)
+				m.addToast("Exported to Downloads\\"+filepath.Base(path), toastSuccess)
 			}
 		case 8:
 			if err := launchGitHubUpdate(); err != nil {
@@ -286,7 +286,7 @@ func (m *Model) renderSettings(width, height int) string {
 			return fmt.Sprintf("%d days", days)
 		}(), inner),
 		m.settingRow(6, m.settingsSelected, "Database path", mutedStyle.Render(truncate(dbPath, max(10, inner-45)))+"   "+buttonText("Open Folder"), inner),
-		m.settingRow(7, m.settingsSelected, "Export data", renderExportButtons(m.settingsSelected == 7, m.settingsExportSelected), inner),
+		m.settingRow(7, m.settingsSelected, "Export data", renderExportButtons(m.settingsSelected == 7, m.settingsExportSelected)+"   "+mutedStyle.Render("→ Downloads"), inner),
 		m.settingRow(8, m.settingsSelected, "Update app", buttonText("Update from GitHub"), inner),
 		"",
 		"DANGER ZONE",
@@ -384,8 +384,8 @@ func exportData(jsonOut bool) (string, error) {
 	if userProfile == "" {
 		return "", fmt.Errorf("USERPROFILE not set")
 	}
-	exportDir := filepath.Join(userProfile, "Desktop")
-	if _, err := os.Stat(exportDir); os.IsNotExist(err) {
+	exportDir := filepath.Join(userProfile, "Downloads")
+	if err := os.MkdirAll(exportDir, 0755); err != nil {
 		exportDir = userProfile
 	}
 	if jsonOut {

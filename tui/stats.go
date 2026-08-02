@@ -412,43 +412,105 @@ func (m *Model) renderBrowserUsage(width, visibleRows int) string {
 	return strings.Join(lines, "\n")
 }
 
+type historyBucket struct {
+	Label    string
+	Duration int
+	IsToday  bool
+	IsEnd    bool
+}
+
 func (m *Model) renderDailyHistory(width int) string {
+	if len(m.stats.Days) == 0 {
+		return panelWithHover("HISTORY", "", width, "\n  "+mutedStyle.Render("No history data recorded for selected range.")+"\n", m.panelFocus == 3, m.hoveredPanel == 3)
+	}
+
+	availW := max(10, width-6)
+	numDays := len(m.stats.Days)
+	colW := availW / numDays
+
+	var buckets []historyBucket
+
+	if colW >= 5 {
+		colW = min(colW, 8)
+		for _, d := range m.stats.Days {
+			lbl := d.Label
+			if numDays > 7 {
+				if t, err := time.Parse("2006-01-02", d.Date); err == nil {
+					lbl = t.Format("01/02")
+				}
+			}
+			buckets = append(buckets, historyBucket{
+				Label:    lbl,
+				Duration: d.Duration,
+				IsToday:  d.Today,
+			})
+		}
+	} else {
+		chunkSize := 7
+		if numDays > 120 {
+			chunkSize = 30
+		}
+		for i := 0; i < numDays; i += chunkSize {
+			endIdx := i + chunkSize
+			if endIdx > numDays {
+				endIdx = numDays
+			}
+			chunk := m.stats.Days[i:endIdx]
+
+			startT, errStart := time.Parse("2006-01-02", chunk[0].Date)
+			endT, errEnd := time.Parse("2006-01-02", chunk[len(chunk)-1].Date)
+
+			lbl := chunk[0].Date
+			if errStart == nil && errEnd == nil {
+				if chunkSize == 7 {
+					lbl = fmt.Sprintf("%s-%s", startT.Format("01/02"), endT.Format("01/02"))
+				} else {
+					lbl = startT.Format("Jan 06")
+				}
+			}
+
+			totDur := 0
+			hasToday := false
+			for _, d := range chunk {
+				totDur += d.Duration
+				if d.Today {
+					hasToday = true
+				}
+			}
+
+			buckets = append(buckets, historyBucket{
+				Label:    lbl,
+				Duration: totDur,
+				IsToday:  hasToday,
+			})
+		}
+		colW = availW / len(buckets)
+		colW = max(10, min(colW, 16))
+	}
+
 	maxDuration := 1
-	for _, d := range m.stats.Days {
-		if d.Duration > maxDuration {
-			maxDuration = d.Duration
+	for _, b := range buckets {
+		if b.Duration > maxDuration {
+			maxDuration = b.Duration
 		}
 	}
-	var lines []string
-	var labels []string
-	var bars []string
-	var hours []string
 
-	colW := 6
-	if len(m.stats.Days) > 10 {
-		colW = 5
-	}
-	if len(m.stats.Days) > 20 {
-		colW = 4
-	}
-	if len(m.stats.Days) > 0 {
-		maxPossibleColW := (width - 6) / len(m.stats.Days)
-		colW = min(colW, maxPossibleColW)
-		colW = max(1, colW)
-	}
+	var lines []string
+	var bars []string
+	var labels []string
+	var hours []string
 
 	maxH := 4
 	for h := maxH; h >= 1; h-- {
 		var row []string
-		for _, d := range m.stats.Days {
-			val := d.Duration
-			pct := val * 100 / maxDuration
+		for _, b := range buckets {
+			pct := b.Duration * 100 / maxDuration
 			threshold := h * 100 / maxH
 			ch := "░"
 			if pct >= threshold {
 				ch = "█"
-				if d.Weekend {
-					ch = violetStyle.Render(ch)
+				if b.IsToday {
+					ch = cyanStyle.Render(ch)
 				} else {
 					ch = cyanStyle.Render(ch)
 				}
@@ -460,16 +522,14 @@ func (m *Model) renderDailyHistory(width int) string {
 		bars = append(bars, "  "+strings.Join(row, "")+"  ")
 	}
 
-	for _, d := range m.stats.Days {
+	for _, b := range buckets {
 		style := lipgloss.NewStyle().Foreground(cWhite)
-		if d.Today {
+		if b.IsToday {
 			style = cyanStyle
-		} else if d.Weekend {
-			style = violetStyle
 		}
-		labels = append(labels, center(style.Render(d.Label), colW))
-		
-		hrStr := fmt.Sprintf("%2.1fh", float64(d.Duration)/3600.0)
+		labels = append(labels, center(style.Render(b.Label), colW))
+
+		hrStr := fmt.Sprintf("%2.1fh", float64(b.Duration)/3600.0)
 		hours = append(hours, center(mutedStyle.Render(hrStr), colW))
 	}
 
@@ -481,9 +541,17 @@ func (m *Model) renderDailyHistory(width int) string {
 	if m.statsRange == 1 {
 		title = "DAILY HISTORY (LAST 7 DAYS)"
 	} else if m.statsRange == 2 {
-		title = "DAILY HISTORY (LAST 30 DAYS)"
+		if colW >= 10 {
+			title = "WEEKLY HISTORY (LAST 30 DAYS)"
+		} else {
+			title = "DAILY HISTORY (LAST 30 DAYS)"
+		}
 	} else if m.statsRange == 3 {
-		title = "DAILY HISTORY (CUSTOM RANGE)"
+		if colW >= 10 {
+			title = fmt.Sprintf("PERIODIC HISTORY (%d DAYS)", numDays)
+		} else {
+			title = fmt.Sprintf("DAILY HISTORY (%d DAYS)", numDays)
+		}
 	}
 	return panelWithHover(title, "", width, "\n"+strings.Join(lines, "\n")+"\n", m.panelFocus == 3, m.hoveredPanel == 3)
 }
