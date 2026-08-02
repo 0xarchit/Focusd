@@ -41,14 +41,20 @@ type dailyUsage struct {
 }
 
 type tuiData struct {
-	Apps           []appUsage
-	Browsers       []appUsage
-	Days           []dailyUsage
-	Hourly         [24]int
-	Total          int
-	YesterdayTotal int
-	ActiveApps     int
-	LimitsHit      int
+	Apps             []appUsage
+	Browsers         []appUsage
+	Days             []dailyUsage
+	Hourly           [24]int
+	Total            int
+	YesterdayTotal   int
+	Last3DaysTotal   int
+	Last7DaysTotal   int
+	DailyAvg         int
+	PeakDayLabel     string
+	PeakDayDuration  int
+	TotalAppLaunches int
+	ActiveApps       int
+	LimitsHit        int
 }
 
 type dashboardLoadedMsg tuiData
@@ -312,13 +318,41 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	for i := historyDays - 1; i >= 0; i-- {
 		d := historyEnd.AddDate(0, 0, -i)
 		date := d.Format("2006-01-02")
+		dur := dateTotals[date]
 		data.Days = append(data.Days, dailyUsage{
 			Date:     date,
 			Label:    d.Format("Mon"),
-			Duration: dateTotals[date],
+			Duration: dur,
 			Today:    date == today,
 			Weekend:  d.Weekday() == time.Saturday || d.Weekday() == time.Sunday,
 		})
+	}
+
+	numDays := len(data.Days)
+	sumDays := 0
+	for i, d := range data.Days {
+		sumDays += d.Duration
+		if numDays-i <= 3 {
+			data.Last3DaysTotal += d.Duration
+		}
+		if numDays-i <= 7 {
+			data.Last7DaysTotal += d.Duration
+		}
+		if d.Duration > data.PeakDayDuration {
+			data.PeakDayDuration = d.Duration
+			if t, err := time.Parse("2006-01-02", d.Date); err == nil {
+				data.PeakDayLabel = t.Format("Mon 01/02")
+			} else {
+				data.PeakDayLabel = d.Date
+			}
+		}
+	}
+	if numDays > 0 {
+		data.DailyAvg = sumDays / numDays
+	}
+
+	for _, a := range data.Apps {
+		data.TotalAppLaunches += a.Opens
 	}
 
 	return data

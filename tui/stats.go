@@ -331,7 +331,54 @@ func (m *Model) renderRangeSelector(width int) string {
 		customInfo := fmt.Sprintf("   Range: %s to %s", m.statsCustomFrom, m.statsCustomTo)
 		selector += mutedStyle.Render(customInfo)
 	}
-	return center(selector, width)
+
+	var kpiParts []string
+	topApps := m.sortedStatsApps()
+	topAppName := "None"
+	if len(topApps) > 0 {
+		topAppName = fmt.Sprintf("%s (%s)", topApps[0].Name, formatDuration(topApps[0].Duration))
+	}
+
+	switch m.statsRange {
+	case 0: // TODAY
+		kpiParts = append(kpiParts, fmt.Sprintf("Today Screen Time: %s", cyanStyle.Render(formatDuration(m.stats.Total))))
+		kpiParts = append(kpiParts, fmt.Sprintf("Active Apps: %s", cyanStyle.Render(fmt.Sprintf("%d", m.stats.ActiveApps))))
+		kpiParts = append(kpiParts, fmt.Sprintf("App Launches: %s", cyanStyle.Render(fmt.Sprintf("%d", m.stats.TotalAppLaunches))))
+		kpiParts = append(kpiParts, fmt.Sprintf("Top App: %s", cyanStyle.Render(topAppName)))
+
+	case 1: // LAST 7 DAYS
+		kpiParts = append(kpiParts, fmt.Sprintf("7-Day Screen Time: %s", cyanStyle.Render(formatDuration(m.stats.Total))))
+		kpiParts = append(kpiParts, fmt.Sprintf("Daily Avg: %s", cyanStyle.Render(formatDuration(m.stats.DailyAvg))))
+		if m.stats.PeakDayDuration > 0 {
+			kpiParts = append(kpiParts, fmt.Sprintf("Peak Day: %s (%s)", cyanStyle.Render(m.stats.PeakDayLabel), cyanStyle.Render(formatDuration(m.stats.PeakDayDuration))))
+		}
+		kpiParts = append(kpiParts, fmt.Sprintf("App Launches: %s", cyanStyle.Render(fmt.Sprintf("%d", m.stats.TotalAppLaunches))))
+
+	case 2: // LAST 30 DAYS
+		kpiParts = append(kpiParts, fmt.Sprintf("30-Day Total: %s", cyanStyle.Render(formatDuration(m.stats.Total))))
+		kpiParts = append(kpiParts, fmt.Sprintf("Daily Avg: %s", cyanStyle.Render(formatDuration(m.stats.DailyAvg))))
+		kpiParts = append(kpiParts, fmt.Sprintf("Last 7-Day Total: %s", cyanStyle.Render(formatDuration(m.stats.Last7DaysTotal))))
+		if m.stats.PeakDayDuration > 0 {
+			kpiParts = append(kpiParts, fmt.Sprintf("Peak Day: %s (%s)", cyanStyle.Render(m.stats.PeakDayLabel), cyanStyle.Render(formatDuration(m.stats.PeakDayDuration))))
+		}
+
+	case 3: // CUSTOM RANGE
+		numDays := len(m.stats.Days)
+		kpiParts = append(kpiParts, fmt.Sprintf("Range Total (%dd): %s", numDays, cyanStyle.Render(formatDuration(m.stats.Total))))
+		kpiParts = append(kpiParts, fmt.Sprintf("Daily Avg: %s", cyanStyle.Render(formatDuration(m.stats.DailyAvg))))
+		if m.stats.PeakDayDuration > 0 {
+			kpiParts = append(kpiParts, fmt.Sprintf("Peak Day: %s (%s)", cyanStyle.Render(m.stats.PeakDayLabel), cyanStyle.Render(formatDuration(m.stats.PeakDayDuration))))
+		}
+		kpiParts = append(kpiParts, fmt.Sprintf("App Launches: %s", cyanStyle.Render(fmt.Sprintf("%d", m.stats.TotalAppLaunches))))
+	}
+
+	div := mutedStyle.Render(strings.Repeat("─", min(width, 70)))
+
+	kpiBlock := center(selector, width) + "\n" +
+		center(div, width) + "\n" +
+		center(strings.Join(kpiParts, mutedStyle.Render("  │  ")), width)
+
+	return kpiBlock
 }
 
 func (m *Model) renderUsageBreakdown(width, visibleRows int) string {

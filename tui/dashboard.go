@@ -95,11 +95,6 @@ func (m *Model) renderDashboard(width, height int) string {
 }
 
 func (m *Model) renderTodayPanel(width, height int) string {
-	rows := []string{
-		rowKV("Screen Time", formatDuration(m.dashboard.Total), width-4),
-		rowKV("Active Apps", fmt.Sprintf("%d", m.dashboard.ActiveApps), width-4),
-		rowKV("Limits Hit", fmt.Sprintf("%d", m.dashboard.LimitsHit), width-4),
-	}
 	var trendText string
 	if m.dashboard.YesterdayTotal == 0 {
 		if m.dashboard.Total > 0 {
@@ -118,11 +113,20 @@ func (m *Model) renderTodayPanel(width, height int) string {
 			trendText = mutedStyle.Render("0%")
 		}
 	}
-	rows = append(rows, rowKV("Vs Yesterday", trendText, width-4))
+
+	rows := []string{
+		rowKV("Screen Time Today", formatDuration(m.dashboard.Total), width-4),
+		rowKV("Vs Yesterday", trendText, width-4),
+		rowKV("7-Day Total", formatDuration(m.dashboard.Last7DaysTotal), width-4),
+		rowKV("Daily Avg (7D)", formatDuration(m.dashboard.DailyAvg), width-4),
+		rowKV("Active Apps Today", fmt.Sprintf("%d", m.dashboard.ActiveApps), width-4),
+		rowKV("App Launches Today", fmt.Sprintf("%d", m.dashboard.TotalAppLaunches), width-4),
+		rowKV("Limits Hit Today", fmt.Sprintf("%d", m.dashboard.LimitsHit), width-4),
+	}
 
 	paddingLines := max(0, height-2-len(rows)-2)
 	body := "\n" + strings.Join(rows, "\n") + strings.Repeat("\n", paddingLines)
-	return panelWithHover("TODAY", "", width, body, m.panelFocus == 0, m.hoveredPanel == 0)
+	return panelWithHover("TODAY & OVERVIEW", "", width, body, m.panelFocus == 0, m.hoveredPanel == 0)
 }
 
 func (m *Model) renderTopAppsPanel(width, height int) string {
