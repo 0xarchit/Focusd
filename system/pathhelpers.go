@@ -80,3 +80,10 @@ func pathRetainsAll(before, after, removed string) bool {
 	}
 	return len(want) == 0
 }
+
+// pathWriteAllowed is the pre-write guard. It returns false when the proposed
+// value would drop an entry the user already had. An empty removed means
+// nothing is expected to disappear, so every entry must survive.
+func pathWriteAllowed(before, after, removed string) bool {
+	return pathRetainsAll(before, after, removed)
+}

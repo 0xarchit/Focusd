@@ -1,6 +1,9 @@
 package system
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSplitPathEntries(t *testing.T) {
 	tests := []struct {
@@ -153,5 +156,52 @@ func TestPathRoundTrip(t *testing.T) {
 	restored := pathRemove(withFocusd, `C:\focusd`)
 	if restored != original {
 		t.Errorf("round trip lost data: want %q, got %q", original, restored)
+	}
+}
+
+// TestPathWriteAllowed is the guard that would have stopped #18 from writing a
+// PATH that dropped the user's entries.
+func TestPathWriteAllowed(t *testing.T) {
+	before := `%USERPROFILE%\go\bin;C:\Python312;C:\Users\me\bin`
+
+	tests := []struct {
+		name    string
+		before  string
+		after   string
+		removed string
+		want    bool
+	}{
+		{"add keeps everything", before, pathAdd(before, `C:\focusd`), "", true},
+		{"remove only focusd", before + `;C:\focusd`, before, `C:\focusd`, true},
+		{"remove when absent is a no-op", before, before, `C:\focusd`, true},
+		{"rejects cleared path", before, ``, "", false},
+		{"rejects path holding only focusd", before, `C:\focusd`, "", false},
+		{"rejects dropped user entry", before, `C:\focusd`, "", false},
+		{"rejects dropping one of many", before, `C:\focusd;C:\Python312`, "", false},
+		{"empty before allows anything", ``, `C:\focusd`, "", true},
+		{"removing the sole entry is allowed", `C:\focusd`, ``, `C:\focusd`, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := pathWriteAllowed(tc.before, tc.after, tc.removed); got != tc.want {
+				t.Errorf("pathWriteAllowed(%q -> %q, removed %q) = %v; want %v",
+					tc.before, tc.after, tc.removed, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPathWriteAllowedPreservesVarRefs guards the specific #18 symptom: a PATH
+// that still holds every entry but lost its %VAR% expansion.
+func TestPathWriteAllowedPreservesVarRefs(t *testing.T) {
+	before := `%USERPROFILE%\go\bin;C:\focusd`
+	after := pathRemove(before, `C:\focusd`)
+
+	if !pathWriteAllowed(before, after, `C:\focusd`) {
+		t.Fatalf("refused a legitimate removal: %q -> %q", before, after)
+	}
+	if !strings.Contains(after, `%USERPROFILE%`) {
+		t.Errorf("removal lost the variable reference: %q", after)
 	}
 }
