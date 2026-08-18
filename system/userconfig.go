@@ -47,7 +47,6 @@ func defaultUserConfig() *UserConfig {
 	}
 }
 
-
 func loadFromDisk() {
 	configMu.Lock()
 	defer configMu.Unlock()
