@@ -1,4 +1,4 @@
-!ifndef VERSION
+﻿!ifndef VERSION
   !define VERSION "0.0.0"
 !endif
 
@@ -51,22 +51,14 @@ Section "Install"
   ; Add to user Autostart registry run key
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "focusd" '"$INSTDIR\focusd_daemon.exe"'
 
-  ; Add to user PATH environment variable via registry
-  ReadRegStr $0 HKCU "Environment" "Path"
-  Push $0
-  Push "$INSTDIR"
-  Call ContainsPath
-  Pop $1
-  IntCmp $1 1 path_done
-    StrCmp $0 "" 0 +3
-      StrCpy $2 "$INSTDIR"
-      Goto write_path
-    StrCpy $2 "$0;$INSTDIR"
-    write_path:
-      WriteRegExpandStr HKCU "Environment" "Path" "$2"
-      ; Broadcast environment change to windows shell
-      SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
-  path_done:
+  ; Add to user PATH environment variable.
+  ; PATH is owned solely by "focusd.exe path enable" so there is one
+  ; implementation. Two independent implementations caused issue #18, where
+  ; install and uninstall overwrote or cleared the user's PATH.
+  DetailPrint "Adding focusd to your user PATH..."
+  IfFileExists "$INSTDIR\focusd.exe" 0 skip_path_enable
+    ExecWait '"$INSTDIR\focusd.exe" path enable'
+  skip_path_enable:
 
   ; Write registry keys for Windows Add/Remove Programs (uninstaller)
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "Focusd Screen Time Tracker"
@@ -100,99 +92,17 @@ Section "Uninstall"
   Delete "$SMSTARTUP\Focus Daemon.lnk"
   Delete "$INSTDIR\uninstall.exe"
 
-  ; Remove from user PATH
-  ReadRegStr $0 HKCU "Environment" "Path"
-  Push $0
-  Push "$INSTDIR"
-  Call un.RemovePath
-  Pop $1
-  WriteRegExpandStr HKCU "Environment" "Path" "$1"
-  SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
+  ; Remove from user PATH. focusd.exe owns the logic; see the install section.
+  IfFileExists "$INSTDIR\focusd.exe" 0 skip_path_disable
+    ExecWait '"$INSTDIR\focusd.exe" path disable'
+  skip_path_disable:
 
   ; Remove registry uninstall keys
   DeleteRegKey HKCU "${UNINST_KEY}"
 
+  ; $INSTDIR also holds focusd.db and config.json, which is the user's tracking
+  ; history. It is deliberately not removed, so uninstall and reinstall keep the
+  ; data. The directory is only removable once it is empty anyway.
   RMDir "$INSTDIR"
 SectionEnd
 
-; Helper functions for PATH manipulation
-
-Function ContainsPath
-  Exch $R0 ; path to search for
-  Exch
-  Exch $R1 ; full path env var
-  Push $R2
-  Push $R3
-  Push $R4
-  Push $R5
-
-  StrLen $R2 $R0
-  StrLen $R3 $R1
-  StrCpy $R4 0
-
-  loop:
-    StrCpy $R5 $R1 $R2 $R4
-    StrCmp $R5 $R0 found
-    IntOp $R4 $R4 + 1
-    IntCmp $R4 $R3 loop loop
-    StrCpy $R0 0
-    Goto done
-
-  found:
-    StrCpy $R0 1
-
-  done:
-    Pop $R5
-    Pop $R4
-    Pop $R3
-    Pop $R2
-    Pop $R1
-    Exch $R0
-FunctionEnd
-
-Function un.RemovePath
-  Exch $R0 ; path to remove
-  Exch
-  Exch $R1 ; full path env var
-  Push $R2
-  Push $R3
-  Push $R4
-  Push $R5
-
-  StrLen $R2 $R0
-  StrCpy $R3 ""
-  
-  loop:
-    StrCpy $R4 0
-  find_semi:
-    StrCpy $R5 $R1 1 $R4
-    StrCmp $R5 "" end_split
-    StrCmp $R5 ";" end_split
-    IntOp $R4 $R4 + 1
-    Goto find_semi
-
-  end_split:
-    StrCpy $R5 $R1 $R4
-    StrCmp $R5 $R0 skip
-    StrCmp $R5 "" skip
-    StrCmp $R3 "" first
-    StrCpy $R3 "$R3;$R5"
-    Goto skip
-  first:
-    StrCpy $R3 "$R5"
-  skip:
-    IntOp $R4 $R4 + 1
-    StrCpy $R1 $R1 "" $R4
-    StrCmp $R1 "" done
-    Goto loop
-
-  done:
-    StrCpy $R0 $R3
-
-  Pop $R5
-  Pop $R4
-  Pop $R3
-  Pop $R2
-  Pop $R1
-  Exch $R0
-FunctionEnd
