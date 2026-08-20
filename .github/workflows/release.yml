@@ -57,11 +57,25 @@ jobs:
         run: |
           makensis /DVERSION=${{ env.VERSION }} installer.nsi
 
+      - name: Build Portable Archive
+        shell: powershell
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP "focusd-portable"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item focusd.exe, focusd_daemon.exe $stage
+          $zip = "focusd-v${{ env.VERSION }}-windows-amd64.zip"
+          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip
+          Remove-Item -Recurse -Force $stage
+
       - name: Generate Checksum
         shell: powershell
         run: |
-          $hashSetup = (Get-FileHash -Path focusd_setup.exe -Algorithm SHA256).Hash.ToLower()
-          "$hashSetup  focusd_setup.exe" | Out-File -FilePath checksums.txt -Encoding ASCII
+          $lines = @()
+          foreach ($f in @("focusd_setup.exe", "focusd-v${{ env.VERSION }}-windows-amd64.zip")) {
+            $hash = (Get-FileHash -Path $f -Algorithm SHA256).Hash.ToLower()
+            $lines += "$hash  $f"
+          }
+          $lines | Out-File -FilePath checksums.txt -Encoding ASCII
 
       - name: Generate Release Notes
         env:
@@ -76,5 +90,6 @@ jobs:
           body_path: release_notes.md
           files: |
             focusd_setup.exe
+            focusd-v${{ env.VERSION }}-windows-amd64.zip
             checksums.txt
           token: ${{ secrets.GIT_TOKEN }}
