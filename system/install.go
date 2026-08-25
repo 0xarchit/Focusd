@@ -18,6 +18,12 @@ func getInstallDir() string {
 	return filepath.Join(appData, "focusd")
 }
 
+// GetInstallDir returns the per-user install directory. Callers that terminate
+// processes scope by it so they never touch an unrelated binary elsewhere.
+func GetInstallDir() string {
+	return getInstallDir()
+}
+
 func getInstalledDaemonPath() string {
 	installDir := getInstallDir()
 	if installDir == "" {
