@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"focusd/coreapi"
 	"focusd/system"
 	"focusd/ui"
 
@@ -62,17 +63,24 @@ func runUpdate() {
 		return
 	}
 
-	daemonWasRunning := system.GetProcessCount(system.DaemonProcessName) >= 1
+	// Ask the daemon to stop over IPC first so buffered sessions are written
+	// out. Hard-killing it dropped up to five minutes of tracked time.
+	daemonWasRunning := system.CountInstancesInDir(system.DaemonProcessName, system.GetInstallDir()) >= 1
 	if daemonWasRunning {
 		ui.PrintStatus("Stopping focusd daemon...", "", false)
-		if err := system.KillOtherInstances(system.DaemonProcessName); err != nil {
-			ui.PrintWarn(fmt.Sprintf("Could not stop daemon: %v", err))
+		if !coreapi.SendIPCCmd("stop") {
+			ui.PrintWarn("Daemon did not acknowledge the stop request.")
+			if err := system.KillInstancesInDir(system.DaemonProcessName, system.GetInstallDir()); err != nil {
+				ui.PrintWarn(fmt.Sprintf("Could not stop daemon: %v", err))
+			}
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 
 	ui.PrintStatus("Closing other focusd instances...", "", false)
-	if err := system.KillOtherInstances("focusd.exe"); err != nil {
+	// Scoped to the install directory so an unrelated focusd.exe elsewhere on
+	// the machine is not terminated.
+	if err := system.KillInstancesInDir("focusd.exe", system.GetInstallDir()); err != nil {
 		log.Printf("WARN: could not close other focusd instances: %v", err)
 	}
 	time.Sleep(500 * time.Millisecond)
