@@ -32,6 +32,7 @@ type Tracker struct {
 	pendingSessions []*storage.Session
 	ctx             context.Context
 	cancel          context.CancelFunc
+	ipcToken        string
 }
 
 func NewTracker() *Tracker {
@@ -40,10 +41,17 @@ func NewTracker() *Tracker {
 	if pollSeconds < 1 {
 		pollSeconds = 1
 	}
+	token, err := coreapi.EnsureIPCToken()
+	if err != nil {
+		// Without a token the daemon still runs, but it will refuse every
+		// state-changing IPC command, so `focusd stop` cannot reach it.
+		log.Printf("ERROR: IPC token unavailable, remote control disabled: %v", err)
+	}
 	return &Tracker{
-		pollInterval:  time.Duration(pollSeconds) * time.Second,
-		ctx:           ctx,
-		cancel:        cancel,
+		pollInterval: time.Duration(pollSeconds) * time.Second,
+		ctx:          ctx,
+		cancel:       cancel,
+		ipcToken:     token,
 	}
 }
 
@@ -427,13 +435,27 @@ func (t *Tracker) handleIPCConnection(conn net.Conn) {
 		return
 	}
 	reader := bufio.NewReader(conn)
-	cmd, err := reader.ReadString('\n')
+	raw, err := reader.ReadString('\n')
 	if err != nil {
 		log.Printf("WARN: IPC connection read failed: %v", err)
 		return
 	}
 
-	cmd = strings.TrimSpace(cmd)
+	cmd, token, err := coreapi.ParseIPCCommand(raw)
+	if err != nil {
+		log.Printf("WARN: IPC command rejected: %v", err)
+		return
+	}
+
+	if coreapi.IPCCommandNeedsToken(cmd) {
+		if !coreapi.TokensMatch(token, t.ipcToken) {
+			// No reply, so a caller cannot distinguish a bad token from an
+			// unknown command or a closed port.
+			log.Printf("WARN: IPC command refused: bad token")
+			return
+		}
+	}
+
 	switch cmd {
 	case "stop":
 		t.flushCurrentSession()
@@ -451,6 +473,6 @@ func (t *Tracker) handleIPCConnection(conn net.Conn) {
 			log.Printf("WARN: IPC write failed: %v", err)
 		}
 	default:
-		log.Printf("WARN: Unknown IPC command received: %q", cmd)
+		log.Printf("WARN: Unknown IPC command received")
 	}
 }

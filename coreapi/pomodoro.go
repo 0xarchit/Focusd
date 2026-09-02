@@ -2,8 +2,8 @@ package coreapi
 
 import (
 	"encoding/json"
-	"focusd/storage"
 	"fmt"
+	"focusd/storage"
 	"log"
 	"os"
 	"path/filepath"
