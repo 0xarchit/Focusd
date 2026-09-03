@@ -54,6 +54,51 @@ func TestGetAppName(t *testing.T) {
 	}
 }
 
+// TestPollRetainsSessionOnBlankTitle covers the case where a child window with
+// an empty caption takes focus. The session must continue rather than split.
+func TestPollRetainsSessionOnBlankTitle(t *testing.T) {
+	tracker := &Tracker{pollInterval: time.Second}
+
+	tracker.currentSession = &activeSession{
+		AppName:     "TestApp",
+		ExeName:     "test.exe",
+		WindowTitle: "Real Window",
+		StartTime:   time.Now(),
+		Date:        "2026-06-26",
+	}
+	originalStart := tracker.currentSession.StartTime
+
+	tracker.applyPoll(&pollObservation{exeName: "test.exe", title: ""})
+
+	if tracker.currentSession == nil {
+		t.Fatal("session was closed by a blank title")
+	}
+	if tracker.currentSession.StartTime != originalStart {
+		t.Error("session start time changed, which means the session was split")
+	}
+	if tracker.currentSession.WindowTitle != "Real Window" {
+		t.Errorf("window title was overwritten with a blank: %q", tracker.currentSession.WindowTitle)
+	}
+	if len(tracker.pendingSessions) != 0 {
+		t.Errorf("expected no flushed sessions, got %d", len(tracker.pendingSessions))
+	}
+}
+
+// TestPollBlankTitleWithoutSessionStartsNothing covers the complementary case:
+// a blank title with no session to retain has nothing worth recording.
+func TestPollBlankTitleWithoutSessionStartsNothing(t *testing.T) {
+	tracker := &Tracker{pollInterval: time.Second}
+
+	tracker.applyPoll(&pollObservation{exeName: "test.exe", title: ""})
+
+	if tracker.currentSession != nil {
+		t.Error("expected no session to start from a blank title")
+	}
+	if len(tracker.pendingSessions) != 0 {
+		t.Errorf("expected no sessions, got %d", len(tracker.pendingSessions))
+	}
+}
+
 func TestCloseCurrentSession(t *testing.T) {
 	tracker := &Tracker{
 		pollInterval: time.Second,

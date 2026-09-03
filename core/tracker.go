@@ -259,12 +259,16 @@ func (t *Tracker) persistActiveSession() {
 	}
 }
 
+// pollObservation is one reading of the foreground window, decoupled from the
+// Win32 calls so session decisions can be tested directly.
+type pollObservation struct {
+	exeName string
+	title   string
+}
+
 func (t *Tracker) poll() {
 	info, err := system.GetForegroundWindowInfo()
-
-	// If foreground is unknown/empty/whitelisted, close any running session
-	// (e.g. user closed the app and focus went to desktop)
-	if err != nil || info == nil || info.Title == "" || info.ExeName == "" {
+	if err != nil || info == nil || info.ExeName == "" {
 		t.mu.Lock()
 		if t.currentSession != nil {
 			t.closeCurrentSession()
@@ -282,15 +286,26 @@ func (t *Tracker) poll() {
 		return
 	}
 
-	appName := getAppName(info.ExeName)
-
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	t.applyPoll(&pollObservation{exeName: info.ExeName, title: info.Title})
+}
+
+// applyPoll updates session state from one observation. Caller holds t.mu.
+func (t *Tracker) applyPoll(obs *pollObservation) {
 	if t.currentSession != nil {
-		isSameExe := t.currentSession.ExeName == info.ExeName
-		isBrowser := system.IsBrowser(info.ExeName)
-		isSameTitle := t.currentSession.WindowTitle == info.Title
+		isSameExe := t.currentSession.ExeName == obs.exeName
+
+		// A blank caption means a child window of the app we are already
+		// tracking took focus. Closing here would split one session into many
+		// and inflate open counts for no user-visible change.
+		if isSameExe && obs.title == "" {
+			return
+		}
+
+		isBrowser := system.IsBrowser(obs.exeName)
+		isSameTitle := t.currentSession.WindowTitle == obs.title
 
 		if isSameExe && (!isBrowser || isSameTitle) {
 			return
@@ -298,10 +313,15 @@ func (t *Tracker) poll() {
 		t.closeCurrentSession()
 	}
 
+	if obs.title == "" {
+		// No previous session to attach to and nothing to record a title for.
+		return
+	}
+
 	t.currentSession = &activeSession{
-		AppName:     appName,
-		ExeName:     info.ExeName,
-		WindowTitle: info.Title,
+		AppName:     getAppName(obs.exeName),
+		ExeName:     obs.exeName,
+		WindowTitle: obs.title,
 		StartTime:   time.Now(),
 		Date:        storage.Today(),
 	}

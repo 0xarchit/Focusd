@@ -34,17 +34,22 @@ func GetForegroundWindowInfo() (*WindowInfo, error) {
 		return nil, nil
 	}
 
-	title := getWindowText(hwnd)
-	if title == "" {
-		return nil, nil
-	}
-
 	var pid uint32
 	procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+
+	// A blank title is common: modal dialogs, toolbars, context menus,
+	// splash screens, and some games all surface with an empty caption.
+	// Resolving the process first lets the tracker keep the session alive
+	// instead of treating the dip as a switch away.
+	title := getWindowText(hwnd)
 
 	exeName := ""
 	if pid != 0 {
 		exeName = getProcessName(pid)
+	}
+
+	if title == "" && exeName == "" {
+		return nil, nil
 	}
 
 	return &WindowInfo{
