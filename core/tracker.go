@@ -109,6 +109,9 @@ func (t *Tracker) Start() error {
 				continue
 			}
 			t.poll()
+			t.mu.Lock()
+			t.rotateActiveSessionAtMidnight()
+			t.mu.Unlock()
 			t.persistActiveSession()
 			stateMu.Lock()
 			t.mu.Lock()
@@ -333,24 +336,102 @@ func (t *Tracker) closeCurrentSession() {
 	}
 
 	now := time.Now()
-	duration := int(now.Sub(t.currentSession.StartTime).Seconds())
-	if duration < 1 {
-		t.currentSession = nil
+	slices := splitSessionAtMidnight(t.currentSession, now)
+	t.pendingSessions = append(t.pendingSessions, slices...)
+	t.currentSession = nil
+}
+
+// splitSessionAtMidnight breaks a session that crosses local midnight into one
+// slice per day. Without this the whole session was stamped with the date it
+// started on, so time after midnight was attributed to yesterday. A session can
+// span more than one boundary, for example after a crash or a resume from
+// sleep, so this walks every midnight rather than just the most recent one.
+func splitSessionAtMidnight(s *activeSession, now time.Time) []*storage.Session {
+	if s == nil || !now.After(s.StartTime) {
+		return nil
+	}
+
+	var out []*storage.Session
+	cursor := s.StartTime
+
+	for {
+		midnight := startOfDayAfter(cursor)
+		if !midnight.Before(now) {
+			break
+		}
+		if duration := int(midnight.Sub(cursor).Seconds()); duration >= 1 {
+			out = append(out, &storage.Session{
+				AppName:      s.AppName,
+				ExeName:      s.ExeName,
+				WindowTitle:  s.WindowTitle,
+				StartTime:    cursor,
+				EndTime:      midnight,
+				DurationSecs: duration,
+				Date:         dateStr(cursor),
+			})
+		}
+		cursor = midnight
+	}
+
+	if duration := int(now.Sub(cursor).Seconds()); duration >= 1 {
+		out = append(out, &storage.Session{
+			AppName:      s.AppName,
+			ExeName:      s.ExeName,
+			WindowTitle:  s.WindowTitle,
+			StartTime:    cursor,
+			EndTime:      now,
+			DurationSecs: duration,
+			Date:         dateStr(cursor),
+		})
+	}
+
+	return out
+}
+
+// startOfDayAfter returns the first local midnight strictly after t.
+func startOfDayAfter(t time.Time) time.Time {
+	midnight := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+	if !midnight.After(t) {
+		midnight = midnight.AddDate(0, 0, 1)
+	}
+	return midnight
+}
+
+func dateStr(t time.Time) string {
+	return t.Format("2006-01-02")
+}
+
+// rotateActiveSessionAtMidnight is the single place a session is rebased across
+// local midnight. Read paths no longer rotate, so this runs once per poll
+// rather than once per reader.
+func (t *Tracker) rotateActiveSessionAtMidnight() {
+	if t.currentSession == nil {
 		return
 	}
 
-	session := &storage.Session{
-		AppName:      t.currentSession.AppName,
-		ExeName:      t.currentSession.ExeName,
-		WindowTitle:  t.currentSession.WindowTitle,
-		StartTime:    t.currentSession.StartTime,
-		EndTime:      now,
-		DurationSecs: duration,
-		Date:         t.currentSession.Date,
+	now := time.Now()
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	if !t.currentSession.StartTime.Before(midnight) {
+		return
 	}
 
-	t.pendingSessions = append(t.pendingSessions, session)
-	t.currentSession = nil
+	// Write the elapsed slice for the previous day before rebasing, so the two
+	// halves are recorded exactly once.
+	slices := splitSessionAtMidnight(t.currentSession, now)
+	priorOnly := slices[:0]
+	for _, s := range slices {
+		if s.Date == t.currentSession.Date {
+			priorOnly = append(priorOnly, s)
+		}
+	}
+	t.pendingSessions = append(t.pendingSessions, priorOnly...)
+
+	t.currentSession.StartTime = midnight
+	t.currentSession.Date = midnight.Format("2006-01-02")
+
+	if err := storage.RebaseActiveSessionStart(midnight, t.currentSession.Date); err != nil {
+		log.Printf("ERROR: failed to rebase active session at midnight: %v", err)
+	}
 }
 
 func (t *Tracker) flushCurrentSession() {
