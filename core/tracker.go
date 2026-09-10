@@ -233,10 +233,21 @@ func (t *Tracker) recoverOrphanedSession() error {
 	if recovered == nil {
 		return nil
 	}
-	if err := storage.InsertSessionWithDaily(recovered, ""); err != nil {
+
+	// An orphaned browser session used to be inserted with an empty site name,
+	// so the browsing totals lost whatever the user was looking at whenever the
+	// daemon was killed rather than stopped.
+	cleanTitle := ""
+	if system.IsBrowser(recovered.ExeName) {
+		cleanTitle = cleanWindowTitle(recovered.WindowTitle, recovered.ExeName)
+	}
+
+	if err := storage.InsertSessionWithDaily(recovered, cleanTitle); err != nil {
 		return fmt.Errorf("failed to recover orphaned session: %w", err)
 	}
-	storage.ClearActiveSession()
+	if err := storage.ClearActiveSession(); err != nil {
+		return fmt.Errorf("failed to clear recovered active session: %w", err)
+	}
 	return nil
 }
 
