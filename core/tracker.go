@@ -25,6 +25,10 @@ type activeSession struct {
 	Date        string
 }
 
+// gapFactor is how much later than one poll interval a tick may arrive before
+// it is treated as a sleep or hibernate rather than ordinary jitter.
+const gapFactor = 3
+
 type Tracker struct {
 	mu              sync.Mutex
 	currentSession  *activeSession
@@ -33,6 +37,7 @@ type Tracker struct {
 	ctx             context.Context
 	cancel          context.CancelFunc
 	ipcToken        string
+	lastPollAt      time.Time
 }
 
 func NewTracker() *Tracker {
@@ -273,6 +278,53 @@ func (t *Tracker) persistActiveSession() {
 	}
 }
 
+// isIdle reports whether the user has been inactive long enough that time
+// should stop accruing. App limits depend on this too: without it a limit can
+// never fire on a machine the user simply walked away from.
+func (t *Tracker) isIdle() bool {
+	if system.GetTrackWhileIdle() {
+		return false
+	}
+
+	threshold := system.GetIdleThresholdMinutes()
+	if threshold <= 0 {
+		return false
+	}
+
+	idleSeconds, err := system.GetIdleSeconds()
+	if err != nil {
+		// If the input state cannot be read, keep tracking rather than
+		// silently dropping time.
+		return false
+	}
+	return idleSeconds >= threshold*60
+}
+
+// detectWallClockGap closes the running session when the wall clock jumped much
+// further than one poll interval, which means the machine slept or hibernated.
+// Without this the whole sleep was billed as active time.
+func (t *Tracker) detectWallClockGap() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	now := time.Now()
+	if t.lastPollAt.IsZero() {
+		t.lastPollAt = now
+		return
+	}
+
+	gap := now.Sub(t.lastPollAt)
+	t.lastPollAt = now
+
+	if t.currentSession == nil {
+		return
+	}
+	if gap > gapFactor*t.pollInterval {
+		log.Printf("WARN: wall clock gap of %s detected, closing session", gap)
+		t.closeCurrentSession()
+	}
+}
+
 // pollObservation is one reading of the foreground window, decoupled from the
 // Win32 calls so session decisions can be tested directly.
 type pollObservation struct {
@@ -281,6 +333,14 @@ type pollObservation struct {
 }
 
 func (t *Tracker) poll() {
+	t.detectWallClockGap()
+
+	// An idle cutoff pauses accrual but keeps the session alive, so returning
+	// to the same window does not manufacture a new session.
+	if t.isIdle() {
+		return
+	}
+
 	info, err := system.GetForegroundWindowInfo()
 	if err != nil || info == nil || info.ExeName == "" {
 		t.mu.Lock()
