@@ -19,7 +19,33 @@ type UserConfig struct {
 	PomodoroMinutes       int            `json:"pomodoro_minutes"`
 	SnoozeDurationMinutes int            `json:"snooze_duration_minutes"`
 	CustomBrowsers        []string       `json:"custom_browsers"`
+	IdleThresholdMinutes  int            `json:"idle_threshold_minutes"`
+	TrackWhileIdle        bool           `json:"track_while_idle"`
 }
+
+// userConfigFile mirrors UserConfig for decoding. IdleThresholdMinutes is a
+// pointer so an absent key is distinguishable from an explicit zero, which
+// means "never treat me as idle". Without that, every config written before
+// this field existed would decode as zero and silently disable idle detection.
+type userConfigFile struct {
+	WhitelistApps         []string       `json:"whitelist_apps"`
+	BreakReminderEnabled  bool           `json:"break_reminder_enabled"`
+	BreakReminderMinutes  int            `json:"break_reminder_minutes"`
+	AppTimeLimits         map[string]int `json:"app_time_limits"`
+	PomodoroMinutes       int            `json:"pomodoro_minutes"`
+	SnoozeDurationMinutes int            `json:"snooze_duration_minutes"`
+	CustomBrowsers        []string       `json:"custom_browsers"`
+	IdleThresholdMinutes  *int           `json:"idle_threshold_minutes"`
+	TrackWhileIdle        *bool          `json:"track_while_idle"`
+}
+
+const (
+	// DefaultIdleThresholdMinutes is how long the keyboard and mouse may be
+	// idle before time stops accruing.
+	DefaultIdleThresholdMinutes = 5
+	MinIdleThresholdMinutes     = 0
+	MaxIdleThresholdMinutes     = 240
+)
 
 var (
 	userConfig  *UserConfig
@@ -44,6 +70,8 @@ func defaultUserConfig() *UserConfig {
 		PomodoroMinutes:       25,
 		SnoozeDurationMinutes: 60,
 		CustomBrowsers:        []string{},
+		IdleThresholdMinutes:  DefaultIdleThresholdMinutes,
+		TrackWhileIdle:        false,
 	}
 }
 
@@ -77,7 +105,7 @@ func loadFromDisk() {
 	}
 
 	if data, err := os.ReadFile(configPath); err == nil {
-		var temp UserConfig
+		var temp userConfigFile
 		if err := json.Unmarshal(data, &temp); err == nil {
 			userConfig.WhitelistApps = temp.WhitelistApps
 			userConfig.BreakReminderEnabled = temp.BreakReminderEnabled
@@ -86,6 +114,16 @@ func loadFromDisk() {
 			userConfig.PomodoroMinutes = temp.PomodoroMinutes
 			userConfig.SnoozeDurationMinutes = temp.SnoozeDurationMinutes
 			userConfig.CustomBrowsers = temp.CustomBrowsers
+
+			// Leave the in-memory value alone when the key is absent, so a
+			// config written before idle detection existed keeps the default
+			// rather than decoding as "disabled".
+			if temp.IdleThresholdMinutes != nil {
+				userConfig.IdleThresholdMinutes = *temp.IdleThresholdMinutes
+			}
+			if temp.TrackWhileIdle != nil {
+				userConfig.TrackWhileIdle = *temp.TrackWhileIdle
+			}
 		} else {
 			log.Printf("WARN: failed to parse user config %s: %v", configPath, err)
 		}
@@ -105,6 +143,10 @@ func loadFromDisk() {
 	}
 	if userConfig.SnoozeDurationMinutes < 1 {
 		userConfig.SnoozeDurationMinutes = 60
+	}
+	if userConfig.IdleThresholdMinutes < MinIdleThresholdMinutes ||
+		userConfig.IdleThresholdMinutes > MaxIdleThresholdMinutes {
+		userConfig.IdleThresholdMinutes = DefaultIdleThresholdMinutes
 	}
 }
 
@@ -276,6 +318,38 @@ func GetSnoozeDurationMinutes() int {
 	configMu.RLock()
 	defer configMu.RUnlock()
 	return userConfig.SnoozeDurationMinutes
+}
+
+// GetIdleThresholdMinutes returns how many minutes of keyboard and mouse
+// inactivity stop time from accruing. Zero means idle time is still tracked.
+func GetIdleThresholdMinutes() int {
+	loadFromDisk()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return userConfig.IdleThresholdMinutes
+}
+
+func GetTrackWhileIdle() bool {
+	loadFromDisk()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return userConfig.TrackWhileIdle
+}
+
+// SetIdleThreshold sets the idle cutoff. A negative value disables it, which is
+// how a user opts back into counting unattended time.
+func SetIdleThreshold(minutes int) error {
+	loadFromDisk()
+	configMu.Lock()
+	defer configMu.Unlock()
+	if minutes < MinIdleThresholdMinutes {
+		minutes = MinIdleThresholdMinutes
+	}
+	if minutes > MaxIdleThresholdMinutes {
+		minutes = MaxIdleThresholdMinutes
+	}
+	userConfig.IdleThresholdMinutes = minutes
+	return saveUserConfigLocked()
 }
 
 var defaultBrowsers = map[string]bool{
