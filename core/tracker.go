@@ -29,6 +29,11 @@ type activeSession struct {
 // it is treated as a sleep or hibernate rather than ordinary jitter.
 const gapFactor = 3
 
+// persistInterval is the shortest gap between two identical active-session
+// writes. Writing on every poll meant thousands of row rewrites a day for a
+// session that had not changed.
+const persistInterval = 30 * time.Second
+
 type Tracker struct {
 	mu              sync.Mutex
 	currentSession  *activeSession
@@ -38,6 +43,18 @@ type Tracker struct {
 	cancel          context.CancelFunc
 	ipcToken        string
 	lastPollAt      time.Time
+	lastPersistAt   time.Time
+
+	persistedAppName     string
+	persistedExeName     string
+	persistedWindowTitle string
+	persistedStartTime   time.Time
+	persistedDate        string
+
+	// persistWrites counts completed active-session writes. Comparing counts
+	// avoids depending on clock resolution, which on Windows is coarse enough
+	// that two writes can share one tick.
+	persistWrites int
 }
 
 func NewTracker() *Tracker {
@@ -116,8 +133,16 @@ func (t *Tracker) Start() error {
 			t.poll()
 			t.mu.Lock()
 			t.rotateActiveSessionAtMidnight()
+			// Force a write whenever the session identity changed, so an
+			// unexpected termination recovers the correct app rather than the
+			// previous one.
+			forcePersist := t.needsPersist()
 			t.mu.Unlock()
-			t.persistActiveSession()
+			if forcePersist {
+				t.forcePersistActiveSession()
+			} else {
+				t.persistActiveSession()
+			}
 			stateMu.Lock()
 			t.mu.Lock()
 			hasActive := t.currentSession != nil
@@ -256,12 +281,45 @@ func (t *Tracker) recoverOrphanedSession() error {
 	return nil
 }
 
+// needsPersist reports whether the in-memory session differs from what was last
+// written. Caller holds t.mu.
+func (t *Tracker) needsPersist() bool {
+	if t.currentSession == nil {
+		return false
+	}
+	return t.currentSession.AppName != t.persistedAppName ||
+		t.currentSession.ExeName != t.persistedExeName ||
+		t.currentSession.WindowTitle != t.persistedWindowTitle ||
+		!t.currentSession.StartTime.Equal(t.persistedStartTime) ||
+		t.currentSession.Date != t.persistedDate
+}
+
+// persistActiveSession writes the active session to storage, skipping the write
+// when nothing changed and the throttle window has not elapsed. lastSeen still
+// advances on the slow tick, which is what stops orphan recovery from billing a
+// crash as active time.
 func (t *Tracker) persistActiveSession() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	t.writeActiveSession(false)
+}
 
+func (t *Tracker) forcePersistActiveSession() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.writeActiveSession(true)
+}
+
+// writeActiveSession performs the actual write. Caller holds t.mu.
+func (t *Tracker) writeActiveSession(force bool) {
 	if t.currentSession == nil {
 		storage.ClearActiveSession()
+		return
+	}
+
+	now := time.Now()
+	changed := t.needsPersist()
+	if !force && !changed && now.Sub(t.lastPersistAt) < persistInterval {
 		return
 	}
 
@@ -270,12 +328,21 @@ func (t *Tracker) persistActiveSession() {
 		ExeName:     t.currentSession.ExeName,
 		WindowTitle: t.currentSession.WindowTitle,
 		StartTime:   t.currentSession.StartTime,
-		LastSeen:    time.Now(),
+		LastSeen:    now,
 		Date:        t.currentSession.Date,
 	}
 	if err := storage.SaveActiveSession(record); err != nil {
 		log.Printf("ERROR: failed to save active session: %v", err)
+		return
 	}
+
+	t.persistedAppName = t.currentSession.AppName
+	t.persistedExeName = t.currentSession.ExeName
+	t.persistedWindowTitle = t.currentSession.WindowTitle
+	t.persistedStartTime = t.currentSession.StartTime
+	t.persistedDate = t.currentSession.Date
+	t.lastPersistAt = now
+	t.persistWrites++
 }
 
 // isIdle reports whether the user has been inactive long enough that time

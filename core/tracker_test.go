@@ -17,7 +17,13 @@ func setupTestDB(t *testing.T) string {
 	originalAppData := os.Getenv("APPDATA")
 	os.Setenv("APPDATA", tempDir)
 
+	// storage.Init returns early when a handle is already open, so a previous
+	// test's database would be reused here and writes would go into a deleted
+	// temp directory. Closing first guarantees each test gets its own file.
+	storage.Close()
+
 	t.Cleanup(func() {
+		storage.Close()
 		if originalAppData != "" {
 			os.Setenv("APPDATA", originalAppData)
 		} else {
