@@ -11,11 +11,22 @@ import (
 type Session struct {
 	AppName      string
 	ExeName      string
+	ExePath      string
+	AppID        string
 	WindowTitle  string
 	StartTime    time.Time
 	EndTime      time.Time
 	DurationSecs int
 	Date         string
+}
+
+// sessionAppID returns the identity key to store, falling back to the exe name
+// for callers that predate identity.
+func sessionAppID(s *Session) string {
+	if s.AppID != "" {
+		return s.AppID
+	}
+	return legacyAppIDFor(s.ExeName)
 }
 
 func InsertSessionWithDaily(s *Session, cleanBrowserTitle string) error {
@@ -31,33 +42,38 @@ func InsertSessionWithDaily(s *Session, cleanBrowserTitle string) error {
 		endTime = &t
 	}
 
+	appID := sessionAppID(s)
+
 	_, err = tx.Exec(`
-		INSERT INTO sessions (app_name, exe_name, window_title, start_time, end_time, duration_secs, date)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, s.AppName, s.ExeName, s.WindowTitle, s.StartTime.Unix(), endTime, s.DurationSecs, s.Date)
+		INSERT INTO sessions (app_name, exe_name, exe_path, app_id, window_title, start_time, end_time, duration_secs, date)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, s.AppName, s.ExeName, s.ExePath, appID, s.WindowTitle, s.StartTime.Unix(), endTime, s.DurationSecs, s.Date)
 	if err != nil {
 		return err
 	}
 
 	_, err = tx.Exec(`
-		INSERT INTO apps_daily (date, app_name, exe_name, total_duration_secs, open_count)
-		VALUES (?, ?, ?, ?, 1)
-		ON CONFLICT(date, exe_name) DO UPDATE SET
+		INSERT INTO apps_daily (date, app_name, exe_name, exe_path, app_id, total_duration_secs, open_count)
+		VALUES (?, ?, ?, ?, ?, ?, 1)
+		ON CONFLICT(date, app_id) DO UPDATE SET
+			app_name = excluded.app_name,
+			exe_name = excluded.exe_name,
+			exe_path = excluded.exe_path,
 			total_duration_secs = total_duration_secs + excluded.total_duration_secs,
 			open_count = open_count + 1
-	`, s.Date, s.AppName, s.ExeName, s.DurationSecs)
+	`, s.Date, s.AppName, s.ExeName, s.ExePath, appID, s.DurationSecs)
 	if err != nil {
 		return err
 	}
 
 	if cleanBrowserTitle != "" {
 		_, err = tx.Exec(`
-			INSERT INTO browsing_daily (date, domain_or_title, total_duration_secs, open_count)
-			VALUES (?, ?, ?, 1)
-			ON CONFLICT(date, domain_or_title) DO UPDATE SET
+			INSERT INTO browsing_daily (date, app_id, site_name, total_duration_secs, open_count)
+			VALUES (?, ?, ?, ?, 1)
+			ON CONFLICT(date, app_id, site_name) DO UPDATE SET
 				total_duration_secs = total_duration_secs + excluded.total_duration_secs,
 				open_count = open_count + 1
-		`, s.Date, cleanBrowserTitle, s.DurationSecs)
+		`, s.Date, appID, cleanBrowserTitle, s.DurationSecs)
 		if err != nil {
 			return err
 		}
@@ -70,22 +86,24 @@ type AppDailyStat struct {
 	Date              string
 	AppName           string
 	ExeName           string
+	AppID             string
 	TotalDurationSecs int
 	OpenCount         int
 }
-
 
 // ActiveSessionSnapshot is a read-only view of the persisted active session.
 // Read paths use it instead of rotating, because rotating inserted a slice and
 // every reader could trigger it, which double-counted while a session spanned
 // midnight.
 type ActiveSessionSnapshot struct {
-	AppName      string
-	ExeName      string
-	WindowTitle  string
-	StartTime    time.Time
-	LastSeen     time.Time
-	Date         string
+	AppName     string
+	ExeName     string
+	ExePath     string
+	AppID       string
+	WindowTitle string
+	StartTime   time.Time
+	LastSeen    time.Time
+	Date        string
 }
 
 // GetActiveSession returns the persisted active session, or nil when there is
@@ -95,9 +113,9 @@ func GetActiveSession() (*ActiveSessionSnapshot, error) {
 	var startTime, lastSeen int64
 
 	err := db.QueryRow(`
-		SELECT app_name, exe_name, window_title, start_time, last_seen, date
+		SELECT app_name, exe_name, COALESCE(exe_path, ''), COALESCE(app_id, ''), window_title, start_time, last_seen, date
 		FROM active_session WHERE id = 1
-	`).Scan(&s.AppName, &s.ExeName, &s.WindowTitle, &startTime, &lastSeen, &s.Date)
+	`).Scan(&s.AppName, &s.ExeName, &s.ExePath, &s.AppID, &s.WindowTitle, &startTime, &lastSeen, &s.Date)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -151,15 +169,15 @@ func RebaseActiveSessionStart(start time.Time, date string) error {
 	return err
 }
 
-func GetAppUsageTodaySeconds(exeName string) int {
+func GetAppUsageTodaySeconds(appID string) int {
 	today := Today()
 	var secs int
 	err := db.QueryRow(`
 		SELECT COALESCE(total_duration_secs, 0) FROM apps_daily
-		WHERE date = ? AND exe_name = ? COLLATE NOCASE
-	`, today, exeName).Scan(&secs)
+		WHERE date = ? AND app_id = ?
+	`, today, appID).Scan(&secs)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		log.Printf("WARN: GetAppUsageTodaySeconds query failed for %s: %v", exeName, err)
+		log.Printf("WARN: GetAppUsageTodaySeconds query failed for %s: %v", appID, err)
 	}
 
 	active, aerr := GetActiveSession()
@@ -167,7 +185,7 @@ func GetAppUsageTodaySeconds(exeName string) int {
 		log.Printf("WARN: GetActiveSession failed: %v", aerr)
 		return secs
 	}
-	if active != nil && strings.EqualFold(active.ExeName, exeName) {
+	if active != nil && active.AppID == appID {
 		secs += liveElapsedToday(active.StartTime, time.Now())
 	}
 	return secs
@@ -176,7 +194,7 @@ func GetAppUsageTodaySeconds(exeName string) int {
 func GetAppUsageTodayMinutesMap() (map[string]int, error) {
 	today := Today()
 	rows, err := db.Query(`
-		SELECT exe_name, total_duration_secs FROM apps_daily
+		SELECT app_id, total_duration_secs FROM apps_daily
 		WHERE date = ?
 	`, today)
 	if err != nil {
@@ -186,12 +204,12 @@ func GetAppUsageTodayMinutesMap() (map[string]int, error) {
 
 	res := make(map[string]int)
 	for rows.Next() {
-		var exeName string
+		var appID string
 		var secs int
-		if err := rows.Scan(&exeName, &secs); err != nil {
+		if err := rows.Scan(&appID, &secs); err != nil {
 			return nil, err
 		}
-		res[strings.ToLower(exeName)] = secs / 60
+		res[appID] = secs / 60
 	}
 
 	active, aerr := GetActiveSession()
@@ -201,7 +219,7 @@ func GetAppUsageTodayMinutesMap() (map[string]int, error) {
 	}
 	if active != nil {
 		if elapsed := liveElapsedToday(active.StartTime, time.Now()); elapsed > 0 {
-			res[strings.ToLower(active.ExeName)] += elapsed / 60
+			res[active.AppID] += elapsed / 60
 		}
 	}
 
@@ -216,7 +234,7 @@ func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Sessi
 		offset = 0
 	}
 	dataQuery := `
-		SELECT app_name, exe_name, window_title, start_time, end_time, duration_secs, date
+		SELECT app_name, exe_name, COALESCE(exe_path, ''), COALESCE(app_id, ''), window_title, start_time, end_time, duration_secs, date
 		FROM sessions
 	`
 
@@ -249,7 +267,7 @@ func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Sessi
 		var startTime int64
 		var endTime *int64
 		var windowTitle *string
-		if err := rows.Scan(&s.AppName, &s.ExeName, &windowTitle, &startTime, &endTime, &s.DurationSecs, &s.Date); err != nil {
+		if err := rows.Scan(&s.AppName, &s.ExeName, &s.ExePath, &s.AppID, &windowTitle, &startTime, &endTime, &s.DurationSecs, &s.Date); err != nil {
 			return nil, err
 		}
 		if windowTitle != nil {
@@ -265,7 +283,7 @@ func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Sessi
 }
 
 func GetAppStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
-	query := `SELECT date, app_name, exe_name, total_duration_secs, open_count FROM apps_daily`
+	query := `SELECT date, app_name, exe_name, app_id, total_duration_secs, open_count FROM apps_daily`
 	var args []any
 	if startDate != "" && endDate != "" {
 		query += ` WHERE date >= ? AND date <= ?`
@@ -281,7 +299,7 @@ func GetAppStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 	var stats []AppDailyStat
 	for rows.Next() {
 		var s AppDailyStat
-		if err := rows.Scan(&s.Date, &s.AppName, &s.ExeName, &s.TotalDurationSecs, &s.OpenCount); err != nil {
+		if err := rows.Scan(&s.Date, &s.AppName, &s.ExeName, &s.AppID, &s.TotalDurationSecs, &s.OpenCount); err != nil {
 			return nil, err
 		}
 		stats = append(stats, s)
@@ -299,7 +317,7 @@ func GetAppStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 			if elapsed > 0 {
 				found := false
 				for i, s := range stats {
-					if s.Date == today && strings.EqualFold(s.ExeName, active.ExeName) {
+					if s.Date == today && s.AppID == active.AppID {
 						stats[i].TotalDurationSecs += elapsed
 						stats[i].OpenCount += 1
 						found = true
@@ -310,6 +328,7 @@ func GetAppStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 					stats = append(stats, AppDailyStat{
 						Date:              today,
 						AppName:           active.AppName,
+						AppID:             active.AppID,
 						ExeName:           active.ExeName,
 						TotalDurationSecs: elapsed,
 						OpenCount:         1,
@@ -324,7 +343,7 @@ func GetAppStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 
 func GetBrowserStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 	rows, err := db.Query(`
-		SELECT date, domain_or_title, '', total_duration_secs, open_count
+		SELECT date, site_name, app_id, total_duration_secs, open_count
 		FROM browsing_daily
 		WHERE date >= ? AND date <= ?
 		ORDER BY date DESC, total_duration_secs DESC
@@ -337,7 +356,7 @@ func GetBrowserStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 	var stats []AppDailyStat
 	for rows.Next() {
 		var s AppDailyStat
-		if err := rows.Scan(&s.Date, &s.AppName, &s.ExeName, &s.TotalDurationSecs, &s.OpenCount); err != nil {
+		if err := rows.Scan(&s.Date, &s.AppName, &s.AppID, &s.TotalDurationSecs, &s.OpenCount); err != nil {
 			return nil, err
 		}
 		stats = append(stats, s)
@@ -348,6 +367,8 @@ func GetBrowserStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 type ActiveSessionRecord struct {
 	AppName     string
 	ExeName     string
+	ExePath     string
+	AppID       string
 	WindowTitle string
 	StartTime   time.Time
 	LastSeen    time.Time
@@ -359,10 +380,14 @@ func SaveActiveSession(s *ActiveSessionRecord) error {
 	if lastSeen.IsZero() {
 		lastSeen = time.Now()
 	}
+	appID := s.AppID
+	if appID == "" {
+		appID = legacyAppIDFor(s.ExeName)
+	}
 	_, err := db.Exec(`
-		INSERT OR REPLACE INTO active_session (id, app_name, exe_name, window_title, start_time, last_seen, date)
-		VALUES (1, ?, ?, ?, ?, ?, ?)
-	`, s.AppName, s.ExeName, s.WindowTitle, s.StartTime.Unix(), lastSeen.Unix(), s.Date)
+		INSERT OR REPLACE INTO active_session (id, app_name, exe_name, exe_path, app_id, window_title, start_time, last_seen, date)
+		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, s.AppName, s.ExeName, s.ExePath, appID, s.WindowTitle, s.StartTime.Unix(), lastSeen.Unix(), s.Date)
 	return err
 }
 
@@ -376,9 +401,9 @@ func RecoverActiveSession() (*Session, error) {
 	var startTime, lastSeen int64
 
 	err := db.QueryRow(`
-		SELECT app_name, exe_name, window_title, start_time, last_seen, date
+		SELECT app_name, exe_name, COALESCE(exe_path, ''), COALESCE(app_id, ''), window_title, start_time, last_seen, date
 		FROM active_session WHERE id = 1
-	`).Scan(&s.AppName, &s.ExeName, &s.WindowTitle, &startTime, &lastSeen, &s.Date)
+	`).Scan(&s.AppName, &s.ExeName, &s.ExePath, &s.AppID, &s.WindowTitle, &startTime, &lastSeen, &s.Date)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -395,10 +420,24 @@ func RecoverActiveSession() (*Session, error) {
 	return &Session{
 		AppName:      s.AppName,
 		ExeName:      s.ExeName,
+		ExePath:      s.ExePath,
+		AppID:        s.AppID,
 		WindowTitle:  s.WindowTitle,
 		StartTime:    time.Unix(startTime, 0),
 		EndTime:      time.Unix(lastSeen, 0),
 		DurationSecs: duration,
 		Date:         s.Date,
 	}, nil
+}
+
+// legacyAppIDFor builds the key used for rows that predate identity. It lives
+// here rather than importing the system package so storage stays independent of
+// windowing concerns.
+func legacyAppIDFor(exeName string) string {
+	name := strings.ToLower(strings.TrimSpace(exeName))
+	name = strings.TrimSuffix(name, ".exe")
+	if name == "" {
+		name = "unknown"
+	}
+	return name + "|legacy"
 }

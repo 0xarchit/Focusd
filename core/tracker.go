@@ -20,6 +20,8 @@ import (
 type activeSession struct {
 	AppName     string
 	ExeName     string
+	ExePath     string
+	AppID       string
 	WindowTitle string
 	StartTime   time.Time
 	Date        string
@@ -396,6 +398,8 @@ func (t *Tracker) detectWallClockGap() {
 // Win32 calls so session decisions can be tested directly.
 type pollObservation struct {
 	exeName string
+	exePath string
+	appID   string
 	title   string
 }
 
@@ -430,25 +434,33 @@ func (t *Tracker) poll() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	t.applyPoll(&pollObservation{exeName: info.ExeName, title: info.Title})
+	t.applyPoll(&pollObservation{
+		exeName: info.ExeName,
+		exePath: info.ExePath,
+		appID:   info.AppID,
+		title:   info.Title,
+	})
 }
 
 // applyPoll updates session state from one observation. Caller holds t.mu.
 func (t *Tracker) applyPoll(obs *pollObservation) {
 	if t.currentSession != nil {
-		isSameExe := t.currentSession.ExeName == obs.exeName
+		// Identity, not the exe base name, decides whether this is the same
+		// app. Firefox and Firefox Nightly share a base name.
+		isSameApp := t.currentSession.AppID == obs.appID &&
+			(t.currentSession.ExeName == obs.exeName || obs.appID == "")
 
 		// A blank caption means a child window of the app we are already
 		// tracking took focus. Closing here would split one session into many
 		// and inflate open counts for no user-visible change.
-		if isSameExe && obs.title == "" {
+		if isSameApp && obs.title == "" {
 			return
 		}
 
 		isBrowser := system.IsBrowser(obs.exeName)
 		isSameTitle := t.currentSession.WindowTitle == obs.title
 
-		if isSameExe && (!isBrowser || isSameTitle) {
+		if isSameApp && (!isBrowser || isSameTitle) {
 			return
 		}
 		t.closeCurrentSession()
@@ -462,6 +474,8 @@ func (t *Tracker) applyPoll(obs *pollObservation) {
 	t.currentSession = &activeSession{
 		AppName:     getAppName(obs.exeName),
 		ExeName:     obs.exeName,
+		ExePath:     obs.exePath,
+		AppID:       obs.appID,
 		WindowTitle: obs.title,
 		StartTime:   time.Now(),
 		Date:        storage.Today(),

@@ -1,6 +1,7 @@
 package system
 
 import (
+	"path/filepath"
 	"syscall"
 	"unsafe"
 )
@@ -26,6 +27,8 @@ const (
 type WindowInfo struct {
 	Title   string
 	ExeName string
+	ExePath string
+	AppID   string
 }
 
 func GetForegroundWindowInfo() (*WindowInfo, error) {
@@ -44,17 +47,30 @@ func GetForegroundWindowInfo() (*WindowInfo, error) {
 	title := getWindowText(hwnd)
 
 	exeName := ""
+	exePath := ""
 	if pid != 0 {
-		exeName = getProcessName(pid)
+		// The full image path is what distinguishes one install from another.
+		// It needs fewer rights than the module base name, so it resolves for
+		// more processes.
+		exePath, _ = getProcessPath(pid)
+		if exePath != "" {
+			exeName = filepath.Base(exePath)
+		} else {
+			exeName = getProcessName(pid)
+		}
 	}
 
 	if title == "" && exeName == "" {
 		return nil, nil
 	}
 
+	id := ResolveIdentity(exeName, exePath)
+
 	return &WindowInfo{
 		Title:   title,
 		ExeName: exeName,
+		ExePath: exePath,
+		AppID:   id.AppID,
 	}, nil
 }
 

@@ -95,6 +95,12 @@ func initDB() error {
 		db = nil
 		return err
 	}
+
+	if err := Migrate(); err != nil {
+		db.Close()
+		db = nil
+		return err
+	}
 	return nil
 }
 
@@ -110,6 +116,8 @@ func createSchema() error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		app_name TEXT NOT NULL,
 		exe_name TEXT NOT NULL,
+		exe_path TEXT,
+		app_id TEXT,
 		window_title TEXT,
 		start_time INTEGER NOT NULL,
 		end_time INTEGER,
@@ -122,15 +130,19 @@ func createSchema() error {
 		date TEXT NOT NULL,
 		app_name TEXT NOT NULL,
 		exe_name TEXT NOT NULL,
+		exe_path TEXT,
+		app_id TEXT,
 		total_duration_secs INTEGER DEFAULT 0,
 		open_count INTEGER DEFAULT 0,
-		UNIQUE(date, exe_name)
+		UNIQUE(date, app_id)
 	);
 
 	CREATE TABLE IF NOT EXISTS active_session (
 		id INTEGER PRIMARY KEY CHECK (id = 1),
 		app_name TEXT NOT NULL,
 		exe_name TEXT NOT NULL,
+		exe_path TEXT,
+		app_id TEXT,
 		window_title TEXT,
 		start_time INTEGER NOT NULL,
 		last_seen INTEGER NOT NULL,
@@ -140,15 +152,15 @@ func createSchema() error {
 	CREATE TABLE IF NOT EXISTS browsing_daily (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		date TEXT NOT NULL,
-		domain_or_title TEXT NOT NULL,
+		app_id TEXT,
+		site_name TEXT NOT NULL,
 		total_duration_secs INTEGER DEFAULT 0,
 		open_count INTEGER DEFAULT 0,
-		UNIQUE(date, domain_or_title)
+		UNIQUE(date, app_id, site_name)
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date);
 	CREATE INDEX IF NOT EXISTS idx_sessions_start ON sessions(start_time);
-	CREATE INDEX IF NOT EXISTS idx_apps_daily_date ON apps_daily(date);
 
 	`
 

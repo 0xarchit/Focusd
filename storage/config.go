@@ -47,7 +47,7 @@ func CompareAndSwapConfig(key, oldValue, newValue string) (bool, error) {
 	if db == nil {
 		return false, fmt.Errorf("database not initialized")
 	}
-	
+
 	// If the row doesn't exist yet, try to insert it if oldValue is empty
 	if oldValue == "" {
 		res, err := db.Exec(`
