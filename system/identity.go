@@ -159,6 +159,17 @@ func sameAppKey(a, b string) bool {
 	return hashA == "" || hashB == ""
 }
 
+// AppIDForConfigKey converts a config key into the identity key used for usage
+// lookups. A bare exe name has no install hash, so it resolves to the legacy
+// key, which is what migrated rows carry and what a pathless live process uses.
+func AppIDForConfigKey(configKey string) string {
+	base, hash := splitAppKey(normalizeConfigKey(configKey))
+	if hash != "" {
+		return base + keySeparator + hash
+	}
+	return base + keySeparator + legacySuffix
+}
+
 // splitAppKey separates an app key into its exe name and its install hash. The
 // exe part is normalized so a bare config entry written as "Firefox.exe" and a
 // stored key both reduce to "firefox".
