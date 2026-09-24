@@ -135,6 +135,10 @@ func (m *Model) renderTopAppsPanel(width, height int) string {
 		maxDuration = max(maxDuration, a.Duration)
 	}
 	limits := system.GetAppTimeLimits()
+	limitedApps := make(map[string]bool, len(limits))
+	for key := range limits {
+		limitedApps[system.NormalizeConfigName(key)] = true
+	}
 	var lines []string
 
 	maxRows := max(1, height-4)
@@ -153,7 +157,7 @@ func (m *Model) renderTopAppsPanel(width, height int) string {
 		for idx := start; idx < end; idx++ {
 			a := m.dashboard.Apps[idx]
 			warn := "  "
-			if _, ok := limits[a.Name]; ok {
+			if limitedApps[system.NormalizeConfigName(a.ExeName)] || limitedApps[system.NormalizeConfigName(a.Name)] {
 				warn = amberStyle.Render("⚠ ")
 			}
 			nameW := max(10, width-24)

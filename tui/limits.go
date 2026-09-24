@@ -271,7 +271,11 @@ func (m *Model) limitRows() []limitRow {
 	limits := system.GetAppTimeLimits()
 	rows := make([]limitRow, 0, len(limits))
 	for app, mins := range limits {
-		rows = append(rows, limitRow{Name: app, LimitMinutes: mins, UsedSeconds: storage.GetAppUsageTodaySeconds(app)})
+		rows = append(rows, limitRow{
+			Name:         app,
+			LimitMinutes: mins,
+			UsedSeconds:  storage.GetAppUsageTodaySeconds(system.AppIDForConfigKey(app)),
+		})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
 	return rows

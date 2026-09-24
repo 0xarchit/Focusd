@@ -3,10 +3,10 @@ package tui
 import (
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -434,5 +434,3 @@ func renderExportButtons(active bool, selectedButton int) string {
 	}
 	return s[0] + "   " + s[1]
 }
-
-

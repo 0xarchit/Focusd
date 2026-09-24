@@ -205,10 +205,11 @@ func (t *Tracker) Start() error {
 			limits := system.GetAppTimeLimits()
 
 			t.mu.Lock()
-			var sessionExe, sessionAppName string
+			var sessionExe, sessionAppName, sessionAppID string
 			if t.currentSession != nil {
 				sessionExe = strings.ToLower(t.currentSession.ExeName)
 				sessionAppName = t.currentSession.AppName
+				sessionAppID = t.currentSession.AppID
 			}
 			t.mu.Unlock()
 
@@ -218,31 +219,35 @@ func (t *Tracker) Start() error {
 			}
 
 			if len(limits) > 0 && sessionExe != "" {
+				// Limits are configured against an app key. A bare exe name is
+				// a wildcard across installs, so existing settings keep firing.
+				limitKey, hasLimit := system.MatchLimitKey(limits, sessionAppID, sessionExe)
+
 				stateMu.Lock()
-				snoozeTime := disabledLimitApps[sessionExe]
+				snoozeTime := disabledLimitApps[limitKey]
 				appSnoozed := !snoozeTime.IsZero() && now.Before(snoozeTime)
 				if !snoozeTime.IsZero() && !now.Before(snoozeTime) {
-					disabledLimitApps[sessionExe] = time.Time{}
-					if prevSessionApp == sessionExe {
+					disabledLimitApps[limitKey] = time.Time{}
+					if prevSessionApp == limitKey {
 						prevSessionApp = ""
 					}
 					appSnoozed = false
 				}
 				stateMu.Unlock()
 
-				if limit, ok := limits[sessionExe]; ok && !appSnoozed && prevSessionApp != sessionExe {
+				if limit, ok := limits[limitKey]; ok && hasLimit && !appSnoozed && prevSessionApp != limitKey {
 					// GetAppUsageTodaySeconds already includes the live active session elapsed time
-					todayUsageSeconds := storage.GetAppUsageTodaySeconds(sessionExe)
+					todayUsageSeconds := storage.GetAppUsageTodaySeconds(sessionAppID)
 					todayUsage := todayUsageSeconds / 60
 					if todayUsage >= limit {
-						prevSessionApp = sessionExe // Set guard immediately to prevent repeated triggers
-						exeCopy := sessionExe
+						prevSessionApp = limitKey // Set guard immediately to prevent repeated triggers
+						keyCopy := limitKey
 						showNotificationWithAction("App Time Limit",
 							sessionAppName+" has exceeded daily limit!",
 							func(disable bool) {
 								if disable {
 									stateMu.Lock()
-									disabledLimitApps[exeCopy] = time.Now().Add(snoozeDuration)
+									disabledLimitApps[keyCopy] = time.Now().Add(snoozeDuration)
 									stateMu.Unlock()
 								}
 							})

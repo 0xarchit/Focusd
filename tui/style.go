@@ -254,4 +254,3 @@ func truncate(s string, limit int) string {
 	}
 	return sb.String()
 }
-

@@ -28,6 +28,7 @@ var tabNames = []string{"DASHBOARD", "STATS", "FOCUS", "LIMITS", "SETTINGS"}
 
 type appUsage struct {
 	Name     string
+	ExeName  string
 	Duration int
 	Opens    int
 }
@@ -123,19 +124,19 @@ type Model struct {
 	statsUsageOffset     int
 	statsBrowserOffset   int
 
-	dashSelected            int
-	statsSelected           int
-	browserSelected         int
-	limitsSelected          int
-	settingsSelected        int
-	settingsBrowserSelected int
-	settingsExportSelected  int
-	focusButton             int
-	focusDuration           int
-	settingsAddingBrowser    bool
-	settingsBrowserInput     string
-	settingsAddingWhitelist  bool
-	settingsWhitelistInput   string
+	dashSelected              int
+	statsSelected             int
+	browserSelected           int
+	limitsSelected            int
+	settingsSelected          int
+	settingsBrowserSelected   int
+	settingsExportSelected    int
+	focusButton               int
+	focusDuration             int
+	settingsAddingBrowser     bool
+	settingsBrowserInput      string
+	settingsAddingWhitelist   bool
+	settingsWhitelistInput    string
 	settingsWhitelistSelected int
 
 	limitForm limitForm
@@ -255,7 +256,12 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 		if name == "" {
 			name = s.AppName
 		}
-		data.Apps = append(data.Apps, appUsage{Name: name, Duration: s.TotalDurationSecs, Opens: s.OpenCount})
+		data.Apps = append(data.Apps, appUsage{
+			Name:     name,
+			ExeName:  s.ExeName,
+			Duration: s.TotalDurationSecs,
+			Opens:    s.OpenCount,
+		})
 		data.Total += s.TotalDurationSecs
 	}
 	data.ActiveApps = len(data.Apps)
@@ -265,7 +271,12 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 		log.Printf("WARN: failed to load browser stats: %v", err)
 	}
 	for _, s := range browsers {
-		data.Browsers = append(data.Browsers, appUsage{Name: s.AppName, Duration: s.TotalDurationSecs, Opens: s.OpenCount})
+		data.Browsers = append(data.Browsers, appUsage{
+			Name:     s.AppName,
+			ExeName:  s.ExeName,
+			Duration: s.TotalDurationSecs,
+			Opens:    s.OpenCount,
+		})
 	}
 
 	limits := system.GetAppTimeLimits()
@@ -273,7 +284,7 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 		usageMap, err := storage.GetAppUsageTodayMinutesMap()
 		if err == nil {
 			for app, mins := range limits {
-				if usageMap[app] >= mins {
+				if usageMap[system.AppIDForConfigKey(app)] >= mins {
 					data.LimitsHit++
 				}
 			}
@@ -365,7 +376,10 @@ func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error
 	}
 	combined := map[string]storage.AppDailyStat{}
 	for _, s := range stats {
-		key := s.ExeName
+		key := s.AppID
+		if key == "" {
+			key = s.ExeName
+		}
 		if key == "" {
 			key = s.AppName
 		}
@@ -373,6 +387,7 @@ func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error
 		if item.AppName == "" {
 			item.AppName = s.AppName
 			item.ExeName = s.ExeName
+			item.AppID = s.AppID
 		}
 		item.TotalDurationSecs += s.TotalDurationSecs
 		item.OpenCount += s.OpenCount
@@ -760,7 +775,7 @@ func (m *Model) renderTabs() string {
 	labelLine := strings.Join(labels, mutedStyle.Render(separator))
 	underlineLine := strings.Join(underlines, "   ")
 	tabWidth := lipgloss.Width(labelLine)
-	
+
 	inner := m.width - 4
 	leftMargin := (inner - tabWidth) / 2
 	if leftMargin < 0 {
@@ -823,7 +838,6 @@ func (m *Model) renderFooter() string {
 	}
 	return mutedStyle.Render(strings.Repeat("─", max(0, m.width))) + "\n  " + mutedStyle.Render(truncate(hint, m.width-2))
 }
-
 
 func (m Model) renderModal() string {
 	if m.modal.Title == "CUSTOM RANGE" {
