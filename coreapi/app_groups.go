@@ -7,86 +7,15 @@ import (
 	"strings"
 )
 
-type appPattern struct {
-	Name     string
-	Patterns []string
+type groupedBrowserStat struct {
+	Category   string
+	TotalSecs  int
+	SubEntries []subEntry
 }
 
-var appPatterns = []appPattern{
-	{Name: "YouTube", Patterns: []string{"youtube.com", "youtu.be", "- youtube", "| youtube"}},
-	{Name: "GitHub", Patterns: []string{"github.com", "· github", "- github", "| github", "/github"}},
-	{Name: "GitLab", Patterns: []string{"gitlab.com", "- gitlab", "| gitlab"}},
-	{Name: "Instagram", Patterns: []string{"instagram.com", "- instagram", "| instagram"}},
-	{Name: "Twitter/X", Patterns: []string{"twitter.com", "/ x", "| x", "- x"}},
-	{Name: "Facebook", Patterns: []string{"facebook.com", "- facebook", "| facebook"}},
-	{Name: "Reddit", Patterns: []string{"reddit.com", "- reddit", "| reddit"}},
-	{Name: "LinkedIn", Patterns: []string{"linkedin.com", "- linkedin", "| linkedin"}},
-	{Name: "TikTok", Patterns: []string{"tiktok.com", "- tiktok", "| tiktok"}},
-	{Name: "Netflix", Patterns: []string{"netflix.com", "- netflix", "| netflix"}},
-	{Name: "Prime Video", Patterns: []string{"primevideo.com", "amazon.com/gp/video", "- prime video"}},
-	{Name: "Hotstar", Patterns: []string{"hotstar.com", "- hotstar", "disney+ hotstar"}},
-	{Name: "JioCinema", Patterns: []string{"jiocinema.com", "- jiocinema"}},
-	{Name: "Spotify", Patterns: []string{"spotify.com", "- spotify", "| spotify"}},
-	{Name: "Twitch", Patterns: []string{"twitch.tv", "- twitch", "| twitch"}},
-	{Name: "Discord", Patterns: []string{"discord.com", "- discord", "| discord"}},
-	{Name: "Slack", Patterns: []string{"slack.com", "- slack", "| slack"}},
-	{Name: "WhatsApp", Patterns: []string{"web.whatsapp.com", "- whatsapp"}},
-	{Name: "Telegram", Patterns: []string{"web.telegram.org", "- telegram"}},
-	{Name: "Gmail", Patterns: []string{"mail.google.com", "- gmail", "| gmail", "inbox -"}},
-	{Name: "Outlook", Patterns: []string{"outlook.live.com", "outlook.office.com", "- outlook"}},
-	{Name: "Google Drive", Patterns: []string{"drive.google.com", "- google drive"}},
-	{Name: "Google Docs", Patterns: []string{"docs.google.com", "- google docs"}},
-	{Name: "Google Sheets", Patterns: []string{"sheets.google.com", "- google sheets"}},
-	{Name: "Google Meet", Patterns: []string{"meet.google.com", "- google meet"}},
-	{Name: "Zoom", Patterns: []string{"zoom.us", "- zoom", "| zoom"}},
-	{Name: "Microsoft Teams", Patterns: []string{"teams.microsoft.com", "- microsoft teams", "| teams"}},
-	{Name: "Notion", Patterns: []string{"notion.so", "- notion", "| notion"}},
-	{Name: "Figma", Patterns: []string{"figma.com", "- figma", "| figma"}},
-	{Name: "Canva", Patterns: []string{"canva.com", "- canva", "| canva"}},
-	{Name: "Trello", Patterns: []string{"trello.com", "- trello", "| trello"}},
-	{Name: "Asana", Patterns: []string{"asana.com", "- asana", "| asana"}},
-	{Name: "Jira", Patterns: []string{"atlassian.net", "- jira", "| jira"}},
-	{Name: "StackOverflow", Patterns: []string{"stackoverflow.com", "- stack overflow"}},
-	{Name: "LeetCode", Patterns: []string{"leetcode.com", "- leetcode", "| leetcode"}},
-	{Name: "HackerRank", Patterns: []string{"hackerrank.com", "- hackerrank"}},
-	{Name: "Codeforces", Patterns: []string{"codeforces.com", "- codeforces"}},
-	{Name: "Medium", Patterns: []string{"medium.com", "- medium", "| medium"}},
-	{Name: "Dev.to", Patterns: []string{"dev.to", "- dev community"}},
-	{Name: "Quora", Patterns: []string{"quora.com", "- quora", "| quora"}},
-	{Name: "Pinterest", Patterns: []string{"pinterest.com", "- pinterest", "| pinterest"}},
-	{Name: "Snapchat", Patterns: []string{"snapchat.com", "- snapchat"}},
-	{Name: "Amazon", Patterns: []string{"amazon.in", "amazon.com", "- amazon"}},
-	{Name: "Flipkart", Patterns: []string{"flipkart.com", "- flipkart"}},
-	{Name: "Myntra", Patterns: []string{"myntra.com", "- myntra"}},
-	{Name: "Swiggy", Patterns: []string{"swiggy.com", "- swiggy"}},
-	{Name: "Zomato", Patterns: []string{"zomato.com", "- zomato"}},
-	{Name: "Uber", Patterns: []string{"uber.com", "- uber"}},
-	{Name: "Ola", Patterns: []string{"olacabs.com", "- ola"}},
-	{Name: "ChatGPT", Patterns: []string{"chat.openai.com", "chatgpt.com", "- chatgpt"}},
-	{Name: "Claude", Patterns: []string{"claude.ai", "- claude"}},
-	{Name: "Google Gemini", Patterns: []string{"gemini.google.com", "- gemini"}},
-	{Name: "Perplexity", Patterns: []string{"perplexity.ai", "- perplexity"}},
-	{Name: "Unstop", Patterns: []string{"unstop.com", "// unstop"}},
-	{Name: "Internshala", Patterns: []string{"internshala.com", "- internshala"}},
-	{Name: "Naukri", Patterns: []string{"naukri.com", "- naukri"}},
-	{Name: "GeeksforGeeks", Patterns: []string{"geeksforgeeks.org", "- geeksforgeeks"}},
-	{Name: "W3Schools", Patterns: []string{"w3schools.com", "- w3schools"}},
-	{Name: "MDN", Patterns: []string{"developer.mozilla.org", "- mdn"}},
-	{Name: "VS Code", Patterns: []string{"- visual studio code", "vscode"}},
-	{Name: "CodePen", Patterns: []string{"codepen.io", "- codepen"}},
-	{Name: "Replit", Patterns: []string{"replit.com", "- replit"}},
-	{Name: "Vercel", Patterns: []string{"vercel.com", "- vercel"}},
-	{Name: "Netlify", Patterns: []string{"netlify.com", "- netlify"}},
-	{Name: "AWS", Patterns: []string{"aws.amazon.com", "console.aws", "- aws"}},
-	{Name: "Google Cloud", Patterns: []string{"console.cloud.google", "- google cloud"}},
-	{Name: "Azure", Patterns: []string{"portal.azure.com", "- azure"}},
-	{Name: "Coursera", Patterns: []string{"coursera.org", "- coursera"}},
-	{Name: "Udemy", Patterns: []string{"udemy.com", "- udemy"}},
-	{Name: "Khan Academy", Patterns: []string{"khanacademy.org", "- khan academy"}},
-	{Name: "Wikipedia", Patterns: []string{"wikipedia.org", "- wikipedia"}},
-	{Name: "Google Search", Patterns: []string{"google.com/search", "- google search"}},
-	{Name: "Bing", Patterns: []string{"bing.com/search", "- bing"}},
-	{Name: "DuckDuckGo", Patterns: []string{"duckduckgo.com", "- duckduckgo"}},
+type subEntry struct {
+	Title    string
+	Duration int
 }
 
 var defaultBrowserTitles = map[string]bool{
@@ -103,48 +32,15 @@ var defaultBrowserTitles = map[string]bool{
 	"brave":           true,
 	"opera":           true,
 	"vivaldi":         true,
+	"chrome":          true,
+	"firefox":         true,
+	"edge":            true,
 }
 
-func extractAppCategory(title string) string {
-	if title == "" {
-		return ""
-	}
-
-	titleLower := strings.ToLower(title)
-
-	if defaultBrowserTitles[titleLower] {
-		return "Browser (Idle)"
-	}
-
-	if titleLower == "x.com" ||
-		strings.HasPrefix(titleLower, "x.com/") ||
-		strings.Contains(titleLower, "://x.com/") {
-		return "Twitter/X"
-	}
-
-	for i := range appPatterns {
-		app := &appPatterns[i]
-		for _, pattern := range app.Patterns {
-			if strings.Contains(titleLower, strings.ToLower(pattern)) {
-				return app.Name
-			}
-		}
-	}
-
-	return ""
-}
-
-type groupedBrowserStat struct {
-	Category   string
-	TotalSecs  int
-	SubEntries []subEntry
-}
-
-type subEntry struct {
-	Title    string
-	Duration int
-}
-
+// groupBrowserStats rolls individual site entries up into categories. An entry
+// that is already a category name counts as its own group rather than as a
+// sub-entry, which keeps the display stable whether the stored value was
+// catalogued at write time or is an uncatalogued page title.
 func groupBrowserStats(stats []storage.AppDailyStat) []groupedBrowserStat {
 	groups := make(map[string]*groupedBrowserStat)
 	var order []string
@@ -154,34 +50,23 @@ func groupBrowserStats(stats []storage.AppDailyStat) []groupedBrowserStat {
 		duration := stat.TotalDurationSecs
 
 		category := extractAppCategory(title)
-
 		if category == "" {
 			category = title
 		}
 
-		if g, ok := groups[category]; ok {
-			g.TotalSecs += duration
-			if category != title {
-				cleanTitle := cleanTitleForDisplay(title)
-				g.SubEntries = append(g.SubEntries, subEntry{
-					Title:    cleanTitle,
-					Duration: duration,
-				})
-			}
-		} else {
-			order = append(order, category)
-			g := &groupedBrowserStat{
-				Category:  category,
-				TotalSecs: duration,
-			}
-			if category != title {
-				cleanTitle := cleanTitleForDisplay(title)
-				g.SubEntries = []subEntry{{
-					Title:    cleanTitle,
-					Duration: duration,
-				}}
-			}
+		g, ok := groups[category]
+		if !ok {
+			g = &groupedBrowserStat{Category: category, TotalSecs: 0}
 			groups[category] = g
+			order = append(order, category)
+		}
+		g.TotalSecs += duration
+
+		if category != title {
+			g.SubEntries = append(g.SubEntries, subEntry{
+				Title:    cleanTitleForDisplay(title),
+				Duration: duration,
+			})
 		}
 	}
 
@@ -191,7 +76,10 @@ func groupBrowserStats(stats []storage.AppDailyStat) []groupedBrowserStat {
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].TotalSecs > result[j].TotalSecs
+		if result[i].TotalSecs != result[j].TotalSecs {
+			return result[i].TotalSecs > result[j].TotalSecs
+		}
+		return result[i].Category < result[j].Category
 	})
 
 	return result
