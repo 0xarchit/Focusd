@@ -463,7 +463,16 @@ func (t *Tracker) applyPoll(obs *pollObservation) {
 		}
 
 		isBrowser := system.IsBrowser(obs.exeName)
+
+		// Browsers are compared on the cleaned title. A raw title ticks with
+		// notification counts, timers, and tab-group noise, which closed and
+		// reopened the session several times a minute and inflated open
+		// counts. Non-browser apps keep using the raw title.
 		isSameTitle := t.currentSession.WindowTitle == obs.title
+		if isBrowser && isSameApp {
+			isSameTitle = cleanWindowTitle(t.currentSession.WindowTitle, obs.exeName) ==
+				cleanWindowTitle(obs.title, obs.exeName)
+		}
 
 		if isSameApp && (!isBrowser || isSameTitle) {
 			return
