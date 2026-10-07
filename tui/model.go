@@ -292,14 +292,15 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	}
 
 	if includeHourly {
-		sessions, err := storage.GetSessionsPaginated(500, 0, today, today)
-		if err == nil {
-			for _, s := range sessions {
-				h := s.StartTime.Hour()
-				if h < 24 {
-					data.Hourly[h] += s.DurationSecs
-				}
+		// The hourly buckets are computed in SQL rather than by pulling a
+		// capped list of sessions, which used to drop everything past the first
+		// 500 rows and put a whole multi-hour session into one bar.
+		if buckets, err := storage.GetHourlyUsageToday(today); err == nil {
+			for hour, secs := range buckets {
+				data.Hourly[hour] = secs
 			}
+		} else {
+			log.Printf("WARN: failed to load hourly usage: %v", err)
 		}
 	}
 
