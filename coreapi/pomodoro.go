@@ -136,6 +136,12 @@ func GetPomodoroStatus() (active bool, remaining time.Duration, total int) {
 	return true, remaining, state.Duration
 }
 
+// CheckPomodoroAndNotify completes an expired timer.
+//
+// The state transition is committed first and the notification is only sent
+// once the commit succeeds. Notifying first meant a lost race produced a
+// duplicate alert on the next retry, because the CAS would fail, loop, and
+// notify again.
 func CheckPomodoroAndNotify(notifyFn func(title, msg string) bool) {
 	for i := 0; i < 5; i++ {
 		state, raw := LoadPomodoroStateRaw()
@@ -146,20 +152,24 @@ func CheckPomodoroAndNotify(notifyFn func(title, msg string) bool) {
 		elapsed := time.Since(state.StartTime)
 		totalDuration := time.Duration(state.Duration) * time.Minute
 
-		if elapsed >= totalDuration {
-			_ = notifyFn("Pomodoro Complete!", "Great work! Take a break.")
-			state.Notified = true
-			state.Active = false
-			ok, err := SavePomodoroStateCAS(raw, state)
-			if err != nil {
-				log.Printf("ERROR: failed to save pomodoro state: %v", err)
-				return
-			}
-			if ok {
-				return
-			}
+		if elapsed < totalDuration {
+			return
+		}
+
+		state.Notified = true
+		state.Active = false
+		ok, err := SavePomodoroStateCAS(raw, state)
+		if err != nil {
+			log.Printf("ERROR: failed to save pomodoro state: %v", err)
+			return
+		}
+		if !ok {
 			time.Sleep(10 * time.Millisecond)
 			continue
+		}
+
+		if notifyFn != nil {
+			notifyFn("Pomodoro Complete!", "Great work! Take a break.")
 		}
 		return
 	}
