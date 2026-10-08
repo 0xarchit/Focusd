@@ -487,15 +487,31 @@ func (t *Tracker) applyPoll(obs *pollObservation) {
 		return
 	}
 
+	// Private browsing titles are never persisted. The session still counts
+	// toward time, only the text is withheld.
+	stored := storableTitle(obs.title)
+	if stored == "" && IsPrivateWindowTitle(obs.title) {
+		stored = privateWindowLabel(obs.exeName)
+	}
+
 	t.currentSession = &activeSession{
 		AppName:     getAppName(obs.exeName),
 		ExeName:     obs.exeName,
 		ExePath:     obs.exePath,
 		AppID:       obs.appID,
-		WindowTitle: obs.title,
+		WindowTitle: stored,
 		StartTime:   time.Now(),
 		Date:        storage.Today(),
 	}
+}
+
+// privateWindowLabel is the placeholder stored for a private browsing session.
+func privateWindowLabel(exeName string) string {
+	base := baseExeName(exeName)
+	if base == "" {
+		return "Private Browsing"
+	}
+	return "Private Browsing (" + base + ")"
 }
 
 func (t *Tracker) closeCurrentSession() {
