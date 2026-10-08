@@ -1,0 +1,45 @@
+name: Verify
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+      - "refactor/**"
+      - "chore/**"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      - name: Build
+        env:
+          CGO_ENABLED: 0
+        run: go build ./...
+
+      # unsafeptr is disabled because versionPtrToUTF16 converts a pointer
+      # returned by VerQueryValueW, which is unavoidable for Win32 APIs that
+      # write a pointer into a caller-supplied out-parameter. Every other
+      # analyzer stays on. See the comment on that function for the reasoning.
+      - name: Vet
+        run: go vet -unsafeptr=false ./...
+
+      - name: Test
+        run: go test ./... -count=1
+
+      # The tracker guards its state with two mutexes, so a race build is the
+      # only way to catch an ordering mistake between them.
+      - name: Race
+        run: go test -race ./... -count=1
