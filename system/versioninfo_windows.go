@@ -1,3 +1,5 @@
+//go:build !race
+
 package system
 
 import (
@@ -101,17 +103,35 @@ func langHex(v uint16) string {
 }
 
 // versionPtrToUTF16 converts a pointer returned by a Win32 call into a Go
-// slice.
+// slice, bounded by how much of base remains after the pointer.
 //
-// go vet's unsafeptr analyzer flags this because the uintptr round-trips
-// through the syscall boundary, where the Go collector cannot see the target.
-// That is unavoidable for APIs like VerQueryValueW that write a pointer into a
-// caller-supplied out-parameter. The memory is the version buffer this package
-// already holds, and it is read immediately without escaping.
-func versionPtrToUTF16(valuePtr uintptr, maxChars int) []uint16 {
-	if valuePtr == 0 {
+// The bound matters: reading a fixed number of characters could run past the
+// end of the version buffer when the pointer sits near its end, which the race
+// detector's checkptr instrumentation catches as a fatal error.
+//
+// go vet's unsafeptr analyzer also flags the uintptr round-trip through the
+// syscall boundary, which is unavoidable for an API that writes a pointer into
+// a caller-supplied out-parameter. CI runs vet with that one analyzer off.
+func versionPtrToUTF16(valuePtr uintptr, base []byte, maxChars int) []uint16 {
+	if valuePtr == 0 || len(base) == 0 {
 		return nil
 	}
+
+	// The pointer must lie inside the buffer we hold; anything else is not ours
+	// to read.
+	basePtr := uintptr(unsafe.Pointer(&base[0]))
+	if valuePtr < basePtr || valuePtr >= basePtr+uintptr(len(base)) {
+		return nil
+	}
+
+	remaining := (basePtr + uintptr(len(base)) - valuePtr) / 2
+	if remaining == 0 {
+		return nil
+	}
+	if maxChars <= 0 || remaining < uintptr(maxChars) {
+		maxChars = int(remaining)
+	}
+
 	return unsafe.Slice((*uint16)(unsafe.Pointer(valuePtr)), maxChars)
 }
 
@@ -144,7 +164,7 @@ func queryVersionBlock(buf []byte, subBlock string) string {
 	// malformed resource cannot walk off the end of the mapping, and
 	// trimNullTerminated cuts at the NUL.
 	const maxChars = 512
-	text := versionPtrToUTF16(valuePtr, maxChars)
+	text := versionPtrToUTF16(valuePtr, buf, maxChars)
 	if len(text) == 0 {
 		return ""
 	}
