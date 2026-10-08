@@ -123,6 +123,8 @@ func (t *Tracker) Start() error {
 			t.flushCurrentSession()
 			t.flushPendingSessions()
 			storage.ClearActiveSession()
+			// Tear down any in-flight toast process with the daemon.
+			cancelNotify()
 			return nil
 		case <-pollTicker.C:
 			if storage.IsPaused() {
@@ -183,7 +185,7 @@ func (t *Tracker) Start() error {
 					continuousUseStart = time.Now() // Reset immediately to prevent repeated triggers
 					stateMu.Unlock()
 
-					showNotificationWithAction("Break Reminder",
+					showNotificationWithAction(notifyContext, "Break Reminder",
 						fmt.Sprintf("You've been working for %d min. Take a break!", mins),
 						func(disable bool) {
 							if disable {
@@ -242,7 +244,7 @@ func (t *Tracker) Start() error {
 					if todayUsage >= limit {
 						prevSessionApp = limitKey // Set guard immediately to prevent repeated triggers
 						keyCopy := limitKey
-						showNotificationWithAction("App Time Limit",
+						showNotificationWithAction(notifyContext, "App Time Limit",
 							sessionAppName+" has exceeded daily limit!",
 							func(disable bool) {
 								if disable {

@@ -5,5 +5,7 @@ import (
 )
 
 func checkPomodoroAndNotify() {
-	coreapi.CheckPomodoroAndNotify(showNotification)
+	coreapi.CheckPomodoroAndNotify(func(title, msg string) bool {
+		return showNotification(notifyContext, title, msg)
+	})
 }
