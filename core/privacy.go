@@ -2,16 +2,8 @@ package core
 
 import "strings"
 
-// Window titles are stored in plaintext. A title can carry a bank account page,
-// a mail subject line, a document name, or a search term, so titles from
-// private browsing modes are dropped before they ever reach the database.
-//
-// This is a best-effort marker list, not a guarantee. It cannot detect every
-// private session, and it deliberately errs toward keeping a title rather than
-// dropping legitimate history.
-
-// privateTitleMarkers identify a private or incognito window. Matching is
-// case-insensitive on the whole title.
+// privateTitleMarkers identify a private or incognito window, matched
+// case-insensitively. Best effort: it errs toward keeping a title.
 var privateTitleMarkers = []string{
 	"-inprivate",
 	" inprivate",
@@ -52,12 +44,9 @@ func IsPrivateWindowTitle(title string) bool {
 	return false
 }
 
-// storableTitle returns the title to persist, or an empty string when the title
-// must not be stored.
-//
-// A private window yields no title at all. When redaction is enabled the title
-// is replaced with a generic placeholder rather than dropped, so the user can
-// still see which app was used and for how long.
+// storableTitle returns the title to persist, or an empty string when it must
+// not be stored. With redaction on, a title is replaced with a placeholder
+// rather than dropped, so the app and duration are still visible.
 func storableTitle(title string) string {
 	trimmed := strings.TrimSpace(title)
 	if trimmed == "" {

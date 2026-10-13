@@ -9,13 +9,9 @@ import (
 	"strings"
 )
 
-// IPC listens on a fixed loopback port with no authentication, so any local
-// process could stop or flush the daemon. A per-install token file keeps the
-// channel usable by our own CLI and TUI while refusing everything else.
-//
-// The 0600 mode below is honoured on non-Windows platforms. On Windows the file
-// inherits the ACL of %APPDATA%, which is per-user and not readable by other
-// accounts by default, which is the boundary that actually holds there.
+// IPC listens on a fixed loopback port, so a per-install token file keeps it
+// closed to other local processes. The 0600 mode applies off Windows; on Windows
+// the file inherits the %APPDATA% ACL.
 
 const ipcTokenFile = "ipc.key"
 

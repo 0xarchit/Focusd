@@ -16,8 +16,7 @@ var (
 )
 
 // GetIdleSeconds returns how many whole seconds the user has been away from the
-// keyboard and mouse. A focused window is otherwise counted as active forever,
-// so a paused video or an abandoned tab inflates tracked time.
+// keyboard and mouse.
 func GetIdleSeconds() (int, error) {
 	var info lastInputInfo
 	info.CBSize = uint32(unsafe.Sizeof(info))
@@ -27,10 +26,8 @@ func GetIdleSeconds() (int, error) {
 		return 0, err
 	}
 
-	// Both values are millisecond tick counts from the same counter, so the
-	// difference is a duration. The subtraction stays in uint32 so a
-	// GetTickCount wraparound around every 49 days does not go negative; the
-	// result is only ever compared against a threshold, never accumulated.
+	// uint32 subtraction so a GetTickCount wraparound every 49 days cannot go
+	// negative. The result is only compared against a threshold, never summed.
 	idleMillis := uint32(GetTickCount()) - info.DwTime
 	return int(idleMillis / 1000), nil
 }

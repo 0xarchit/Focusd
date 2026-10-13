@@ -16,10 +16,8 @@ var (
 	notificationMu   sync.Mutex
 )
 
-// toastAUMID identifies focusd itself in the Action Center. Using the
-// PowerShell GUID made notifications appear as "Windows PowerShell", so a user
-// who had disabled PowerShell notifications never saw focusd alerts, and the
-// toast carried no application identity.
+// toastAUMID identifies focusd in the Action Center rather than borrowing the
+// PowerShell GUID, which made alerts appear under the wrong application.
 const toastAUMID = "Focusd.Desktop"
 
 // notificationProcessWindowHidden avoids flashing a console window.
@@ -28,10 +26,8 @@ const notificationProcessWindowHidden = 0x08000000
 // notificationMinInterval throttles bursts of toasts.
 const notificationMinInterval = 10 * time.Second
 
-// truncateRunes clips a string to at most n runes.
-//
-// The previous byte slice could split a multi-byte rune in the middle, which
-// produced malformed XML and a toast that silently failed to render.
+// truncateRunes clips a string to at most n runes. Byte slicing would split a
+// multi-byte rune and produce malformed XML.
 func truncateRunes(s string, n int) string {
 	if n <= 0 {
 		return ""
@@ -50,9 +46,7 @@ func truncateRunes(s string, n int) string {
 	return s
 }
 
-// xmlEscape escapes the characters that cannot appear literally in the toast
-// XML. The title and message travel through environment variables rather than
-// being interpolated, but escaping keeps the document well formed regardless.
+// xmlEscape escapes characters that cannot appear literally in the toast XML.
 func xmlEscape(s string) string {
 	replacer := strings.NewReplacer(
 		"&", "&amp;",
@@ -81,10 +75,9 @@ func resetNotificationState() {
 	notificationMu.Unlock()
 }
 
-// runToast executes the PowerShell toast script, cancelling it when ctx ends.
-//
-// Every call previously spawned a powershell.exe that lived for up to 120
-// seconds waiting on an event, so shutting down left processes behind.
+// runToast executes the PowerShell toast script, killing it when ctx ends. The
+// action script waits on an event, so without cancellation a toast process can
+// outlive shutdown by its full timeout.
 func runToast(ctx context.Context, script string, env []string) []byte {
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive",
 		"-WindowStyle", "Hidden", "-Command", script)

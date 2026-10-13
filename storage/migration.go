@@ -187,23 +187,17 @@ func runV3Migration() error {
 	return tx.Commit()
 }
 
-// legacyAppIDExpr is the SQL that reproduces the live legacyAppIDFor derivation
-// exactly: lowercase, then drop a trailing ".exe" and nothing else.
+// legacyAppIDExpr reproduces legacyAppIDFor exactly. A divergence here puts the
+// same app under two keys and double-counts transition-day totals.
 //
-// Getting this byte-identical to what live code produces is not cosmetic. If
-// the migration writes "firefox.exe|legacy" while live code writes
-// "firefox|legacy", the same app appears under two keys and transition-day
-// totals double-count.
-//
-// Note that rtrim(x, '.exe') is NOT usable here: rtrim strips any trailing
-// characters from that set, so "firefox.exe" would become "firefo".
+// rtrim(x, '.exe') is not usable: it strips any trailing characters from that
+// set, so "firefox.exe" would become "firefo".
 const legacyAppIDExpr = `CASE WHEN lower(%s) LIKE '%%.exe' ` +
 	`THEN substr(lower(%s), 1, length(lower(%s)) - 4) ELSE lower(%s) END || '|legacy'`
 
 // migrateAppsDaily rebuilds the table keyed by app identity. GROUP BY is
-// mandatory: the old UNIQUE(date, exe_name) was case sensitive, so a machine
-// that recorded both Firefox.exe and firefox.exe has two rows that would abort
-// the insert against the new key.
+// required because the old UNIQUE(date, exe_name) was case sensitive, so
+// case-variant rows would otherwise abort the insert.
 func migrateAppsDaily(tx *sql.Tx) error {
 	if _, err := tx.Exec(`
 		CREATE TABLE apps_daily_v3 (
@@ -249,10 +243,9 @@ func migrateAppsDaily(tx *sql.Tx) error {
 	return err
 }
 
-// migrateBrowsingDaily rebuilds the site table keyed by app and site. The
-// legacy table never recorded an executable, so migrated rows carry a generic
-// browser sentinel rather than pretending to belong to a specific install.
-// Referencing exe_name here is a real error: the v2 table has no such column.
+// migrateBrowsingDaily rebuilds the site table keyed by app and site. The v2
+// table never recorded an executable, so migrated rows get a generic browser
+// key rather than being attributed to an install.
 func migrateBrowsingDaily(tx *sql.Tx) error {
 	if _, err := tx.Exec(`
 		CREATE TABLE browsing_daily_v3 (

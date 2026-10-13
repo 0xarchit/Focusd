@@ -6,12 +6,10 @@ import (
 	"strings"
 )
 
-// AppIdentity separates which install is being tracked from how it is labelled.
-//
-// Identity has to be stable for the same install and different for distinct
-// installs. The exe base name alone fails the second test: firefox.exe is both
-// Firefox and Firefox Nightly. The install folder alone fails too, because
-// Chrome and Edge both live in a folder called "Application".
+// AppIdentity separates which install is tracked from how it is labelled. The
+// exe base name alone cannot identify an install (firefox.exe is both Firefox
+// and Firefox Nightly) and neither can the folder alone (Chrome and Edge both
+// live in a folder called "Application").
 type AppIdentity struct {
 	// AppID is the machine identity used as a database key.
 	AppID string
@@ -33,9 +31,7 @@ const systemSuffix = "system"
 // keySeparator divides the exe name from the install hash.
 const keySeparator = "|"
 
-// legacyAppID is the key used for rows that predate app identity. Live code
-// produces this only when no richer identity is available, so a migrated app and
-// a newly seen app of the same exe land on the same key.
+// legacyAppID is the key for rows that predate app identity.
 func legacyAppID(exeName string) string {
 	return normalizeExe(exeName) + keySeparator + legacySuffix
 }
@@ -56,19 +52,14 @@ func normalizeExe(exeName string) string {
 	return name
 }
 
-// dirHash returns a short, stable hash of an install directory. Only the
-// directory is used, never the file name, because Chrome and Edge update their
-// versioned subdirectories.
+// dirHash returns a short, stable hash of an install directory.
 func dirHash(dir string) string {
 	sum := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(dir))))
 	return hex.EncodeToString(sum[:])[:8]
 }
 
-// buildAppID derives the identity key for an exe path.
-//
-// With a path: firefox.exe|a1b2c3d4, distinct per install while surviving
-// version bumps. Without one: firefox.exe|system, which merges anything sharing
-// a name, and is the honest answer when the path is unreadable.
+// buildAppID derives the identity key. The directory alone is hashed, never the
+// file name, because browsers update their versioned subdirectories in place.
 func buildAppID(exeName, exePath string) string {
 	base := normalizeExe(exeName)
 	if exePath == "" {
@@ -95,12 +86,9 @@ func IsFallbackAppID(appID string) bool {
 	return hash == systemSuffix
 }
 
-// ConfigMatchesApp reports whether a config entry applies to a live app.
-//
-// Config keys are always bare exe names, either because that is what the user
-// typed or because they predate this feature. They therefore act as wildcards
-// across every install of that executable, so nobody's limits or whitelist
-// entries silently stop firing after the upgrade.
+// ConfigMatchesApp reports whether a config entry applies to a live app. Config
+// keys are bare exe names, so they wildcard across every install of that
+// executable and existing limits keep firing after the upgrade.
 func ConfigMatchesApp(configKey, appID string) bool {
 	baseConfig := appKeyBase(normalizeConfigKey(configKey))
 	baseApp := appKeyBase(appID)
@@ -121,29 +109,15 @@ func normalizeConfigKey(key string) string {
 }
 
 // StoredAppMatches reports whether a stored row's key is the same app as a live
-// key. It is deliberately strict: exact equality only.
-//
-// Migrated rows carry the legacy marker because no install directory was ever
-// recorded. They are NOT folded into a live install's totals, because a user
-// running both Firefox and Firefox Nightly would then have every row merged
-// again, which is exactly the problem this identity split exists to solve.
-// History recorded before the upgrade stays in its own bucket, and that
-// limitation is stated in the release notes.
+// key. Exact equality only: folding a legacy row into a live install would merge
+// Firefox and Firefox Nightly again.
 func StoredAppMatches(storedKey, liveKey string) bool {
 	return storedKey == liveKey
 }
 
-// sameAppKey reports whether two keys refer to the same app for config lookup
-// purposes. It exists so a config entry written before this feature, which is
-// just the bare exe name, keeps working after the upgrade.
-//
-// The rules, in order:
-//
-//   - identical keys match;
-//   - a bare exe name matches any key with the same exe name, so existing
-//     limits and whitelist entries act as wildcards across installs;
-//   - two different hashed keys never match, which is what keeps Firefox and
-//     Firefox Nightly separate.
+// sameAppKey compares keys for config lookup. A bare exe name acts as a
+// wildcard so limits written before this feature keep applying to every install;
+// two different hashed keys never match.
 func sameAppKey(a, b string) bool {
 	if a == b {
 		return true

@@ -92,9 +92,7 @@ type AppDailyStat struct {
 }
 
 // ActiveSessionSnapshot is a read-only view of the persisted active session.
-// Read paths use it instead of rotating, because rotating inserted a slice and
-// every reader could trigger it, which double-counted while a session spanned
-// midnight.
+// Rotation is the tracker's job, so read paths never insert.
 type ActiveSessionSnapshot struct {
 	AppName     string
 	ExeName     string
@@ -133,10 +131,9 @@ func startOfLocalDay(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
 
-// liveElapsedToday returns how many seconds of the active session count toward
-// today. A session that began before local midnight is clipped at midnight so
-// yesterday's time is never counted toward today, regardless of whether the
-// tracker has rotated it yet.
+// liveElapsedToday clips a session that began before local midnight at
+// midnight, so yesterday's time is never counted toward today even before the
+// tracker rotates it.
 func liveElapsedToday(start time.Time, now time.Time) int {
 	midnight := startOfLocalDay(now)
 	if start.Before(midnight) {
@@ -445,9 +442,8 @@ func RecoverActiveSession() (*Session, error) {
 	}, nil
 }
 
-// legacyAppIDFor builds the key used for rows that predate identity. It lives
-// here rather than importing the system package so storage stays independent of
-// windowing concerns.
+// legacyAppIDFor duplicates system.normalizeExe so storage does not import the
+// windowing package.
 func legacyAppIDFor(exeName string) string {
 	name := strings.ToLower(strings.TrimSpace(exeName))
 	name = strings.TrimSuffix(name, ".exe")

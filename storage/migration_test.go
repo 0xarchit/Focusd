@@ -281,10 +281,9 @@ func TestMigrateFreshDatabaseSkipsBackup(t *testing.T) {
 	}
 }
 
-// TestMigrationKeyMatchesLiveDerivation is the invariant that matters most. The
-// SQL in the migration and legacyAppIDFor in Go must produce byte-identical
-// keys, otherwise the same app lands under two keys on the day of the upgrade
-// and every total double-counts.
+// TestMigrationKeyMatchesLiveDerivation is the invariant that matters most: the
+// migration SQL and legacyAppIDFor must produce identical keys, or the same app
+// lands under two keys on upgrade day and totals double-count.
 func TestMigrationKeyMatchesLiveDerivation(t *testing.T) {
 	setupStorageEnv(t)
 

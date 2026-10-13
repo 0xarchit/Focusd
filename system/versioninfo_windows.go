@@ -41,8 +41,7 @@ func queryVersionLabel(exePath string) string {
 	}
 
 	buf := make([]byte, size)
-	// GetFileVersionInfo returns nonzero on success. It is a BOOL, not an
-	// error code, so treating it as GetLastError makes every lookup fail.
+	// GetFileVersionInfo returns a BOOL, not an error code.
 	ok, _, _ := procGetFileVersionInfo.Call(
 		uintptr(unsafe.Pointer(pathPtr)),
 		0,
@@ -65,9 +64,8 @@ func queryVersionLabel(exePath string) string {
 	return ""
 }
 
-// queryVersionString resolves a version-resource sub-block. The string table
-// lives under a language and codepage pair, so the common English US Unicode
-// pair is tried first and then a wildcard scan of the available languages.
+// queryVersionString resolves a version-resource sub-block, trying each
+// language and codepage pair in turn.
 func queryVersionString(buf []byte, keyFormat string) string {
 	for _, lang := range versionLangs {
 		key := expandVersionKey(keyFormat, lang)
@@ -102,16 +100,9 @@ func langHex(v uint16) string {
 	})
 }
 
-// versionPtrToUTF16 converts a pointer returned by a Win32 call into a Go
-// slice, bounded by how much of base remains after the pointer.
-//
-// The bound matters: reading a fixed number of characters could run past the
-// end of the version buffer when the pointer sits near its end, which the race
-// detector's checkptr instrumentation catches as a fatal error.
-//
-// go vet's unsafeptr analyzer also flags the uintptr round-trip through the
-// syscall boundary, which is unavoidable for an API that writes a pointer into
-// a caller-supplied out-parameter. CI runs vet with that one analyzer off.
+// versionPtrToUTF16 converts a Win32-returned pointer into a bounded Go slice.
+// An unbounded read runs past the version buffer when the pointer sits near its
+// end, which checkptr reports as fatal under -race.
 func versionPtrToUTF16(valuePtr uintptr, base []byte, maxChars int) []uint16 {
 	if valuePtr == 0 || len(base) == 0 {
 		return nil
@@ -141,12 +132,8 @@ func queryVersionBlock(buf []byte, subBlock string) string {
 		return ""
 	}
 
-	// VerQueryValueW takes four arguments:
-	//   pvsVerInfo, pSubBlock, ppvBuf, puValue
-	// puValue reports the resource type, which for a VS_VERSIONINFO string
-	// table entry is 31 on modern Windows rather than VT_LPSTR, so it is read
-	// but deliberately not filtered on. An empty result is detected by the
-	// NUL-terminated scan below.
+	// VerQueryValueW takes four arguments and returns the resource type as 31 for a
+	// string table entry, not VT_LPSTR, so valueType is read but not filtered.
 	var valueType uint32
 	var valuePtr uintptr
 
@@ -160,9 +147,6 @@ func queryVersionBlock(buf []byte, subBlock string) string {
 		return ""
 	}
 
-	// The returned buffer is NUL terminated. The slice is bounded so a
-	// malformed resource cannot walk off the end of the mapping, and
-	// trimNullTerminated cuts at the NUL.
 	const maxChars = 512
 	text := versionPtrToUTF16(valuePtr, buf, maxChars)
 	if len(text) == 0 {

@@ -37,9 +37,8 @@ func TestSplitSessionWithinOneDay(t *testing.T) {
 	}
 }
 
-// TestSplitSessionAcrossMidnight is the regression guard for the mis-attribution
-// bug: a session running over midnight used to be stamped entirely with the
-// previous day, so post-midnight time was counted as yesterday.
+// TestSplitSessionAcrossMidnight checks that time after midnight is recorded
+// against the new day rather than the day the session began on.
 func TestSplitSessionAcrossMidnight(t *testing.T) {
 	start := time.Date(2026, 6, 26, 22, 0, 0, 0, time.Local)
 	midnight := time.Date(2026, 6, 27, 0, 0, 0, 0, time.Local)

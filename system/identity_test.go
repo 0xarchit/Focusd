@@ -25,8 +25,8 @@ func TestNormalizeExe(t *testing.T) {
 	}
 }
 
-// TestBuildAppIDSeparatesInstalls is the regression guard for issue #17: the same
-// exe name in two different install directories must produce two different keys.
+// TestBuildAppIDSeparatesInstalls checks that one exe name in two install
+// directories yields two keys.
 func TestBuildAppIDSeparatesInstalls(t *testing.T) {
 	firefox := buildAppID("firefox.exe", `C:\Program Files\Mozilla Firefox\firefox.exe`)
 	nightly := buildAppID("firefox.exe", `C:\Program Files\Firefox Nightly\firefox.exe`)
@@ -134,9 +134,8 @@ func TestSameAppKeyKeepsInstallsSeparate(t *testing.T) {
 }
 
 // TestStoredAppMatchesIsStrict covers the migration rule: a row recorded before
-// paths existed keeps its own bucket rather than being folded into a live
-// install. Folding it in would re-merge Firefox and Firefox Nightly, which is
-// the exact problem this identity split exists to solve.
+// paths existed keeps its own bucket. Folding it into a live install would
+// re-merge Firefox and Firefox Nightly.
 func TestStoredAppMatchesIsStrict(t *testing.T) {
 	live := buildAppID("firefox.exe", `C:\Program Files\Mozilla Firefox\firefox.exe`)
 	nightly := buildAppID("firefox.exe", `C:\Program Files\Firefox Nightly\firefox.exe`)

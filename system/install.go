@@ -69,13 +69,8 @@ func installExes() error {
 	return nil
 }
 
-// installFile replaces dst with src atomically.
-//
-// The previous version renamed the existing binary aside and then truncated the
-// destination in place. A crash, a full disk, or an antivirus lock mid-copy
-// left the user with neither the old binary nor the new one. Writing to a
-// temporary file and renaming it into place means dst is always either the old
-// file or the new one.
+// installFile replaces dst with src. The copy is staged in the destination
+// directory so the final rename is atomic and dst is never left truncated.
 func installFile(src, dst string) error {
 	srcFile, err := os.Open(src)
 	if err != nil {

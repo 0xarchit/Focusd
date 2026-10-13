@@ -58,9 +58,8 @@ func TestSiteNameForDomains(t *testing.T) {
 	}
 }
 
-// TestSiteNameForNoFalsePositives is the regression guard for the old table,
-// whose "- x", "| x", "| teams", and "inbox -" patterns matched unrelated
-// titles.
+// TestSiteNameForNoFalsePositives checks that ordinary English words do not
+// resolve to a site.
 func TestSiteNameForNoFalsePositives(t *testing.T) {
 	tests := []struct {
 		in   string

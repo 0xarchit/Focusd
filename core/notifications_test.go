@@ -6,8 +6,8 @@ import (
 	"unicode/utf8"
 )
 
-// TestTruncateRunesKeepsValidUTF8 is the regression guard for the byte-slice
-// truncation, which split multi-byte runes and produced malformed toast XML.
+// TestTruncateRunesKeepsValidUTF8 checks truncation never splits a multi-byte
+// rune, which would produce malformed toast XML.
 func TestTruncateRunesKeepsValidUTF8(t *testing.T) {
 	tests := []struct {
 		name     string

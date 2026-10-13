@@ -179,15 +179,10 @@ func createSchema() error {
 	return err
 }
 
-// withBusyRetry runs an operation that can fail with SQLITE_BUSY.
-//
-// The daemon holds a single connection and the CLI opens its own handle to the
-// same file, so a read issued while the daemon is mid-transaction can hit a
-// lock despite busy_timeout. Retrying with a short backoff turns a visible
-// error into a slightly slower read.
-//
-// readOnlyBusyRetry is deliberately small: this only smooths over contention on
-// a local file, and a long wait would block the UI.
+// withBusyRetry retries an operation that hit SQLITE_BUSY. The daemon and the
+// CLI hold separate handles to the same file, so a read can lose a race with the
+// daemon's writer despite busy_timeout. The budget is kept short because this
+// runs on the UI's read path.
 func withBusyRetry(operation func() error) error {
 	var lastErr error
 	for attempt := 0; attempt < busyRetryAttempts; attempt++ {

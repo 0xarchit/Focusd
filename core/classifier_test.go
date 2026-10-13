@@ -77,9 +77,8 @@ func TestCleanWindowTitleBrowserSuffix(t *testing.T) {
 	}
 }
 
-// TestCleanWindowTitleKeepsPageText is the regression guard for the substring
-// bug: the old code used strings.Contains, so a short exe name stripped text
-// from the middle of unrelated titles.
+// TestCleanWindowTitleKeepsPageText checks that a short exe name never strips
+// text out of the middle of an unrelated title.
 func TestCleanWindowTitleKeepsPageText(t *testing.T) {
 	tests := []struct {
 		name string

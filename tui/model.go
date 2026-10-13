@@ -300,9 +300,7 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	}
 
 	if includeHourly {
-		// The hourly buckets are computed in SQL rather than by pulling a
-		// capped list of sessions, which used to drop everything past the first
-		// 500 rows and put a whole multi-hour session into one bar.
+		// Computed in SQL so a busy day is counted in full.
 		if buckets, err := storage.GetHourlyUsageToday(today); err == nil {
 			for hour, secs := range buckets {
 				data.Hourly[hour] = secs
@@ -443,8 +441,7 @@ func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, e
 const refreshInterval = 15 * time.Second
 
 // dueForRefresh reports whether enough wall-clock time has passed since the
-// last reload. Using elapsed time rather than a modulo of the second means the
-// interval is honoured exactly and cannot fire twice in the same window.
+// last reload.
 func (m *Model) dueForRefresh(now time.Time) bool {
 	if m.lastRefreshAt.IsZero() {
 		m.lastRefreshAt = now
@@ -480,10 +477,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pruneToasts()
 		cmds = append(cmds, secondTick(), checkDaemon())
 
-		// Reload on a wall-clock interval rather than a modulo of the second.
-		// Second%N fires for any N dividing 60, so an N of 5 or 10 loaded on
-		// each of those ticks, and each reload ran several aggregate queries
-		// against the single-connection database while the daemon was writing.
+		// Reload on elapsed time rather than Second()%N, which fires on every multiple
+		// of N within a minute.
 		if m.dueForRefresh(time.Time(msg)) {
 			isEditing := m.limitForm.Visible || m.settingsAddingBrowser || m.settingsAddingWhitelist
 			if !isEditing {

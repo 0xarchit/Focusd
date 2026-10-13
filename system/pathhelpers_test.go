@@ -110,8 +110,8 @@ func TestPathRemove(t *testing.T) {
 	}
 }
 
-// TestPathRemovePreservesUserEntries is the regression guard for issue #18:
-// removing the focusd entry must never cost the user another entry.
+// TestPathRemovePreservesUserEntries checks that removing the focusd entry
+// never costs the user another entry.
 func TestPathRemovePreservesUserEntries(t *testing.T) {
 	original := `%USERPROFILE%\go\bin;C:\Python312;C:\Program Files\Git\cmd;C:\focusd;C:\Users\me\bin`
 

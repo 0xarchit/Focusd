@@ -35,8 +35,8 @@ func TestSplitSessionHoursCrossesHour(t *testing.T) {
 	}
 }
 
-// TestSplitSessionHoursLongSession is the reported bug: 10:30 to 13:30 must not
-// put three hours into a single bar.
+// TestSplitSessionHoursLongSession checks that a three hour session cannot put
+// more than sixty minutes into any one bar.
 func TestSplitSessionHoursLongSession(t *testing.T) {
 	start := time.Date(2026, 6, 26, 10, 30, 0, 0, time.Local).Unix()
 	end := time.Date(2026, 6, 26, 13, 30, 0, 0, time.Local).Unix()

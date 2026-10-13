@@ -37,10 +37,8 @@ var defaultBrowserTitles = map[string]bool{
 	"edge":            true,
 }
 
-// groupBrowserStats rolls individual site entries up into categories. An entry
-// that is already a category name counts as its own group rather than as a
-// sub-entry, which keeps the display stable whether the stored value was
-// catalogued at write time or is an uncatalogued page title.
+// groupBrowserStats rolls site entries up into categories. An entry that is
+// already a category name becomes its own group rather than a sub-entry.
 func groupBrowserStats(stats []storage.AppDailyStat) []groupedBrowserStat {
 	groups := make(map[string]*groupedBrowserStat)
 	var order []string

@@ -2,9 +2,8 @@ package system
 
 import "testing"
 
-// TestMatchLimitKeyWildcard is the regression guard for a silent failure: limits
-// are stored under a bare exe name but usage is queried by app id, so an exact
-// lookup would never match and no limit would ever fire.
+// TestMatchLimitKeyWildcard checks that a bare config key matches a live app id,
+// since limits are stored by exe name but usage is queried by app id.
 func TestMatchLimitKeyWildcard(t *testing.T) {
 	limits := map[string]int{"firefox": 60}
 
@@ -121,8 +120,7 @@ func TestResolveDisplayNameOrder(t *testing.T) {
 	}
 }
 
-// TestWhitelistAddRemoveSymmetry covers the bug where removal compared the raw
-// argument while insertion normalized it, so "foo" never removed "foo.exe".
+// TestWhitelistAddRemoveSymmetry checks that removal normalizes like insertion,
 func TestWhitelistAddRemoveSymmetry(t *testing.T) {
 	setupConfigEnv(t)
 

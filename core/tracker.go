@@ -32,8 +32,7 @@ type activeSession struct {
 const gapFactor = 3
 
 // persistInterval is the shortest gap between two identical active-session
-// writes. Writing on every poll meant thousands of row rewrites a day for a
-// session that had not changed.
+// writes.
 const persistInterval = 30 * time.Second
 
 type Tracker struct {
@@ -137,9 +136,8 @@ func (t *Tracker) Start() error {
 			t.poll()
 			t.mu.Lock()
 			t.rotateActiveSessionAtMidnight()
-			// Force a write whenever the session identity changed, so an
-			// unexpected termination recovers the correct app rather than the
-			// previous one.
+			// Force a write on identity change so an unexpected termination
+			// recovers the correct app.
 			forcePersist := t.needsPersist()
 			t.mu.Unlock()
 			if forcePersist {
@@ -273,9 +271,7 @@ func (t *Tracker) recoverOrphanedSession() error {
 		return nil
 	}
 
-	// An orphaned browser session used to be inserted with an empty site name,
-	// so the browsing totals lost whatever the user was looking at whenever the
-	// daemon was killed rather than stopped.
+	// Recompute the browser title so recovered sessions keep their site totals.
 	cleanTitle := ""
 	if system.IsBrowser(recovered.ExeName) {
 		cleanTitle = cleanWindowTitle(recovered.WindowTitle, recovered.ExeName)
@@ -303,10 +299,9 @@ func (t *Tracker) needsPersist() bool {
 		t.currentSession.Date != t.persistedDate
 }
 
-// persistActiveSession writes the active session to storage, skipping the write
-// when nothing changed and the throttle window has not elapsed. lastSeen still
-// advances on the slow tick, which is what stops orphan recovery from billing a
-// crash as active time.
+// persistActiveSession writes the active session unless nothing changed and the
+// throttle window has not elapsed. lastSeen still advances on the slow tick, so
+// orphan recovery does not bill a crash as active time.
 func (t *Tracker) persistActiveSession() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -355,8 +350,7 @@ func (t *Tracker) writeActiveSession(force bool) {
 }
 
 // isIdle reports whether the user has been inactive long enough that time
-// should stop accruing. App limits depend on this too: without it a limit can
-// never fire on a machine the user simply walked away from.
+// should stop accruing.
 func (t *Tracker) isIdle() bool {
 	if system.GetTrackWhileIdle() {
 		return false
@@ -378,7 +372,6 @@ func (t *Tracker) isIdle() bool {
 
 // detectWallClockGap closes the running session when the wall clock jumped much
 // further than one poll interval, which means the machine slept or hibernated.
-// Without this the whole sleep was billed as active time.
 func (t *Tracker) detectWallClockGap() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -466,10 +459,8 @@ func (t *Tracker) applyPoll(obs *pollObservation) {
 
 		isBrowser := system.IsBrowser(obs.exeName)
 
-		// Browsers are compared on the cleaned title. A raw title ticks with
-		// notification counts, timers, and tab-group noise, which closed and
-		// reopened the session several times a minute and inflated open
-		// counts. Non-browser apps keep using the raw title.
+		// Browsers compare on the cleaned title: a raw title ticks with notification
+		// counts and tab-group noise, which would split the session repeatedly.
 		isSameTitle := t.currentSession.WindowTitle == obs.title
 		if isBrowser && isSameApp {
 			isSameTitle = cleanWindowTitle(t.currentSession.WindowTitle, obs.exeName) ==
@@ -525,11 +516,9 @@ func (t *Tracker) closeCurrentSession() {
 	t.currentSession = nil
 }
 
-// splitSessionAtMidnight breaks a session that crosses local midnight into one
-// slice per day. Without this the whole session was stamped with the date it
-// started on, so time after midnight was attributed to yesterday. A session can
-// span more than one boundary, for example after a crash or a resume from
-// sleep, so this walks every midnight rather than just the most recent one.
+// splitSessionAtMidnight breaks a session into one slice per calendar day.
+// Every boundary is walked, not just the most recent, because a session can span
+// several days after a crash or a resume from sleep.
 func splitSessionAtMidnight(s *activeSession, now time.Time) []*storage.Session {
 	if s == nil || !now.After(s.StartTime) {
 		return nil
@@ -585,9 +574,8 @@ func dateStr(t time.Time) string {
 	return t.Format("2006-01-02")
 }
 
-// rotateActiveSessionAtMidnight is the single place a session is rebased across
-// local midnight. Read paths no longer rotate, so this runs once per poll
-// rather than once per reader.
+// rotateActiveSessionAtMidnight is the single writer for rebasing a session
+// across local midnight.
 func (t *Tracker) rotateActiveSessionAtMidnight() {
 	if t.currentSession == nil {
 		return

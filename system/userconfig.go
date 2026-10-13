@@ -30,8 +30,7 @@ type UserConfig struct {
 
 // userConfigFile mirrors UserConfig for decoding. IdleThresholdMinutes is a
 // pointer so an absent key is distinguishable from an explicit zero, which
-// means "never treat me as idle". Without that, every config written before
-// this field existed would decode as zero and silently disable idle detection.
+// means "never treat me as idle".
 type userConfigFile struct {
 	WhitelistApps         []string          `json:"whitelist_apps"`
 	BreakReminderEnabled  bool              `json:"break_reminder_enabled"`
@@ -124,9 +123,8 @@ func loadFromDisk() {
 			userConfig.SnoozeDurationMinutes = temp.SnoozeDurationMinutes
 			userConfig.CustomBrowsers = temp.CustomBrowsers
 
-			// Leave the in-memory value alone when the key is absent, so a
-			// config written before idle detection existed keeps the default
-			// rather than decoding as "disabled".
+			// An absent key keeps the current value rather than decoding as
+			// "disabled".
 			if temp.IdleThresholdMinutes != nil {
 				userConfig.IdleThresholdMinutes = *temp.IdleThresholdMinutes
 			}
@@ -254,9 +252,7 @@ func RemoveWhitelistApp(exeName string) error {
 	configMu.Lock()
 	defer configMu.Unlock()
 
-	// Removal normalizes exactly like insertion did. It used to compare the raw
-	// argument, so removing "foo" never matched the stored "foo.exe" and the
-	// entry stayed forever.
+	// Normalize exactly like insertion, so "foo" removes the stored "foo.exe".
 	target := normalizeConfigName(exeName)
 
 	matched := false
@@ -339,12 +335,8 @@ func SetPomodoroMinutes(minutes int) error {
 	return saveUserConfigLocked()
 }
 
-// MatchLimitKey finds the config entry that governs an app.
-//
-// Limits are stored under a bare exe name, either because that is what the
-// user typed or because they predate app identity. Those act as wildcards
-// across every install of that executable, so a limit set before the upgrade
-// keeps firing afterwards. A specific app key wins over a wildcard.
+// MatchLimitKey finds the config entry that governs an app. A bare exe name
+// acts as a wildcard across every install; a specific app key wins.
 func MatchLimitKey(limits map[string]int, appID, exeName string) (string, bool) {
 	if appID != "" {
 		if _, ok := limits[appID]; ok {

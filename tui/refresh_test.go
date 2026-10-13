@@ -28,9 +28,8 @@ func TestDueForRefreshHonoursInterval(t *testing.T) {
 	}
 }
 
-// TestDueForRefreshNotModuloDriven is the regression guard for the old
-// Second()%5 condition, which fired on every multiple of five within a minute
-// rather than every five seconds.
+// TestDueForRefreshNotModuloDriven checks the gate honours elapsed time rather
+// than firing on every multiple of N within a minute.
 func TestDueForRefreshNotModuloDriven(t *testing.T) {
 	m := Model{}
 	start := time.Date(2026, 6, 26, 10, 0, 0, 0, time.UTC)

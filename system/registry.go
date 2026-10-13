@@ -148,9 +148,8 @@ func readUserPath(key registry.Key) (string, uint32, error) {
 	return val, valtype, err
 }
 
-// setUserPathValue writes PATH back using the value type it already had. A
-// REG_EXPAND_SZ PATH written as REG_SZ stops expanding %VAR% entries, which is
-// the breakage reported in issue #18.
+// setUserPathValue writes PATH back with the value type it already had. A
+// REG_EXPAND_SZ PATH rewritten as REG_SZ stops expanding %VAR% entries.
 func setUserPathValue(key registry.Key, value string, valtype uint32) error {
 	if valtype == registry.EXPAND_SZ {
 		return key.SetExpandStringValue("Path", value)
@@ -158,9 +157,8 @@ func setUserPathValue(key registry.Key, value string, valtype uint32) error {
 	return key.SetStringValue("Path", value)
 }
 
-// writeUserPath stores PATH, backing up the previous value first. It refuses
-// any result that would drop an entry present before the edit, which is the
-// data loss reported in issue #18.
+// writeUserPath stores PATH, backing up the previous value first, and refuses
+// any result that would drop a pre-existing entry.
 func writeUserPath(key registry.Key, value string, previous string, valtype uint32, removedEntry string) error {
 	if !pathWriteAllowed(previous, value, removedEntry) {
 		return fmt.Errorf("refusing to write PATH: would drop entries present before")

@@ -138,10 +138,8 @@ func TestEnsureIPCTokenIsStableAndPrivate(t *testing.T) {
 		t.Fatalf("token file missing: %v", err)
 	}
 
-	// The 0600 mode argument only takes effect on non-Windows platforms. On
-	// Windows the file inherits the ACL of %APPDATA%, which is per-user and
-	// not readable by other accounts by default. Asserting POSIX bits here
-	// would be asserting something Windows does not implement.
+	// The 0600 mode only takes effect off Windows, where the file inherits the
+	// %APPDATA% ACL instead.
 	if runtime.GOOS != "windows" {
 		info, err := os.Stat(tokenPath)
 		if err != nil {
@@ -217,8 +215,7 @@ func TestReadIPCTokenEmptyFile(t *testing.T) {
 	}
 }
 
-// TestParseRejectsBareStop covers the original unauthenticated protocol: a bare
-// "stop" on the loopback port must no longer be accepted.
+// TestParseRejectsBareStop checks an unauthenticated bare "stop" is refused.
 func TestParseRejectsBareStop(t *testing.T) {
 	if _, _, err := ParseIPCCommand("stop\n"); err == nil {
 		t.Fatal("bare stop must be rejected")

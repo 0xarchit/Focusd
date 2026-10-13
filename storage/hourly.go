@@ -2,14 +2,8 @@ package storage
 
 import "time"
 
-// GetHourlyUsageToday returns seconds of tracked time per clock hour for one
-// day.
-//
-// A session is distributed across the hours it actually covers. Assigning a
-// whole session to its start hour, as this used to, made a single bar report
-// more than sixty minutes while the following hours read zero. There is also no
-// row cap, so a busy day is counted in full rather than truncated at the first
-// 500 sessions.
+// GetHourlyUsageToday returns seconds of tracked time per clock hour. A session
+// is spread across the hours it covers, so no bucket can exceed sixty minutes.
 func GetHourlyUsageToday(date string) ([24]int, error) {
 	var buckets [24]int
 

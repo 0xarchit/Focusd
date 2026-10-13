@@ -6,11 +6,7 @@ import (
 	"sync"
 )
 
-// Version info gives a far better label than the exe base name, so Firefox
-// Nightly reads as "Firefox Nightly" rather than "Firefox". The read is cached
-// per path because it touches the disk and the poll loop runs every few
-// seconds.
-
+// Version info labels a binary better than its base name does.
 var (
 	versionInfoMu    sync.Mutex
 	versionInfoCache = map[string]string{}
@@ -23,8 +19,8 @@ var versionInfoBlocklist = []string{
 	"",
 }
 
-// ResolveIdentity builds the identity and label for a process. exePath may be
-// empty, in which case the key falls back to the exe name.
+// ResolveIdentity builds the identity and label for a process. Version info is
+// cached per path because it reads from disk on the poll loop.
 func ResolveIdentity(exeName, exePath string) AppIdentity {
 	id := AppIdentity{
 		ExeName: exeName,

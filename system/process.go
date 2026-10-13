@@ -37,15 +37,13 @@ var (
 )
 
 const (
-	// processQueryLimitedInformation needs fewer rights than
-	// PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, so it resolves for more
-	// processes than reading the module base name does.
+	// Fewer rights than PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, so it resolves
+	// for more processes.
 	processQueryLimitedInformation = 0x1000
 )
 
-// getProcessPath returns the full image path for a pid. It returns an empty
-// string when the process cannot be opened, which happens for elevated or
-// protected processes even at the reduced right level.
+// getProcessPath returns the full image path for a pid, or an empty string for
+// elevated and protected processes that cannot be opened.
 func getProcessPath(pid uint32) (string, error) {
 	handle, _, err := procOpenProcess.Call(
 		processQueryLimitedInformation,
@@ -173,11 +171,9 @@ func KillOtherInstances(name string) error {
 	return lastErr
 }
 
-// KillInstancesInDir terminates other instances of name whose executable lives
-// in dir. Matching on the name alone also matches an unrelated focusd.exe run
-// from somewhere else on disk, so callers that act destructively should scope by
-// directory. dir is compared case-insensitively and trailing separators are
-// ignored.
+// KillInstancesInDir terminates instances of name running from dir. Matching on
+// the name alone would also terminate an unrelated copy elsewhere on disk.
+// Processes whose path cannot be read are left alone.
 func KillInstancesInDir(name, dir string) error {
 	target := normalizeDir(dir)
 	if target == "" {

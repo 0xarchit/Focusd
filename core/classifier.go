@@ -6,10 +6,8 @@ import (
 	"unicode"
 )
 
-// Browser window titles are formatted by each browser in its own way, and the
-// decorations vary by version and locale. Everything here is defensive: the
-// goal is a clean page or site name, never a perfect parse, and never an empty
-// result.
+// Browser window titles vary by browser, version, and locale, so parsing here
+// is defensive: aim for a usable name, never a perfect parse.
 
 // invisibleRunes are zero-width and soft-hyphen characters that browsers inject
 // into their own suffix. Edge puts a zero-width space inside "Microsoft Edge",
@@ -93,15 +91,8 @@ var browserSuffixRules = []string{
 }
 
 // cleanWindowTitle turns a raw browser window title into a page or site name.
-//
-// The order matters. The browser suffix is stripped first, because the
-// remaining decorations such as "and 4 more pages" and "- Person 2 -" are
-// anchored to the end of the title and would not match while a browser name is
-// still attached.
-//
-// It is deliberately conservative: text is only removed when the trailing
-// segment is recognisably a browser suffix, so a page containing the word
-// "arc" or "code" keeps its text.
+// The browser suffix is stripped first because the remaining decorations anchor
+// to the end of the title and would not match while a browser name is attached.
 func cleanWindowTitle(rawTitle, exeName string) string {
 	if strings.TrimSpace(rawTitle) == "" {
 		return "Unknown Tab"

@@ -51,8 +51,8 @@ func expiredPomodoro(t *testing.T) {
 	}
 }
 
-// TestCheckPomodoroNotifiesOnce is the regression guard for the CAS inversion: a
-// lost race used to notify, fail the CAS, retry, and notify again.
+// TestCheckPomodoroNotifiesOnce checks that a lost CAS cannot produce a second
+// notification on retry.
 func TestCheckPomodoroNotifiesOnce(t *testing.T) {
 	setupPomodoroEnv(t)
 	expiredPomodoro(t)

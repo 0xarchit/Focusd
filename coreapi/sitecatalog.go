@@ -5,13 +5,6 @@ import (
 	"strings"
 )
 
-// Site catalogue: maps a browser title or domain onto a friendly site name.
-//
-// The previous table used raw substring matching with patterns such as "- x" and
-// "inbox -", which matched unrelated titles and made the result depend on table
-// order. Patterns here are either exact domain suffixes or anchored regular
-// expressions with token boundaries.
-
 // siteRule describes one catalogue entry.
 type siteRule struct {
 	Name string
@@ -22,10 +15,8 @@ type siteRule struct {
 	Titles []*regexp.Regexp
 	// Hosts match the full title as a bare domain, e.g. "x.com/foo".
 	Hosts []string
-	// Exact restricts title matching to a title that is the site name and
-	// nothing else. It is used for names that are also ordinary English, where
-	// a substring match produces nonsense: "Zoom out shortcut" is not the Zoom
-	// video site.
+	// Exact restricts title matching to the bare site name, for names that are
+	// also ordinary English where a substring match gives nonsense.
 	Exact bool
 }
 
