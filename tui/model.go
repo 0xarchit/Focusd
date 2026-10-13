@@ -147,6 +147,8 @@ type Model struct {
 	hoveredPanel     int
 	clickableRegions []clickableRegion
 
+	lastRefreshAt time.Time
+
 	sortedAppsCache    []appUsage
 	sortedAppsCacheKey string
 }
@@ -192,6 +194,12 @@ func flushCmd() tea.Cmd {
 		coreapi.SendIPCCmd("flush")
 		return flushDoneMsg{}
 	}
+}
+
+// dueForRefreshForTest exposes the refresh gate for tests. It must take a
+// pointer receiver, otherwise the updated timestamp is discarded on the copy.
+func (m *Model) dueForRefreshForTest(now time.Time) bool {
+	return m.dueForRefresh(now)
 }
 
 func checkDaemon() tea.Cmd {
@@ -431,6 +439,30 @@ func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, e
 	return out, nil
 }
 
+// refreshInterval is the shortest gap between background reloads.
+const refreshInterval = 15 * time.Second
+
+// dueForRefresh reports whether enough wall-clock time has passed since the
+// last reload. Using elapsed time rather than a modulo of the second means the
+// interval is honoured exactly and cannot fire twice in the same window.
+func (m *Model) dueForRefresh(now time.Time) bool {
+	if m.lastRefreshAt.IsZero() {
+		m.lastRefreshAt = now
+		return false
+	}
+	if now.Sub(m.lastRefreshAt) < refreshInterval {
+		return false
+	}
+	m.lastRefreshAt = now
+	return true
+}
+
+// noteRefresh records that a manual reload just happened, so the automatic one
+// does not immediately follow it.
+func (m *Model) noteRefresh() {
+	m.lastRefreshAt = time.Now()
+}
+
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	switch msg := msg.(type) {
@@ -440,13 +472,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case splashDoneMsg:
 		m.splash = false
 	case flushDoneMsg:
+		m.noteRefresh()
 		cmds = append(cmds, m.loadStatsCmd(), loadDashboard())
 	case secondTickMsg:
 		m.clock = time.Time(msg)
 		m.splashFrame++
 		m.pruneToasts()
 		cmds = append(cmds, secondTick(), checkDaemon())
-		if m.clock.Second()%5 == 0 {
+
+		// Reload on a wall-clock interval rather than a modulo of the second.
+		// Second%N fires for any N dividing 60, so an N of 5 or 10 loaded on
+		// each of those ticks, and each reload ran several aggregate queries
+		// against the single-connection database while the daemon was writing.
+		if m.dueForRefresh(time.Time(msg)) {
 			isEditing := m.limitForm.Visible || m.settingsAddingBrowser || m.settingsAddingWhitelist
 			if !isEditing {
 				m.refreshing = true
@@ -555,6 +593,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		// so we only trigger a database flush/refresh on other tabs.
 		if m.activeTab != tabFocus {
 			m.refreshing = true
+			m.noteRefresh()
 			return m, flushCmd()
 		}
 	}
