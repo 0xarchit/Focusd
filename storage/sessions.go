@@ -290,19 +290,27 @@ func GetAppStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 		args = append(args, startDate, endDate)
 	}
 	query += ` ORDER BY date DESC, total_duration_secs DESC`
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
 
 	var stats []AppDailyStat
-	for rows.Next() {
-		var s AppDailyStat
-		if err := rows.Scan(&s.Date, &s.AppName, &s.ExeName, &s.AppID, &s.TotalDurationSecs, &s.OpenCount); err != nil {
-			return nil, err
+	err := withBusyRetry(func() error {
+		rows, err := db.Query(query, args...)
+		if err != nil {
+			return err
 		}
-		stats = append(stats, s)
+		defer rows.Close()
+
+		stats = stats[:0]
+		for rows.Next() {
+			var s AppDailyStat
+			if err := rows.Scan(&s.Date, &s.AppName, &s.ExeName, &s.AppID, &s.TotalDurationSecs, &s.OpenCount); err != nil {
+				return err
+			}
+			stats = append(stats, s)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Dynamic active session injection if date range includes today
@@ -338,30 +346,37 @@ func GetAppStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 		}
 	}
 
-	return stats, rows.Err()
+	return stats, nil
 }
 
 func GetBrowserStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
-	rows, err := db.Query(`
-		SELECT date, site_name, app_id, total_duration_secs, open_count
-		FROM browsing_daily
-		WHERE date >= ? AND date <= ?
-		ORDER BY date DESC, total_duration_secs DESC
-	`, startDate, endDate)
+	var stats []AppDailyStat
+	err := withBusyRetry(func() error {
+		rows, err := db.Query(`
+			SELECT date, site_name, app_id, total_duration_secs, open_count
+			FROM browsing_daily
+			WHERE date >= ? AND date <= ?
+			ORDER BY date DESC, total_duration_secs DESC
+		`, startDate, endDate)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		stats = stats[:0]
+		for rows.Next() {
+			var s AppDailyStat
+			if err := rows.Scan(&s.Date, &s.AppName, &s.AppID, &s.TotalDurationSecs, &s.OpenCount); err != nil {
+				return err
+			}
+			stats = append(stats, s)
+		}
+		return rows.Err()
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var stats []AppDailyStat
-	for rows.Next() {
-		var s AppDailyStat
-		if err := rows.Scan(&s.Date, &s.AppName, &s.AppID, &s.TotalDurationSecs, &s.OpenCount); err != nil {
-			return nil, err
-		}
-		stats = append(stats, s)
-	}
-	return stats, rows.Err()
+	return stats, nil
 }
 
 type ActiveSessionRecord struct {

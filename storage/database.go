@@ -6,9 +6,17 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
+)
+
+const (
+	// busyRetryAttempts and busyRetryDelay bound the retry budget for a read
+	// that races the daemon's writer.
+	busyRetryAttempts = 4
+	busyRetryDelay    = 20 * time.Millisecond
 )
 
 var db *sql.DB
@@ -86,6 +94,9 @@ func initDB() error {
 		return fmt.Errorf("failed to ping database: %w", pingErr)
 	}
 
+	// One connection serialises access within a process and avoids self
+	// contention on the WAL writer. Cross-process contention is handled by
+	// busy_timeout plus withBusyRetry.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
@@ -166,6 +177,42 @@ func createSchema() error {
 
 	_, err := db.Exec(schema)
 	return err
+}
+
+// withBusyRetry runs an operation that can fail with SQLITE_BUSY.
+//
+// The daemon holds a single connection and the CLI opens its own handle to the
+// same file, so a read issued while the daemon is mid-transaction can hit a
+// lock despite busy_timeout. Retrying with a short backoff turns a visible
+// error into a slightly slower read.
+//
+// readOnlyBusyRetry is deliberately small: this only smooths over contention on
+// a local file, and a long wait would block the UI.
+func withBusyRetry(operation func() error) error {
+	var lastErr error
+	for attempt := 0; attempt < busyRetryAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * busyRetryDelay)
+		}
+		lastErr = operation()
+		if lastErr == nil {
+			return nil
+		}
+		if !isBusyError(lastErr) {
+			return lastErr
+		}
+	}
+	return lastErr
+}
+
+func isBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "database table is locked") ||
+		strings.Contains(msg, "sqlite_busy")
 }
 
 func Close() error {
