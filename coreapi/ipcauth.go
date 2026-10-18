@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // IPC listens on a fixed loopback port, so a per-install token file keeps it
@@ -46,10 +47,44 @@ func EnsureIPCToken() (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return "", fmt.Errorf("failed to create data directory: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(token+"\n"), 0600); err != nil {
+
+	// Create exclusively: two daemons starting at once must not overwrite each
+	// other's token, because clients read the file while the live daemon keeps
+	// expecting the token it generated. The loser adopts the winner's token.
+	err = createIPCToken(path, token)
+	if err == nil {
+		return token, nil
+	}
+	if !os.IsExist(err) {
 		return "", fmt.Errorf("failed to write IPC token: %w", err)
 	}
-	return token, nil
+	for attempt := 0; attempt < 10; attempt++ {
+		if existing, readErr := readIPCToken(path); readErr == nil {
+			return existing, nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return "", fmt.Errorf("failed to read the existing IPC token: %w", err)
+}
+
+// createIPCToken atomically creates the token file, failing if it already
+// exists so a racing daemon's token is never replaced. A failed write removes
+// the file rather than leaving a partial token behind.
+func createIPCToken(path, token string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.WriteString(token + "\n"); err != nil {
+		f.Close()
+		os.Remove(path)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(path)
+		return err
+	}
+	return nil
 }
 
 func readIPCToken(path string) (string, error) {

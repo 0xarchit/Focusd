@@ -169,6 +169,32 @@ func TestEnsureIPCTokenDistinctPerInstall(t *testing.T) {
 	}
 }
 
+// TestCreateIPCTokenNeverReplacesExisting pins F23: the exclusive create that
+// closes the daemon start-up race - the loser must adopt the winner's file
+// instead of overwriting the token the already-running daemon expects.
+func TestCreateIPCTokenNeverReplacesExisting(t *testing.T) {
+	dir := setupTempAppData(t)
+	path := filepath.Join(dir, "focusd", ipcTokenFile)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+
+	if err := createIPCToken(path, "first-token"); err != nil {
+		t.Fatalf("first create failed: %v", err)
+	}
+	if err := createIPCToken(path, "second-token"); !os.IsExist(err) {
+		t.Fatalf("second create error = %v; want an already-exists conflict", err)
+	}
+
+	token, err := readIPCToken(path)
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if token != "first-token" {
+		t.Errorf("token = %q; want the first writer's token", token)
+	}
+}
+
 func TestLoadIPCTokenTrimsWhitespace(t *testing.T) {
 	dir := setupTempAppData(t)
 
