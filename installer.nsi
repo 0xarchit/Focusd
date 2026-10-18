@@ -5,6 +5,10 @@
 !include "MUI2.nsh"
 !include "WinMessages.nsh"
 
+; Everything focusd touches is per-user: the install dir under %APPDATA%, HKCU
+; registry, and the user PATH. No elevation is needed or wanted.
+RequestExecutionLevel user
+
 
 Name "Focusd"
 OutFile "focusd_setup.exe"
@@ -34,12 +38,13 @@ InstallDir "$APPDATA\focusd"
 Section "Install"
   SetOutPath "$INSTDIR"
   
-  ; Stop existing daemon if running
+  ; Stop the daemon and any running TUI before overwriting the binaries.
   DetailPrint "Stopping existing daemon if active..."
   IfFileExists "$INSTDIR\focusd.exe" 0 +3
     ExecWait '"$INSTDIR\focusd.exe" stop'
     Sleep 1000
   ExecWait 'taskkill.exe /F /IM focusd_daemon.exe'
+  ExecWait 'taskkill.exe /F /IM focusd.exe'
   Sleep 500
 
   File "focusd.exe"
@@ -83,7 +88,14 @@ Section "Uninstall"
 
   ; Force kill if still running to release file locks
   ExecWait 'taskkill.exe /F /IM focusd_daemon.exe'
+  ExecWait 'taskkill.exe /F /IM focusd.exe'
   Sleep 500
+
+  ; Remove from user PATH while the exe still exists. focusd.exe owns the
+  ; logic; see the install section.
+  IfFileExists "$INSTDIR\focusd.exe" 0 skip_path_disable
+    ExecWait '"$INSTDIR\focusd.exe" path disable'
+  skip_path_disable:
 
   Delete "$INSTDIR\focusd.exe"
   Delete "$INSTDIR\focusd_daemon.exe"
@@ -91,11 +103,6 @@ Section "Uninstall"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "focusd"
   Delete "$SMSTARTUP\Focus Daemon.lnk"
   Delete "$INSTDIR\uninstall.exe"
-
-  ; Remove from user PATH. focusd.exe owns the logic; see the install section.
-  IfFileExists "$INSTDIR\focusd.exe" 0 skip_path_disable
-    ExecWait '"$INSTDIR\focusd.exe" path disable'
-  skip_path_disable:
 
   ; Remove registry uninstall keys
   DeleteRegKey HKCU "${UNINST_KEY}"
