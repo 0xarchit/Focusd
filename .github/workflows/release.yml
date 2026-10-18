@@ -53,26 +53,9 @@ jobs:
           go build -ldflags="-s -w -X 'focusd/system.Version=${{ env.VERSION }}'" -trimpath -o focusd.exe ./cmd/focusd
           go build -ldflags="-s -w -H=windowsgui -X 'focusd/system.Version=${{ env.VERSION }}'" -trimpath -o focusd_daemon.exe ./cmd/focusd_daemon
 
-      # Signing runs before the installer is built so the copy embedded in the
-      # installer is the signed one.
-      - name: Sign Binaries
-        shell: powershell
-        env:
-          SIGNING_CERT_PFX_BASE64: ${{ secrets.SIGNING_CERT_PFX_BASE64 }}
-          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
-        run: ./scripts/sign.ps1 -Targets focusd.exe, focusd_daemon.exe
-
       - name: Build NSIS Installer
         run: |
           makensis /DVERSION=${{ env.VERSION }} installer.nsi
-
-      - name: Sign Installer
-        shell: powershell
-        env:
-          SIGNING_CERT_PFX_BASE64: ${{ secrets.SIGNING_CERT_PFX_BASE64 }}
-          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
-        run: |
-          ./scripts/sign.ps1 -Targets focusd_setup.exe
 
       - name: Build Portable Archive
         shell: powershell
@@ -84,15 +67,8 @@ jobs:
           Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip
           Remove-Item -Recurse -Force $stage
 
-      - name: Sign Portable Archive
-        shell: powershell
-        env:
-          SIGNING_CERT_PFX_BASE64: ${{ secrets.SIGNING_CERT_PFX_BASE64 }}
-          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
-        run: |
-          ./scripts/sign.ps1 -Targets "focusd-v${{ env.VERSION }}-windows-amd64.zip"
-
-      # Checksums are generated after signing so they cover the shipped bytes.
+      # Releases are unsigned (no certificate); these hashes are the integrity
+      # mechanism. Generated last so they cover the shipped bytes.
       - name: Generate Checksum
         shell: powershell
         run: |
