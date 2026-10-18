@@ -86,13 +86,15 @@ func IsFallbackAppID(appID string) bool {
 	return hash == systemSuffix
 }
 
-// ConfigMatchesApp reports whether a config entry applies to a live app. Config
-// keys are bare exe names, so they wildcard across every install of that
-// executable and existing limits keep firing after the upgrade.
+// ConfigMatchesApp reports whether a config entry applies to a live app. A
+// bare exe name wildcards across every install of that executable, so limits
+// written before app identity keep firing; a full app key names one install.
 func ConfigMatchesApp(configKey, appID string) bool {
-	baseConfig := appKeyBase(normalizeConfigKey(configKey))
-	baseApp := appKeyBase(appID)
-	return baseConfig != "" && baseConfig == baseApp
+	base, hash := splitAppKey(normalizeConfigKey(configKey))
+	if hash != "" {
+		return hash == appKeyHash(appID) && base == appKeyBase(appID)
+	}
+	return base == appKeyBase(appID)
 }
 
 // normalizeConfigKey reduces a user-supplied key to a bare exe name, accepting
@@ -133,17 +135,6 @@ func sameAppKey(a, b string) bool {
 	return hashA == "" || hashB == ""
 }
 
-// AppIDForConfigKey converts a config key into the identity key used for usage
-// lookups. A bare exe name has no install hash, so it resolves to the legacy
-// key, which is what migrated rows carry and what a pathless live process uses.
-func AppIDForConfigKey(configKey string) string {
-	base, hash := splitAppKey(normalizeConfigKey(configKey))
-	if hash != "" {
-		return base + keySeparator + hash
-	}
-	return base + keySeparator + legacySuffix
-}
-
 // splitAppKey separates an app key into its exe name and its install hash. The
 // exe part is normalized so a bare config entry written as "Firefox.exe" and a
 // stored key both reduce to "firefox".
@@ -153,6 +144,12 @@ func splitAppKey(appID string) (base, hash string) {
 		return normalizeExe(appID), ""
 	}
 	return normalizeExe(appID[:i]), appID[i+1:]
+}
+
+// appKeyHash returns the install hash from a key, or "" for a bare exe name.
+func appKeyHash(appID string) string {
+	_, hash := splitAppKey(appID)
+	return hash
 }
 
 // appKeyBase strips any suffix from a key, leaving the exe name.

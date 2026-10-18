@@ -292,7 +292,7 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 		usageMap, err := storage.GetAppUsageTodayMinutesMap()
 		if err == nil {
 			for app, mins := range limits {
-				if usageMap[system.AppIDForConfigKey(app)] >= mins {
+				if limitUsageTodayMinutes(usageMap, app) >= mins {
 					data.LimitsHit++
 				}
 			}

@@ -274,9 +274,22 @@ func (m *Model) limitRows() []limitRow {
 		rows = append(rows, limitRow{
 			Name:         app,
 			LimitMinutes: mins,
-			UsedSeconds:  storage.GetAppUsageTodaySeconds(system.AppIDForConfigKey(app)),
+			UsedSeconds:  storage.GetAppUsageTodaySecondsForConfig(app),
 		})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
 	return rows
+}
+
+// limitUsageTodayMinutes sums today's usage that a limit key governs. Config
+// keys match with the same wildcard semantics limits use when they are
+// enforced: a bare exe name covers every install, a full app key exactly one.
+func limitUsageTodayMinutes(usageMap map[string]int, configKey string) int {
+	total := 0
+	for appID, mins := range usageMap {
+		if system.ConfigMatchesApp(configKey, appID) {
+			total += mins
+		}
+	}
+	return total
 }

@@ -188,6 +188,55 @@ func GetAppUsageTodaySeconds(appID string) int {
 	return secs
 }
 
+// GetAppUsageTodaySecondsForConfig returns today's tracked seconds for a
+// config limit key with the same wildcard semantics enforcement uses: a bare
+// exe name covers every install of that executable and a full app key matches
+// one install. The live active session is included when it matches.
+func GetAppUsageTodaySecondsForConfig(configKey string) int {
+	base, hash := splitConfigKeyForUsage(configKey)
+	if hash != "" {
+		return GetAppUsageTodaySeconds(base + "|" + hash)
+	}
+
+	today := Today()
+	var secs int
+	err := db.QueryRow(`
+		SELECT COALESCE(SUM(total_duration_secs), 0) FROM apps_daily
+		WHERE date = ? AND (app_id = ? OR substr(app_id, 1, ?) = ?)
+	`, today, base, len(base)+1, base+"|").Scan(&secs)
+	if err != nil {
+		log.Printf("WARN: GetAppUsageTodaySecondsForConfig query failed for %s: %v", configKey, err)
+	}
+
+	active, aerr := GetActiveSession()
+	if aerr != nil {
+		log.Printf("WARN: GetActiveSession failed: %v", aerr)
+		return secs
+	}
+	if active != nil && normalizeExeName(appIDBaseForUsage(active.AppID)) == base {
+		secs += liveElapsedToday(active.StartTime, time.Now())
+	}
+	return secs
+}
+
+// splitConfigKeyForUsage splits a config key into its normalized exe base and
+// its install hash. A bare name has no hash and matches every install.
+func splitConfigKeyForUsage(configKey string) (base, hash string) {
+	trimmed := strings.TrimSpace(configKey)
+	if i := strings.Index(trimmed, "|"); i >= 0 {
+		return normalizeExeName(trimmed[:i]), trimmed[i+1:]
+	}
+	return normalizeExeName(trimmed), ""
+}
+
+// appIDBaseForUsage extracts the exe part of a live app id.
+func appIDBaseForUsage(appID string) string {
+	if i := strings.Index(appID, "|"); i >= 0 {
+		return appID[:i]
+	}
+	return appID
+}
+
 func GetAppUsageTodayMinutesMap() (map[string]int, error) {
 	today := Today()
 	rows, err := db.Query(`
@@ -442,13 +491,18 @@ func RecoverActiveSession() (*Session, error) {
 	}, nil
 }
 
-// legacyAppIDFor duplicates system.normalizeExe so storage does not import the
-// windowing package.
-func legacyAppIDFor(exeName string) string {
+// normalizeExeName duplicates system.normalizeExe so storage does not import
+// the windowing package.
+func normalizeExeName(exeName string) string {
 	name := strings.ToLower(strings.TrimSpace(exeName))
 	name = strings.TrimSuffix(name, ".exe")
 	if name == "" {
 		name = "unknown"
 	}
-	return name + "|legacy"
+	return name
+}
+
+// legacyAppIDFor is the identity key for rows that predate app identity.
+func legacyAppIDFor(exeName string) string {
+	return normalizeExeName(exeName) + "|legacy"
 }

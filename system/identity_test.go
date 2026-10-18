@@ -174,6 +174,11 @@ func TestConfigMatchesApp(t *testing.T) {
 		t.Error("a bare config key should cover every install")
 	}
 
+	// A full app key names one install only.
+	if ConfigMatchesApp(live, nightly) {
+		t.Error("a full app key must not cover another install")
+	}
+
 	if ConfigMatchesApp("chrome", live) {
 		t.Error("an unrelated config key should not match")
 	}
