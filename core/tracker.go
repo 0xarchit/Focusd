@@ -7,6 +7,7 @@ import (
 	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -743,13 +744,21 @@ func (t *Tracker) startIPCOnPort(listener net.Listener) {
 	}
 }
 
+// maxIPCLineBytes bounds a single IPC request line. Real commands are far
+// smaller; the cap stops an unauthenticated peer from streaming bytes without
+// a newline and growing the read buffer within the deadline.
+const maxIPCLineBytes = 4 * 1024
+
 func (t *Tracker) handleIPCConnection(conn net.Conn) {
 	defer conn.Close()
 	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
 		log.Printf("WARN: IPC set deadline failed: %v", err)
 		return
 	}
-	reader := bufio.NewReader(conn)
+	// The line is read before the token is checked, so the read must be bound
+	// up front: without it, any local process could make this buffer grow to
+	// gigabytes within the deadline.
+	reader := bufio.NewReader(io.LimitReader(conn, maxIPCLineBytes))
 	raw, err := reader.ReadString('\n')
 	if err != nil {
 		log.Printf("WARN: IPC connection read failed: %v", err)

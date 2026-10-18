@@ -1,9 +1,13 @@
 package core
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"focusd/storage"
+	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -380,4 +384,69 @@ func TestRecoverOrphanedSessionInsertsMissingInterval(t *testing.T) {
 	if active != nil {
 		t.Error("the active row should be cleared after recovery")
 	}
+}
+
+// TestHandleIPCConnectionBoundsUnauthenticatedRead pins F22: the request line
+// is read before the token is checked, so without a read bound any local
+// process could stream bytes without a newline and exhaust memory.
+func TestHandleIPCConnectionBoundsUnauthenticatedRead(t *testing.T) {
+	server, client := net.Pipe()
+	defer client.Close()
+
+	tracker := &Tracker{ipcToken: "secret"}
+	done := make(chan struct{})
+	go func() {
+		tracker.handleIPCConnection(server)
+		close(done)
+	}()
+
+	payload := bytes.Repeat([]byte("a"), maxIPCLineBytes*4)
+	written := make(chan int, 1)
+	go func() {
+		n, _ := client.Write(payload)
+		written <- n
+	}()
+
+	select {
+	case n := <-written:
+		if n > maxIPCLineBytes {
+			t.Errorf("a peer pushed %d bytes past the %d-byte read bound", n, maxIPCLineBytes)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the oversized write never unblocked; the read is unbounded")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler did not finish after the read bound was reached")
+	}
+}
+
+// TestHandleIPCConnectionAcceptsSmallRequest keeps the happy path pinned: a
+// normal-sized authenticated command still gets its "ok" reply.
+func TestHandleIPCConnectionAcceptsSmallRequest(t *testing.T) {
+	setupTestDB(t)
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	tracker := &Tracker{ipcToken: "secret"}
+	done := make(chan struct{})
+	go func() {
+		tracker.handleIPCConnection(server)
+		close(done)
+	}()
+
+	if _, err := client.Write([]byte("flush secret\n")); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+	response, err := bufio.NewReader(client).ReadString('\n')
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if strings.TrimSpace(response) != "ok" {
+		t.Errorf("response = %q; want ok", response)
+	}
+	<-done
 }
