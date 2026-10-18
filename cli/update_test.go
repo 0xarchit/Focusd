@@ -18,7 +18,10 @@ func TestCompareVersions(t *testing.T) {
 		{"patch lesser", "2.13.0", "2.13.1", -1},
 		{"minor lesser", "2.12.9", "2.13.0", -1},
 		{"newer than published", "2.14.0", "2.13.0", 1},
-		{"prerelease suffix ignored", "2.13.0-rc1", "2.13.0", 0},
+		{"prerelease is older than its release", "2.13.0-rc1", "2.13.0", -1},
+		{"release is newer than its prerelease", "2.13.0", "2.13.0-rc1", 1},
+		{"prerelease ordering", "2.13.0-rc2", "2.13.0-rc1", 1},
+		{"equal prereleases", "2.13.0-rc1", "2.13.0-rc1", 0},
 		{"build metadata ignored", "2.13.0+abc", "2.13.0", 0},
 		{"two part versus three part", "2.13", "2.13.0", 0},
 		{"empty equals empty", "", "", 0},
@@ -152,22 +155,26 @@ func TestIsHex(t *testing.T) {
 
 func TestParseVersion(t *testing.T) {
 	tests := []struct {
-		name  string
-		input string
-		want  []int
+		name    string
+		input   string
+		want    []int
+		wantPre string
 	}{
-		{"simple", "1.2.3", []int{1, 2, 3}},
-		{"with v prefix", "v1.2.3", []int{1, 2, 3}},
-		{"two parts", "2.13", []int{2, 13}},
-		{"prerelease stripped", "1.2.3-rc.1", []int{1, 2, 3}},
-		{"build metadata stripped", "1.2.3+deadbeef", []int{1, 2, 3}},
-		{"non numeric stops parse", "1.2.beta", []int{1, 2}},
-		{"empty", "", nil},
+		{"simple", "1.2.3", []int{1, 2, 3}, ""},
+		{"with v prefix", "v1.2.3", []int{1, 2, 3}, ""},
+		{"two parts", "2.13", []int{2, 13}, ""},
+		{"prerelease kept", "1.2.3-rc.1", []int{1, 2, 3}, "-rc.1"},
+		{"build metadata stripped", "1.2.3+deadbeef", []int{1, 2, 3}, ""},
+		{"non numeric stops parse", "1.2.beta", []int{1, 2}, ""},
+		{"empty", "", nil, ""},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := parseVersion(tc.input)
+			got, gotPre := parseVersion(tc.input)
+			if gotPre != tc.wantPre {
+				t.Errorf("parseVersion(%q) prerelease = %q; want %q", tc.input, gotPre, tc.wantPre)
+			}
 			if len(got) != len(tc.want) {
 				t.Fatalf("parseVersion(%q) = %v; want %v", tc.input, got, tc.want)
 			}

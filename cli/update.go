@@ -99,13 +99,20 @@ func runUpdate() {
 	os.Exit(0)
 }
 
-// parseVersion splits a dotted version into comparable numeric parts,
-// ignoring any pre-release suffix such as "-rc1" or "+build".
-func parseVersion(v string) []int {
-	if i := strings.IndexAny(v, "-+"); i >= 0 {
+// parseVersion splits a dotted version into comparable numeric parts. A
+// pre-release suffix ("-rc1") is returned separately because it sorts before
+// the release it leads to; build metadata ("+build") is ignored.
+func parseVersion(v string) ([]int, string) {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+
+	pre := ""
+	if i := strings.IndexByte(v, '-'); i >= 0 {
+		pre = v[i:]
 		v = v[:i]
 	}
-	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	if i := strings.IndexByte(v, '+'); i >= 0 {
+		v = v[:i]
+	}
 
 	parts := strings.Split(v, ".")
 	out := make([]int, 0, len(parts))
@@ -116,13 +123,16 @@ func parseVersion(v string) []int {
 		}
 		out = append(out, n)
 	}
-	return out
+	return out, pre
 }
 
 // compareVersions returns 1 when a is newer than b, -1 when older, 0 when equal.
 // String equality was used before, so "2.13" and "2.13.0" looked different.
+// When the numbers match, the release outranks its pre-releases: "2.13.0" is
+// newer than "2.13.0-rc1".
 func compareVersions(a, b string) int {
-	pa, pb := parseVersion(a), parseVersion(b)
+	pa, preA := parseVersion(a)
+	pb, preB := parseVersion(b)
 	for i := 0; i < len(pa) || i < len(pb); i++ {
 		var x, y int
 		if i < len(pa) {
@@ -138,7 +148,19 @@ func compareVersions(a, b string) int {
 			return -1
 		}
 	}
-	return 0
+	if preA == preB {
+		return 0
+	}
+	if preA == "" {
+		return 1
+	}
+	if preB == "" {
+		return -1
+	}
+	if preA < preB {
+		return -1
+	}
+	return 1
 }
 
 // checksumsURL is published alongside the installer in every release.
