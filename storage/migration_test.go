@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -431,6 +432,73 @@ func TestMigrateCorruptVersionKeepsV3Data(t *testing.T) {
 	}
 	if len(matches) != 0 {
 		t.Errorf("unexpected pre-migration backup(s): %v", matches)
+	}
+}
+
+// TestBackupRestoresEveryCommittedRow pins the backup contents: frames
+// committed by another connection can still live only in focusd.db-wal, so a
+// restore from the backup must replay them (regression: only the main file was
+// copied, silently dropping the tail).
+func TestBackupRestoresEveryCommittedRow(t *testing.T) {
+	setupStorageEnv(t)
+
+	if _, err := db.Exec(`
+		INSERT INTO apps_daily (date, app_name, exe_name, app_id, total_duration_secs, open_count)
+		VALUES ('2026-10-18', 'Chrome', 'chrome.exe', 'chrome|aaaa1111', 60, 1)
+	`); err != nil {
+		t.Fatalf("seed failed: %v", err)
+	}
+
+	// A second connection commits a row; while it stays open the frame may
+	// not have reached the main file yet.
+	dbPath, err := GetDBPath()
+	if err != nil {
+		t.Fatalf("GetDBPath failed: %v", err)
+	}
+	other, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("second open failed: %v", err)
+	}
+	defer other.Close()
+	if _, err := other.Exec(`
+		INSERT INTO apps_daily (date, app_name, exe_name, app_id, total_duration_secs, open_count)
+		VALUES ('2026-10-18', 'Firefox', 'firefox.exe', 'firefox|bbbb2222', 30, 1)
+	`); err != nil {
+		t.Fatalf("second connection insert failed: %v", err)
+	}
+
+	backup, err := backupDatabaseFile()
+	if err != nil {
+		t.Fatalf("backupDatabaseFile failed: %v", err)
+	}
+	if backup == "" {
+		t.Fatal("no backup was produced")
+	}
+
+	// Restore into a fresh directory: the main file plus the WAL sidecar when
+	// one was taken with it.
+	restored := filepath.Join(t.TempDir(), "focusd.db")
+	if err := copyFile(backup, restored); err != nil {
+		t.Fatalf("restore copy failed: %v", err)
+	}
+	if _, err := os.Stat(backup + "-wal"); err == nil {
+		if err := copyFile(backup+"-wal", restored+"-wal"); err != nil {
+			t.Fatalf("restore WAL copy failed: %v", err)
+		}
+	}
+
+	restoredDB, err := sql.Open("sqlite", restored)
+	if err != nil {
+		t.Fatalf("restore open failed: %v", err)
+	}
+	defer restoredDB.Close()
+
+	var count int
+	if err := restoredDB.QueryRow(`SELECT COUNT(*) FROM apps_daily`).Scan(&count); err != nil {
+		t.Fatalf("restore query failed: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("restored %d committed rows; want 2", count)
 	}
 }
 

@@ -95,39 +95,76 @@ func backupDatabaseFile() (string, error) {
 	stamp := time.Now().Format("20060102-150405")
 	dest := dbPath + "." + stamp + migrationBackupSuffix
 
-	src, err := os.Open(dbPath)
-	if err != nil {
-		return "", err
-	}
-	defer src.Close()
-
-	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
-	if err != nil {
-		return "", err
+	// Fold the WAL tail into the main file first; an unclean shutdown can leave
+	// committed frames only in focusd.db-wal. Not fatal when it fails (for
+	// example another process is connected): the WAL is copied alongside below.
+	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		log.Printf("WARN: pre-migration checkpoint failed: %v", err)
 	}
 
-	if _, err := io.Copy(out, src); err != nil {
-		out.Close()
+	if err := copyFile(dbPath, dest); err != nil {
 		os.Remove(dest)
 		return "", err
 	}
-	if err := out.Sync(); err != nil {
-		out.Close()
+
+	// A restore must replay every committed frame, so a WAL that survives the
+	// checkpoint is copied with the main file.
+	if err := copyFileIfExists(dbPath+"-wal", dest+"-wal"); err != nil {
 		os.Remove(dest)
-		return "", err
-	}
-	if err := out.Close(); err != nil {
-		os.Remove(dest)
+		os.Remove(dest + "-wal")
 		return "", err
 	}
 
 	info, err := os.Stat(dest)
 	if err != nil || info.Size() == 0 {
 		os.Remove(dest)
+		os.Remove(dest + "-wal")
 		return "", fmt.Errorf("backup verification failed")
 	}
 
 	return dest, nil
+}
+
+// copyFile copies srcPath to destPath, creating the destination exclusively so
+// a partial copy can never be mistaken for a good backup.
+func copyFile(srcPath, destPath string) error {
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	out, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, src); err != nil {
+		out.Close()
+		os.Remove(destPath)
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		out.Close()
+		os.Remove(destPath)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(destPath)
+		return err
+	}
+	return nil
+}
+
+// copyFileIfExists is copyFile for sidecar files (the WAL): a missing source is
+// fine, anything else is an error.
+func copyFileIfExists(srcPath, destPath string) error {
+	if _, err := os.Stat(srcPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	return copyFile(srcPath, destPath)
 }
 
 // Migrate brings the schema up to the current version. It is called during
