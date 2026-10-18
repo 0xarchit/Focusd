@@ -203,11 +203,29 @@ func saveUserConfigLocked() error {
 	}
 
 	tempPath := configPath + ".tmp"
-	if err := os.WriteFile(tempPath, data, 0600); err != nil {
+	f, err := os.OpenFile(tempPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tempPath)
+		return err
+	}
+	// Flush to disk before the rename: otherwise a crash can leave the rename
+	// pointing at a temp file whose contents never made it out of the cache.
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tempPath)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tempPath)
 		return err
 	}
 
 	if err := os.Rename(tempPath, configPath); err != nil {
+		os.Remove(tempPath)
 		return err
 	}
 
