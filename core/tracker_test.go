@@ -238,3 +238,44 @@ func TestFlushForReadKeepsLiveSession(t *testing.T) {
 		t.Errorf("active_session exe = %q; want test.exe", active.ExeName)
 	}
 }
+
+// TestPersistedActiveSessionKeepsIdentity pins that the active_session row
+// carries the session's real app identity: without it the row falls back to
+// the legacy key, and the tracker's own GetAppUsageTodaySeconds lookup never
+// matches the live session against its install.
+func TestPersistedActiveSessionKeepsIdentity(t *testing.T) {
+	setupTestDB(t)
+
+	tracker := &Tracker{pollInterval: time.Second}
+	tracker.currentSession = &activeSession{
+		AppName:     "Chrome",
+		ExeName:     "chrome.exe",
+		ExePath:     `C:\Program Files\Google\Chrome\Application\chrome.exe`,
+		AppID:       "chrome|abcd1234",
+		WindowTitle: "Tab",
+		StartTime:   time.Now().Add(-30 * time.Second),
+		Date:        storage.Today(),
+	}
+
+	tracker.forcePersistActiveSession()
+
+	active, err := storage.GetActiveSession()
+	if err != nil {
+		t.Fatalf("GetActiveSession failed: %v", err)
+	}
+	if active == nil {
+		t.Fatal("active_session row missing")
+	}
+	if active.AppID != "chrome|abcd1234" {
+		t.Errorf("active_session app_id = %q; want chrome|abcd1234", active.AppID)
+	}
+	if active.ExePath != `C:\Program Files\Google\Chrome\Application\chrome.exe` {
+		t.Errorf("active_session exe_path = %q; want the full path", active.ExePath)
+	}
+
+	// Enforcement asks for the live session under its real key; the row must
+	// answer it.
+	if usage := storage.GetAppUsageTodaySeconds("chrome|abcd1234"); usage <= 0 {
+		t.Errorf("live session not counted for its own install (usage = %d)", usage)
+	}
+}

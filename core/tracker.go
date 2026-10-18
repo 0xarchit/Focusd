@@ -330,6 +330,8 @@ func (t *Tracker) writeActiveSession(force bool) {
 	record := &storage.ActiveSessionRecord{
 		AppName:     t.currentSession.AppName,
 		ExeName:     t.currentSession.ExeName,
+		ExePath:     t.currentSession.ExePath,
+		AppID:       t.currentSession.AppID,
 		WindowTitle: t.currentSession.WindowTitle,
 		StartTime:   t.currentSession.StartTime,
 		LastSeen:    now,
