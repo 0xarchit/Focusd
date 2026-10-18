@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"focusd/system"
 	"log"
@@ -82,42 +83,56 @@ func ensureToastAppID() {
 	}
 }
 
-// runToast executes the PowerShell toast script, killing it when ctx ends. The
-// action script waits on an event, so without cancellation a toast process can
-// outlive shutdown by its full timeout.
-func runToast(ctx context.Context, script string, env []string) []byte {
+// toastProcess is a started PowerShell toast script. The process is started
+// synchronously so it survives short-lived callers: focusd status can complete
+// a pomodoro and exit immediately, and the toast must still appear.
+type toastProcess struct {
+	stdout *bytes.Buffer
+	stderr *strings.Builder
+	done   chan struct{}
+	runErr error
+}
+
+// startToast launches the toast script. Cancelling ctx kills the process, so a
+// pending action toast cannot outlive shutdown by its full timeout.
+func startToast(ctx context.Context, script string, env []string) *toastProcess {
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive",
 		"-WindowStyle", "Hidden", "-Command", script)
 	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: notificationProcessWindowHidden}
 
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-
-	// Bound the wait so a wedged PowerShell cannot outlive the daemon.
-	done := make(chan struct{})
-	var out []byte
-	var runErr error
-	go func() {
-		out, runErr = cmd.Output()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		<-done
+	tp := &toastProcess{
+		stdout: &bytes.Buffer{},
+		stderr: &strings.Builder{},
+		done:   make(chan struct{}),
 	}
+	cmd.Stdout = tp.stdout
+	cmd.Stderr = tp.stderr
+
+	if err := cmd.Start(); err != nil {
+		if ctx.Err() == nil {
+			log.Printf("WARN: toast script failed to start: %v", err)
+		}
+		close(tp.done)
+		return tp
+	}
+	go func() {
+		tp.runErr = cmd.Wait()
+		close(tp.done)
+	}()
+	return tp
+}
+
+// wait blocks until the script exits and returns its stdout.
+func (tp *toastProcess) wait(ctx context.Context) []byte {
+	<-tp.done
 
 	// A kill during shutdown is expected; any other failure means the toast
 	// never appeared and must not stay silent.
-	if runErr != nil && ctx.Err() == nil {
-		log.Printf("WARN: toast script failed: %v: %s", runErr, strings.TrimSpace(stderr.String()))
+	if tp.runErr != nil && ctx.Err() == nil {
+		log.Printf("WARN: toast script failed: %v: %s", tp.runErr, strings.TrimSpace(tp.stderr.String()))
 	}
-	return out
+	return tp.stdout.Bytes()
 }
 
 const plainToastScript = `
@@ -163,7 +178,8 @@ func showNotification(ctx context.Context, title, message string) bool {
 	t := truncateRunes(title, 200)
 	m := truncateRunes(message, 200)
 
-	go runToast(ctx, plainToastScript, toastEnv(t, m, toastXMLTemplate))
+	tp := startToast(ctx, plainToastScript, toastEnv(t, m, toastXMLTemplate))
+	go tp.wait(ctx)
 	return true
 }
 
@@ -176,9 +192,9 @@ func showNotificationWithAction(ctx context.Context, title, message string, call
 	t := truncateRunes(title, 200)
 	m := truncateRunes(message, 200)
 
+	tp := startToast(ctx, actionToastScript, toastEnv(t, m, actionToastXMLTemplate))
 	go func() {
-		out := runToast(ctx, actionToastScript, toastEnv(t, m, actionToastXMLTemplate))
-		choice := strings.TrimSpace(string(out))
+		choice := strings.TrimSpace(string(tp.wait(ctx)))
 		if choice == "disable" && callback != nil {
 			callback(true)
 		}

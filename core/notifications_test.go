@@ -102,10 +102,10 @@ func TestToastXMLIsWellFormed(t *testing.T) {
 
 // TestToastScriptStopsOnError keeps the failure path loud: under the default
 // Continue preference a LoadXml failure would not reliably set a non-zero exit
-// code, so runToast would have nothing to log.
+// code, so the toast runner would have nothing to log.
 func TestToastScriptStopsOnError(t *testing.T) {
 	if !strings.Contains(plainToastScript, "$ErrorActionPreference = 'Stop'") {
-		t.Error("toast script must fail fast so runToast can log the failure")
+		t.Error("toast script must fail fast so the toast runner can log the failure")
 	}
 }
 
