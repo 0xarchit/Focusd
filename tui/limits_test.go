@@ -35,7 +35,7 @@ func TestLimitUsageTodayMinutes(t *testing.T) {
 	}
 }
 
-// TestHandleLimitsKeyClampsSelection pins F16: rows shrink under the async
+// TestHandleLimitsKeyClampsSelection pins the clamp: rows shrink under the async
 // dashboard refresh while the cursor stays put, so edit and delete used to
 // index past the slice and panic.
 func TestHandleLimitsKeyClampsSelection(t *testing.T) {

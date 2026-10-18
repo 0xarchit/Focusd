@@ -18,7 +18,7 @@ func (m Model) handleDashboardKey(key string) (Model, tea.Cmd) {
 	case "n":
 		m.activeTab = tabLimits
 		m.limitForm = limitForm{Visible: true}
-		m.panelFocus = 1 // Focus form panel
+		m.panelFocus = 1
 		return m, nil
 	case "p":
 		paused := storage.IsPaused()
@@ -247,7 +247,6 @@ func (m *Model) renderHourlyPanel(width, height int) string {
 	}
 	lines = append(lines, "   "+mutedStyle.Render(hoursText))
 
-	// Add legend for usability, splitting into 2 lines on narrow panels
 	if width >= 52 {
 		legend := "Legend: " + mutedStyle.Render("·") + " 0m  " +
 			cyanStyle.Render("░") + " <15m  " +
@@ -283,7 +282,7 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 		}
 	}
 
-	maxRows := max(1, height-4-2) // Subtract 2 for headers
+	maxRows := max(1, height-4-2)
 	visibleDays := m.dashboard.Days
 	if len(visibleDays) > maxRows {
 		visibleDays = visibleDays[len(visibleDays)-maxRows:]
@@ -292,7 +291,6 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 	if len(visibleDays) == 0 {
 		lines = append(lines, mutedStyle.Render("No historical weekly trends yet."))
 	} else {
-		// Aligned Headers
 		barWidth := max(5, width-29)
 		headerLine := boldStyle.Render(padRight("DAY", 6) + padRight("DATE", 12) + padRight("WEEKLY TREND", barWidth) + " " + padLeft("DURATION", 8))
 		lines = append(lines, headerLine)

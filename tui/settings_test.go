@@ -2,7 +2,7 @@ package tui
 
 import "testing"
 
-// TestSettingsStopReturnsCommand pins F25: stopping the daemon from the TUI
+// TestSettingsStopReturnsCommand pins that stopping the daemon from the TUI
 // must hand back a command for the runtime to run, not perform the multi-second
 // IPC round trip inline, which froze the UI. The command is deliberately not
 // executed here - it would stop a real daemon if one is running.

@@ -285,7 +285,7 @@ func TestPersistedActiveSessionKeepsIdentity(t *testing.T) {
 	}
 }
 
-// TestRecoverOrphanedSessionSkipsFlushedInterval pins F21: when the active row
+// TestRecoverOrphanedSessionSkipsFlushedInterval pins that when the active row
 // survived a shutdown whose flush already reached history, recovery must not
 // re-insert the interval, which billed the same time twice.
 func TestRecoverOrphanedSessionSkipsFlushedInterval(t *testing.T) {
@@ -433,7 +433,7 @@ func TestRecoverOrphanedSessionSplitsAtMidnight(t *testing.T) {
 	}
 }
 
-// TestHandleIPCConnectionBoundsUnauthenticatedRead pins F22: the request line
+// TestHandleIPCConnectionBoundsUnauthenticatedRead pins that the request line
 // is read before the token is checked, so without a read bound any local
 // process could stream bytes without a newline and exhaust memory.
 func TestHandleIPCConnectionBoundsUnauthenticatedRead(t *testing.T) {

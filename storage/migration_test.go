@@ -388,7 +388,7 @@ func TestMigrateRepairsStampedLegacyDatabase(t *testing.T) {
 	}
 }
 
-// TestMigrateCorruptVersionKeepsV3Data pins F26: an unparseable schema_version
+// TestMigrateCorruptVersionKeepsV3Data pins that an unparseable schema_version
 // is read as 0, so without the shape gate the migration would re-run against
 // already-v3 tables - collapsing per-install rows into |legacy buckets. The
 // shape decides, so a corrupt version on a v3 database is only re-stamped.

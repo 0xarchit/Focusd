@@ -366,7 +366,6 @@ func GetAppStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 		return nil, err
 	}
 
-	// Dynamic active session injection if date range includes today
 	today := Today()
 	inRange := (startDate == "" && endDate == "") || (today >= startDate && today <= endDate)
 	if inRange {

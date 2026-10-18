@@ -169,7 +169,7 @@ func TestEnsureIPCTokenDistinctPerInstall(t *testing.T) {
 	}
 }
 
-// TestCreateIPCTokenNeverReplacesExisting pins F23: the exclusive create that
+// TestCreateIPCTokenNeverReplacesExisting pins the exclusive create that
 // closes the daemon start-up race - the loser must adopt the winner's file
 // instead of overwriting the token the already-running daemon expects.
 func TestCreateIPCTokenNeverReplacesExisting(t *testing.T) {

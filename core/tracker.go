@@ -218,7 +218,6 @@ func (t *Tracker) Start() error {
 			}
 			t.mu.Unlock()
 
-			// Reset prevSessionApp guard when user switches away
 			if sessionExe != prevSessionApp {
 				prevSessionApp = ""
 			}

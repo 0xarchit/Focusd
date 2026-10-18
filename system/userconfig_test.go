@@ -69,7 +69,7 @@ func TestRedactTitlesRoundTrip(t *testing.T) {
 	}
 }
 
-// TestConfigUpdatesSerializeOnTheFileLock pins F24: a setter must wait for the
+// TestConfigUpdatesSerializeOnTheFileLock pins that a setter must wait for the
 // cross-process lock, so two processes cannot interleave their
 // read-modify-write and silently drop one change.
 func TestConfigUpdatesSerializeOnTheFileLock(t *testing.T) {
@@ -104,7 +104,7 @@ func TestConfigUpdatesSerializeOnTheFileLock(t *testing.T) {
 	}
 }
 
-// TestConfigUpdateMergesConcurrentChange pins the fresh-reload half of F24: a
+// TestConfigUpdateMergesConcurrentChange pins the fresh-reload half: a
 // read-modify-write starts from the on-disk state, so a field another process
 // changed is preserved.
 func TestConfigUpdateMergesConcurrentChange(t *testing.T) {

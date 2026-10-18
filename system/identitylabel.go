@@ -7,7 +7,6 @@ import (
 	"unicode/utf8"
 )
 
-// Version info labels a binary better than its base name does.
 var (
 	versionInfoMu    sync.Mutex
 	versionInfoCache = map[string]string{}

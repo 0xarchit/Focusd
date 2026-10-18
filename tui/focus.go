@@ -15,7 +15,6 @@ func (m *Model) handleFocusKey(key string) (Model, tea.Cmd) {
 	switch key {
 	case "h", "left":
 		if m.focusButton == -1 {
-			// adjust break interval
 			enabled := system.GetBreakReminderEnabled()
 			mins := max(5, system.GetBreakReminderMinutes()-5)
 			if err := system.SetBreakReminder(enabled, mins); err != nil {

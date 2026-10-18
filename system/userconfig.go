@@ -322,7 +322,7 @@ func AddWhitelistApp(exeName string) error {
 	}
 	for _, a := range userConfig.WhitelistApps {
 		if normalizeConfigName(a) == exeName {
-			return nil // already exists
+			return nil
 		}
 	}
 	userConfig.WhitelistApps = append(userConfig.WhitelistApps, exeName)

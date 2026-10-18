@@ -42,8 +42,8 @@
   });
 
   // ---- Scroll reveal: cascade [data-reveal] elements into view ---------
-  // ponytail: one observer for the whole page; each element unobserves
-  //           once revealed so we don't pay for scroll frames forever.
+  // One observer for the whole page; each element unobserves once
+  // revealed so we don't pay for scroll frames forever.
   const targets = document.querySelectorAll('[data-reveal]');
   if (targets.length) {
     if (reduce || !('IntersectionObserver' in window)) {
@@ -62,8 +62,8 @@
   }
 
   // ---- GitHub API: version + downloads + stars -------------------------
-  // ponytail: two unauthenticated calls, cached in localStorage 6h.
-  //           silent fail keeps the static fallbacks visible.
+  // Two unauthenticated calls, cached in localStorage for 6h; a silent
+  // failure keeps the static fallbacks visible.
   const setText = (sel, val) => {
     document.querySelectorAll(sel).forEach(el => { el.textContent = val; });
   };

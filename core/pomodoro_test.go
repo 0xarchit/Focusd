@@ -9,7 +9,7 @@ import (
 	"focusd/storage"
 )
 
-// TestCheckPomodoroCompletionCompletesExpiredTimer pins F18: a lazy status
+// TestCheckPomodoroCompletionCompletesExpiredTimer pins that a lazy status
 // read finishes an expired timer even though the daemon's ticker is not
 // running.
 func TestCheckPomodoroCompletionCompletesExpiredTimer(t *testing.T) {

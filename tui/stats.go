@@ -330,13 +330,13 @@ func (m *Model) renderRangeSelector(width int) string {
 	}
 
 	switch m.statsRange {
-	case 0: // TODAY
+	case 0:
 		kpiParts = append(kpiParts, fmt.Sprintf("Today Screen Time: %s", cyanStyle.Render(formatDuration(m.stats.Total))))
 		kpiParts = append(kpiParts, fmt.Sprintf("Active Apps: %s", cyanStyle.Render(fmt.Sprintf("%d", m.stats.ActiveApps))))
 		kpiParts = append(kpiParts, fmt.Sprintf("App Launches: %s", cyanStyle.Render(fmt.Sprintf("%d", m.stats.TotalAppLaunches))))
 		kpiParts = append(kpiParts, fmt.Sprintf("Top App: %s", cyanStyle.Render(topAppName)))
 
-	case 1: // LAST 7 DAYS
+	case 1:
 		kpiParts = append(kpiParts, fmt.Sprintf("7-Day Screen Time: %s", cyanStyle.Render(formatDuration(m.stats.Total))))
 		kpiParts = append(kpiParts, fmt.Sprintf("Daily Avg: %s", cyanStyle.Render(formatDuration(m.stats.DailyAvg))))
 		if m.stats.PeakDayDuration > 0 {
@@ -344,7 +344,7 @@ func (m *Model) renderRangeSelector(width int) string {
 		}
 		kpiParts = append(kpiParts, fmt.Sprintf("App Launches: %s", cyanStyle.Render(fmt.Sprintf("%d", m.stats.TotalAppLaunches))))
 
-	case 2: // LAST 30 DAYS
+	case 2:
 		kpiParts = append(kpiParts, fmt.Sprintf("30-Day Total: %s", cyanStyle.Render(formatDuration(m.stats.Total))))
 		kpiParts = append(kpiParts, fmt.Sprintf("Daily Avg: %s", cyanStyle.Render(formatDuration(m.stats.DailyAvg))))
 		kpiParts = append(kpiParts, fmt.Sprintf("Last 7-Day Total: %s", cyanStyle.Render(formatDuration(m.stats.Last7DaysTotal))))
@@ -352,7 +352,7 @@ func (m *Model) renderRangeSelector(width int) string {
 			kpiParts = append(kpiParts, fmt.Sprintf("Peak Day: %s (%s)", cyanStyle.Render(m.stats.PeakDayLabel), cyanStyle.Render(formatDuration(m.stats.PeakDayDuration))))
 		}
 
-	case 3: // CUSTOM RANGE
+	case 3:
 		numDays := len(m.stats.Days)
 		kpiParts = append(kpiParts, fmt.Sprintf("Range Total (%dd): %s", numDays, cyanStyle.Render(formatDuration(m.stats.Total))))
 		kpiParts = append(kpiParts, fmt.Sprintf("Daily Avg: %s", cyanStyle.Render(formatDuration(m.stats.DailyAvg))))
