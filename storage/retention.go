@@ -14,7 +14,9 @@ func EnforceRetention() {
 		log.Printf("WARN: retention skipped, configured window unreadable: %v", err)
 		return
 	}
-	cutoff := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
+	// The window counts date rows: "7 days" keeps today plus the six days
+	// before it, so the cutoff day itself is retained.
+	cutoff := time.Now().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 
 	tx, err := db.Begin()
 	if err != nil {

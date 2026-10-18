@@ -1,6 +1,9 @@
 package storage
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestResolveRetentionDays(t *testing.T) {
 	setupStorageEnv(t)
@@ -58,5 +61,52 @@ func TestEnforceRetentionSkipsOnReadFailure(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("old row was pruned despite the read failure (count = %d; want 1)", count)
+	}
+}
+
+// TestEnforceRetentionKeepsExactlyNDays pins the off-by-one: "7 days" means
+// seven date rows - today plus the six days before it, not today plus seven.
+func TestEnforceRetentionKeepsExactlyNDays(t *testing.T) {
+	setupStorageEnv(t)
+
+	if err := SetRetentionDays(7); err != nil {
+		t.Fatalf("SetRetentionDays failed: %v", err)
+	}
+
+	now := time.Now()
+	for i := 0; i <= 8; i++ {
+		date := now.AddDate(0, 0, -i).Format("2006-01-02")
+		if _, err := db.Exec(`
+			INSERT INTO apps_daily (date, app_name, exe_name, app_id, total_duration_secs, open_count)
+			VALUES (?, 'App', 'app.exe', 'app|key', 60, 1)
+		`, date); err != nil {
+			t.Fatalf("seed failed: %v", err)
+		}
+	}
+
+	EnforceRetention()
+
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM apps_daily`).Scan(&count); err != nil {
+		t.Fatalf("count failed: %v", err)
+	}
+	if count != 7 {
+		t.Errorf("kept %d date rows; want exactly 7", count)
+	}
+
+	var kept int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM apps_daily WHERE date = ?`, now.AddDate(0, 0, -6).Format("2006-01-02")).Scan(&kept); err != nil {
+		t.Fatalf("check failed: %v", err)
+	}
+	if kept != 1 {
+		t.Error("the row six days back should be kept")
+	}
+
+	var pruned int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM apps_daily WHERE date = ?`, now.AddDate(0, 0, -7).Format("2006-01-02")).Scan(&pruned); err != nil {
+		t.Fatalf("check failed: %v", err)
+	}
+	if pruned != 0 {
+		t.Error("the row seven days back should be pruned")
 	}
 }
