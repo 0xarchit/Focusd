@@ -123,12 +123,14 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 		m.limitForm = limitForm{Visible: true}
 	case "e":
 		rows := m.limitRows()
+		m.clampLimitsSelection(len(rows))
 		if len(rows) > 0 {
 			row := rows[m.limitsSelected]
 			m.limitForm = limitForm{Visible: true, Editing: true, App: row.Name, OriginalApp: row.Name, Hours: row.LimitMinutes / 60, Minutes: row.LimitMinutes % 60}
 		}
 	case "d":
 		rows := m.limitRows()
+		m.clampLimitsSelection(len(rows))
 		if len(rows) > 0 {
 			appName := rows[m.limitsSelected].Name
 			if err := system.SetAppTimeLimit(appName, 0); err != nil {
@@ -279,6 +281,19 @@ func (m *Model) limitRows() []limitRow {
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
 	return rows
+}
+
+// clampLimitsSelection keeps the cursor inside the current row set: rows
+// shrink when a limit is deleted and the async dashboard refresh lands, while
+// the cursor only clamped on movement - so edit/delete could index out of
+// range and panic.
+func (m *Model) clampLimitsSelection(rowCount int) {
+	if m.limitsSelected >= rowCount {
+		m.limitsSelected = rowCount - 1
+	}
+	if m.limitsSelected < 0 {
+		m.limitsSelected = 0
+	}
 }
 
 // limitUsageTodayMinutes sums today's usage that a limit key governs. Config
