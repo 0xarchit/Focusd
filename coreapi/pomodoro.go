@@ -12,6 +12,11 @@ import (
 
 const defaultPomodoroMinutes = 25
 
+// MaxPomodoroMinutes bounds the timer. Larger values can overflow
+// time.Duration(minutes)*time.Minute into the negative, which made the timer
+// read as already complete the moment it started.
+const MaxPomodoroMinutes = 1440
+
 type PomodoroState struct {
 	Active    bool      `json:"active"`
 	StartTime time.Time `json:"start_time"`
@@ -77,6 +82,9 @@ func StartPomodoro(minutes int) error {
 
 		if minutes <= 0 {
 			minutes = defaultPomodoroMinutes
+		}
+		if minutes > MaxPomodoroMinutes {
+			minutes = MaxPomodoroMinutes
 		}
 
 		state := &PomodoroState{

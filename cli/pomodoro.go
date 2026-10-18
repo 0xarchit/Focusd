@@ -11,7 +11,7 @@ func runFocus(args []string) {
 	minutes := 25
 	if len(args) > 2 {
 		if m, err := strconv.Atoi(args[2]); err == nil && m > 0 {
-			minutes = m
+			minutes = min(m, coreapi.MaxPomodoroMinutes)
 		}
 	}
 

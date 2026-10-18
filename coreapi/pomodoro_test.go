@@ -171,6 +171,29 @@ func TestCheckPomodoroRetriesThrottledToast(t *testing.T) {
 	}
 }
 
+// TestStartPomodoroClampsMinutes pins that a huge minute count cannot overflow
+// time.Duration and make the timer complete instantly.
+func TestStartPomodoroClampsMinutes(t *testing.T) {
+	setupPomodoroEnv(t)
+
+	if err := StartPomodoro(1 << 40); err != nil {
+		t.Fatalf("StartPomodoro failed: %v", err)
+	}
+
+	state, _ := LoadPomodoroStateRaw()
+	if state.Duration != MaxPomodoroMinutes {
+		t.Errorf("duration = %d; want clamp to %d", state.Duration, MaxPomodoroMinutes)
+	}
+
+	active, remaining, _ := GetPomodoroStatus()
+	if !active {
+		t.Fatal("timer should be active right after starting")
+	}
+	if remaining <= 0 {
+		t.Errorf("remaining = %v; want a positive remaining time", remaining)
+	}
+}
+
 func TestCheckPomodoroMigratesLegacyFile(t *testing.T) {
 	setupPomodoroEnv(t)
 
