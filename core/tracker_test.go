@@ -54,6 +54,7 @@ func TestGetAppName(t *testing.T) {
 		{"cmd.EXE", "Command Prompt"},
 		{"unknownapp.exe", "Unknownapp"},
 		{"CapitalEXE.EXE", "CapitalEXE"},
+		{"über.exe", "Über"},
 	}
 
 	for _, tc := range tests {
@@ -290,7 +291,9 @@ func TestPersistedActiveSessionKeepsIdentity(t *testing.T) {
 func TestRecoverOrphanedSessionSkipsFlushedInterval(t *testing.T) {
 	setupTestDB(t)
 
-	start := time.Now().Add(-time.Hour).Truncate(time.Second)
+	// A fixed midday window stays inside one local day, so these assertions do
+	// not depend on the wall-clock time the suite runs at.
+	start := time.Date(2026, 10, 18, 12, 0, 0, 0, time.Local)
 	if err := storage.InsertSessionWithDaily(&storage.Session{
 		AppName:      "Code",
 		ExeName:      "code",
@@ -348,7 +351,9 @@ func TestRecoverOrphanedSessionSkipsFlushedInterval(t *testing.T) {
 func TestRecoverOrphanedSessionInsertsMissingInterval(t *testing.T) {
 	setupTestDB(t)
 
-	start := time.Now().Add(-time.Hour).Truncate(time.Second)
+	// A fixed midday window stays inside one local day, so these assertions do
+	// not depend on the wall-clock time the suite runs at.
+	start := time.Date(2026, 10, 18, 12, 0, 0, 0, time.Local)
 	if err := storage.SaveActiveSession(&storage.ActiveSessionRecord{
 		AppName:   "Code",
 		ExeName:   "code",
@@ -383,6 +388,48 @@ func TestRecoverOrphanedSessionInsertsMissingInterval(t *testing.T) {
 	}
 	if active != nil {
 		t.Error("the active row should be cleared after recovery")
+	}
+}
+
+// TestRecoverOrphanedSessionSplitsAtMidnight pins the day attribution of a
+// crash across midnight: the recovered interval is split at local midnight
+// instead of billing the whole span - and its date - to the start day.
+func TestRecoverOrphanedSessionSplitsAtMidnight(t *testing.T) {
+	setupTestDB(t)
+
+	start := time.Date(2026, 10, 17, 23, 0, 0, 0, time.Local)
+	lastSeen := time.Date(2026, 10, 18, 0, 30, 0, 0, time.Local)
+	if err := storage.SaveActiveSession(&storage.ActiveSessionRecord{
+		AppName:   "Code",
+		ExeName:   "code",
+		ExePath:   `C:\code.exe`,
+		AppID:     "code|aaaa1111",
+		StartTime: start,
+		LastSeen:  lastSeen,
+		Date:      "2026-10-17",
+	}); err != nil {
+		t.Fatalf("SaveActiveSession failed: %v", err)
+	}
+
+	tracker := &Tracker{}
+	if err := tracker.recoverOrphanedSession(); err != nil {
+		t.Fatalf("recoverOrphanedSession failed: %v", err)
+	}
+
+	sessions, err := storage.GetSessionsPaginated(100, 0, "", "")
+	if err != nil {
+		t.Fatalf("GetSessionsPaginated failed: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("recovered %d sessions; want the interval split into 2", len(sessions))
+	}
+
+	// Newest first: the post-midnight segment, then the pre-midnight one.
+	if sessions[0].Date != "2026-10-18" || sessions[0].DurationSecs != 1800 {
+		t.Errorf("post-midnight segment = %s/%ds; want 2026-10-18/1800", sessions[0].Date, sessions[0].DurationSecs)
+	}
+	if sessions[1].Date != "2026-10-17" || sessions[1].DurationSecs != 3600 {
+		t.Errorf("pre-midnight segment = %s/%ds; want 2026-10-17/3600", sessions[1].Date, sessions[1].DurationSecs)
 	}
 }
 

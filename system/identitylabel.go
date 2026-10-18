@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // Version info labels a binary better than its base name does.
@@ -85,5 +86,8 @@ func TitleCaseExe(exeName string) string {
 	if name == "" {
 		return exeName
 	}
-	return strings.ToUpper(name[:1]) + name[1:]
+	// Case the first rune, not the first byte: byte slicing splits a
+	// multi-byte character and produces mojibake.
+	r, size := utf8.DecodeRuneInString(name)
+	return strings.ToUpper(string(r)) + name[size:]
 }

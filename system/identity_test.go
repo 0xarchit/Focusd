@@ -266,6 +266,7 @@ func TestTitleCaseExe(t *testing.T) {
 		{"firefox.exe", "Firefox"},
 		{"firefox", "Firefox"},
 		{"msedge.exe", "Msedge"},
+		{"über.exe", "Über"},
 		{"", ""},
 	}
 

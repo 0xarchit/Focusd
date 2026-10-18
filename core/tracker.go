@@ -16,6 +16,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 type activeSession struct {
@@ -300,21 +301,59 @@ func (t *Tracker) recoverOrphanedSession() error {
 		cleanTitle = cleanWindowTitle(recovered.WindowTitle, recovered.ExeName)
 	}
 
-	alreadyStored, err := storage.SessionExists(recovered)
-	if err != nil {
-		return fmt.Errorf("failed to check for a stored copy of the session: %w", err)
-	}
-	if alreadyStored {
-		// The interval reached history before the active row survived a failed
-		// shutdown clear; inserting again would bill the time twice.
-		log.Printf("WARN: recovered session is already in history; skipping insert")
-	} else if err := storage.InsertSessionWithDaily(recovered, cleanTitle); err != nil {
-		return fmt.Errorf("failed to recover orphaned session: %w", err)
+	for _, segment := range splitRecoveredAtMidnight(recovered) {
+		alreadyStored, err := storage.SessionExists(segment)
+		if err != nil {
+			return fmt.Errorf("failed to check for a stored copy of the session: %w", err)
+		}
+		if alreadyStored {
+			// The interval reached history before the active row survived a
+			// failed shutdown clear; inserting again would bill the time twice.
+			log.Printf("WARN: recovered session is already in history; skipping insert")
+			continue
+		}
+		if err := storage.InsertSessionWithDaily(segment, cleanTitle); err != nil {
+			return fmt.Errorf("failed to recover orphaned session: %w", err)
+		}
 	}
 	if err := storage.ClearActiveSession(); err != nil {
 		return fmt.Errorf("failed to clear recovered active session: %w", err)
 	}
 	return nil
+}
+
+// splitRecoveredAtMidnight splits an orphaned interval at local-midnight
+// boundaries, so a session that was still active when the machine crashed
+// across midnight is billed to the days it actually covers.
+func splitRecoveredAtMidnight(s *storage.Session) []*storage.Session {
+	if s.EndTime.IsZero() || !s.EndTime.After(s.StartTime) {
+		return []*storage.Session{s}
+	}
+
+	var out []*storage.Session
+	start := s.StartTime
+	date := s.Date
+	for {
+		nextMidnight := time.Date(start.Year(), start.Month(), start.Day()+1, 0, 0, 0, 0, time.Local)
+		if !s.EndTime.After(nextMidnight) {
+			segment := *s
+			segment.StartTime = start
+			segment.Date = date
+			segment.DurationSecs = int(s.EndTime.Sub(start).Seconds())
+			out = append(out, &segment)
+			return out
+		}
+
+		segment := *s
+		segment.StartTime = start
+		segment.EndTime = nextMidnight
+		segment.Date = date
+		segment.DurationSecs = int(nextMidnight.Sub(start).Seconds())
+		out = append(out, &segment)
+
+		start = nextMidnight
+		date = nextMidnight.Format("2006-01-02")
+	}
 }
 
 // needsPersist reports whether the in-memory session differs from what was last
@@ -334,20 +373,20 @@ func (t *Tracker) needsPersist() bool {
 // throttle window has not elapsed. lastSeen still advances on the slow tick, so
 // orphan recovery does not bill a crash as active time.
 func (t *Tracker) persistActiveSession() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.writeActiveSession(false)
 }
 
 func (t *Tracker) forcePersistActiveSession() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.writeActiveSession(true)
 }
 
-// writeActiveSession performs the actual write. Caller holds t.mu.
+// writeActiveSession snapshots the session under t.mu and performs the SQLite
+// write outside it: a busy or slow disk must not stall the poll loop or the
+// IPC handlers queued on the mutex.
 func (t *Tracker) writeActiveSession(force bool) {
+	t.mu.Lock()
 	if t.currentSession == nil {
+		t.mu.Unlock()
 		clearActiveSessionLogged()
 		return
 	}
@@ -355,6 +394,7 @@ func (t *Tracker) writeActiveSession(force bool) {
 	now := time.Now()
 	changed := t.needsPersist()
 	if !force && !changed && now.Sub(t.lastPersistAt) < persistInterval {
+		t.mu.Unlock()
 		return
 	}
 
@@ -368,16 +408,26 @@ func (t *Tracker) writeActiveSession(force bool) {
 		LastSeen:    now,
 		Date:        t.currentSession.Date,
 	}
+	t.mu.Unlock()
+
 	if err := storage.SaveActiveSession(record); err != nil {
 		log.Printf("ERROR: failed to save active session: %v", err)
 		return
 	}
 
-	t.persistedAppName = t.currentSession.AppName
-	t.persistedExeName = t.currentSession.ExeName
-	t.persistedWindowTitle = t.currentSession.WindowTitle
-	t.persistedStartTime = t.currentSession.StartTime
-	t.persistedDate = t.currentSession.Date
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	// Only mark as persisted when the same session is still active; a newer
+	// session started mid-write sets its own bookkeeping on its first persist.
+	if t.currentSession != nil &&
+		t.currentSession.StartTime.Equal(record.StartTime) &&
+		t.currentSession.AppName == record.AppName {
+		t.persistedAppName = record.AppName
+		t.persistedExeName = record.ExeName
+		t.persistedWindowTitle = record.WindowTitle
+		t.persistedStartTime = record.StartTime
+		t.persistedDate = record.Date
+	}
 	t.lastPersistAt = now
 	t.persistWrites++
 }
@@ -710,10 +760,13 @@ func getAppName(exeName string) string {
 		return mapped
 	}
 
-	if len(name) > 0 {
-		first := strings.ToUpper(string(name[0]))
-		if len(name) > 1 {
-			return first + name[1:]
+	if name != "" {
+		// Case the first rune, not the first byte: byte slicing splits a
+		// multi-byte character and produces mojibake.
+		r, size := utf8.DecodeRuneInString(name)
+		first := strings.ToUpper(string(r))
+		if size < len(name) {
+			return first + name[size:]
 		}
 		return first
 	}
