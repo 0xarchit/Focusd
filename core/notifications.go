@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"focusd/system"
 	"log"
 	"os"
 	"os/exec"
@@ -20,6 +21,9 @@ var (
 // toastAUMID identifies focusd in the Action Center rather than borrowing the
 // PowerShell GUID, which made alerts appear under the wrong application.
 const toastAUMID = "Focusd.Desktop"
+
+// toastDisplayName is the app name Windows shows for focusd's notifications.
+const toastDisplayName = "Focusd"
 
 // notificationProcessWindowHidden avoids flashing a console window.
 const notificationProcessWindowHidden = 0x08000000
@@ -62,6 +66,20 @@ func resetNotificationState() {
 	notificationMu.Lock()
 	lastNotification = time.Time{}
 	notificationMu.Unlock()
+}
+
+// ensureToastAppID registers the AUMID before a toast is sent. Windows drops
+// toasts whose AUMID is neither registered under Software\Classes\
+// AppUserModelId nor backed by a Start Menu shortcut: Show() succeeds and the
+// platform even logs delivery, yet nothing is ever displayed.
+func ensureToastAppID() {
+	iconPath, err := os.Executable()
+	if err != nil {
+		iconPath = ""
+	}
+	if err := system.EnsureToastAppID(toastAUMID, toastDisplayName, iconPath); err != nil {
+		log.Printf("WARN: failed to register toast app id: %v", err)
+	}
 }
 
 // runToast executes the PowerShell toast script, killing it when ctx ends. The
@@ -140,6 +158,7 @@ func showNotification(ctx context.Context, title, message string) bool {
 	if !notificationRateLimited() {
 		return false
 	}
+	ensureToastAppID()
 
 	t := truncateRunes(title, 200)
 	m := truncateRunes(message, 200)
@@ -152,6 +171,7 @@ func showNotificationWithAction(ctx context.Context, title, message string, call
 	if !notificationRateLimited() {
 		return false
 	}
+	ensureToastAppID()
 
 	t := truncateRunes(title, 200)
 	m := truncateRunes(message, 200)

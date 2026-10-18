@@ -19,6 +19,11 @@ const (
 	// pathBackupValue holds the PATH from before the last focusd edit so a user
 	// can restore it by hand after a bad write.
 	pathBackupValue = "Path.focusd-backup"
+
+	// toastAppIDKeyBase is where Windows looks up toast-capable application
+	// identities. Toasts from an AUMID that is neither in this tree nor backed
+	// by a Start Menu shortcut are dropped by the shell without any error.
+	toastAppIDKeyBase = `Software\Classes\AppUserModelId`
 )
 
 const (
@@ -135,6 +140,27 @@ func disableRegistryAutoStart() error {
 		return nil
 	}
 	return err
+}
+
+// EnsureToastAppID registers an AppUserModelID so the shell displays focusd's
+// toasts. Without this, Show() succeeds and the notification platform even
+// logs delivery, but no banner or Action Center entry ever appears.
+func EnsureToastAppID(appID, displayName, iconPath string) error {
+	key, _, err := registry.CreateKey(registry.CURRENT_USER, toastAppIDKeyBase+`\`+appID, registry.SET_VALUE)
+	if err != nil {
+		return fmt.Errorf("failed to register toast app id: %w", err)
+	}
+	defer key.Close()
+
+	if err := key.SetStringValue("DisplayName", displayName); err != nil {
+		return fmt.Errorf("failed to write toast display name: %w", err)
+	}
+	if iconPath != "" {
+		if err := key.SetStringValue("IconUri", iconPath); err != nil {
+			log.Printf("WARN: failed to write toast icon path: %v", err)
+		}
+	}
+	return nil
 }
 
 // readUserPath returns the current user PATH plus its registry value type.
