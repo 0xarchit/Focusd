@@ -161,7 +161,7 @@ func (t *Tracker) Start() error {
 		case <-retentionTicker.C:
 			storage.EnforceRetention()
 		case <-focusTicker.C:
-			checkPomodoroAndNotify()
+			CheckPomodoroCompletion()
 
 			today := storage.Today()
 			now := time.Now()

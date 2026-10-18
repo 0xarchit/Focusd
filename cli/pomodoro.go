@@ -22,7 +22,7 @@ func runFocus(args []string) {
 
 	ui.PrintHeader()
 	ui.PrintOK(fmt.Sprintf("Focus timer started for %d minutes.", minutes))
-	fmt.Println("You will be notified when it completes.")
+	fmt.Println("You will be notified when it completes; run 'focusd status' if the daemon is stopped.")
 }
 
 func runStopTimer() {

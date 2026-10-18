@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"focusd/core"
 	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
@@ -210,6 +211,9 @@ func checkDaemon() tea.Cmd {
 
 func loadDashboard() tea.Cmd {
 	return func() tea.Msg {
+		// A timer started while the daemon was stopped would otherwise never
+		// finish; the periodic refresh completes it from the TUI.
+		core.CheckPomodoroCompletion()
 		today := storage.Today()
 		return dashboardLoadedMsg(readTUIData(today, today, 7, true))
 	}

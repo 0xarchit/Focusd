@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"focusd/core"
 	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
@@ -18,6 +19,9 @@ func runStatus() {
 	defer storage.Close()
 
 	coreapi.SendIPCCmd("flush")
+
+	// Finish an expired timer even when the daemon is stopped.
+	core.CheckPomodoroCompletion()
 
 	ui.PrintHeader()
 
