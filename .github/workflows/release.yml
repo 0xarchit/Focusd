@@ -95,4 +95,6 @@ jobs:
             focusd_setup.exe
             focusd-v${{ env.VERSION }}-windows-amd64.zip
             checksums.txt
-          token: ${{ secrets.GIT_TOKEN }}
+          # The workflow-level contents: write permission covers the built-in
+          # token; no long-lived PAT secret is required.
+          token: ${{ github.token }}
