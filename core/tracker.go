@@ -121,7 +121,7 @@ func (t *Tracker) Start() error {
 		case <-t.ctx.Done():
 			t.flushCurrentSession()
 			t.flushPendingSessions()
-			storage.ClearActiveSession()
+			clearActiveSessionLogged()
 			// Tear down any in-flight toast process with the daemon.
 			cancelNotify()
 			return nil
@@ -269,6 +269,21 @@ func (t *Tracker) Stop() {
 	t.cancel()
 }
 
+// clearActiveSessionLogged removes the persisted active-session row, retrying
+// briefly and logging when it still fails: an un-cleared row whose interval was
+// already flushed to history would otherwise be re-inserted by recovery on the
+// next start and bill the same time twice.
+func clearActiveSessionLogged() {
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err = storage.ClearActiveSession(); err == nil {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	log.Printf("ERROR: failed to clear active session: %v", err)
+}
+
 func (t *Tracker) recoverOrphanedSession() error {
 	recovered, err := storage.RecoverActiveSession()
 	if err != nil {
@@ -284,7 +299,15 @@ func (t *Tracker) recoverOrphanedSession() error {
 		cleanTitle = cleanWindowTitle(recovered.WindowTitle, recovered.ExeName)
 	}
 
-	if err := storage.InsertSessionWithDaily(recovered, cleanTitle); err != nil {
+	alreadyStored, err := storage.SessionExists(recovered)
+	if err != nil {
+		return fmt.Errorf("failed to check for a stored copy of the session: %w", err)
+	}
+	if alreadyStored {
+		// The interval reached history before the active row survived a failed
+		// shutdown clear; inserting again would bill the time twice.
+		log.Printf("WARN: recovered session is already in history; skipping insert")
+	} else if err := storage.InsertSessionWithDaily(recovered, cleanTitle); err != nil {
 		return fmt.Errorf("failed to recover orphaned session: %w", err)
 	}
 	if err := storage.ClearActiveSession(); err != nil {
@@ -324,7 +347,7 @@ func (t *Tracker) forcePersistActiveSession() {
 // writeActiveSession performs the actual write. Caller holds t.mu.
 func (t *Tracker) writeActiveSession(force bool) {
 	if t.currentSession == nil {
-		storage.ClearActiveSession()
+		clearActiveSessionLogged()
 		return
 	}
 

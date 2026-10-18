@@ -82,6 +82,20 @@ func InsertSessionWithDaily(s *Session, cleanBrowserTitle string) error {
 	return tx.Commit()
 }
 
+// SessionExists reports whether a session with the same app identity and start
+// time is already in history. Orphan recovery uses it to avoid re-inserting an
+// interval that was flushed before the active row could be cleared.
+func SessionExists(s *Session) (bool, error) {
+	var count int
+	err := db.QueryRow(`
+		SELECT COUNT(*) FROM sessions WHERE app_id = ? AND start_time = ?
+	`, sessionAppID(s), s.StartTime.Unix()).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 type AppDailyStat struct {
 	Date              string
 	AppName           string

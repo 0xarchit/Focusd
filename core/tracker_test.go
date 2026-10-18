@@ -279,3 +279,105 @@ func TestPersistedActiveSessionKeepsIdentity(t *testing.T) {
 		t.Errorf("live session not counted for its own install (usage = %d)", usage)
 	}
 }
+
+// TestRecoverOrphanedSessionSkipsFlushedInterval pins F21: when the active row
+// survived a shutdown whose flush already reached history, recovery must not
+// re-insert the interval, which billed the same time twice.
+func TestRecoverOrphanedSessionSkipsFlushedInterval(t *testing.T) {
+	setupTestDB(t)
+
+	start := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if err := storage.InsertSessionWithDaily(&storage.Session{
+		AppName:      "Code",
+		ExeName:      "code",
+		ExePath:      `C:\code.exe`,
+		AppID:        "code|aaaa1111",
+		WindowTitle:  "main.go",
+		StartTime:    start,
+		EndTime:      start.Add(5 * time.Minute),
+		DurationSecs: 300,
+		Date:         storage.Today(),
+	}, ""); err != nil {
+		t.Fatalf("flush failed: %v", err)
+	}
+	if err := storage.SaveActiveSession(&storage.ActiveSessionRecord{
+		AppName:   "Code",
+		ExeName:   "code",
+		ExePath:   `C:\code.exe`,
+		AppID:     "code|aaaa1111",
+		StartTime: start,
+		LastSeen:  start.Add(5 * time.Minute),
+		Date:      storage.Today(),
+	}); err != nil {
+		t.Fatalf("SaveActiveSession failed: %v", err)
+	}
+
+	before, err := storage.GetSessionsPaginated(100, 0, "", "")
+	if err != nil {
+		t.Fatalf("GetSessionsPaginated failed: %v", err)
+	}
+
+	tracker := &Tracker{}
+	if err := tracker.recoverOrphanedSession(); err != nil {
+		t.Fatalf("recoverOrphanedSession failed: %v", err)
+	}
+
+	after, err := storage.GetSessionsPaginated(100, 0, "", "")
+	if err != nil {
+		t.Fatalf("GetSessionsPaginated failed: %v", err)
+	}
+	if len(after) != len(before) {
+		t.Errorf("recovery inserted a duplicate interval: %d session rows before, %d after", len(before), len(after))
+	}
+
+	active, err := storage.GetActiveSession()
+	if err != nil {
+		t.Fatalf("GetActiveSession failed: %v", err)
+	}
+	if active != nil {
+		t.Error("the stale active row should be cleared after recovery")
+	}
+}
+
+// TestRecoverOrphanedSessionInsertsMissingInterval keeps the happy path pinned:
+// when the interval never reached history, recovery inserts it exactly once.
+func TestRecoverOrphanedSessionInsertsMissingInterval(t *testing.T) {
+	setupTestDB(t)
+
+	start := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if err := storage.SaveActiveSession(&storage.ActiveSessionRecord{
+		AppName:   "Code",
+		ExeName:   "code",
+		ExePath:   `C:\code.exe`,
+		AppID:     "code|aaaa1111",
+		StartTime: start,
+		LastSeen:  start.Add(5 * time.Minute),
+		Date:      storage.Today(),
+	}); err != nil {
+		t.Fatalf("SaveActiveSession failed: %v", err)
+	}
+
+	tracker := &Tracker{}
+	if err := tracker.recoverOrphanedSession(); err != nil {
+		t.Fatalf("recoverOrphanedSession failed: %v", err)
+	}
+
+	sessions, err := storage.GetSessionsPaginated(100, 0, "", "")
+	if err != nil {
+		t.Fatalf("GetSessionsPaginated failed: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("recovered %d sessions; want exactly 1", len(sessions))
+	}
+	if sessions[0].DurationSecs != 300 {
+		t.Errorf("recovered duration = %d; want 300", sessions[0].DurationSecs)
+	}
+
+	active, err := storage.GetActiveSession()
+	if err != nil {
+		t.Fatalf("GetActiveSession failed: %v", err)
+	}
+	if active != nil {
+		t.Error("the active row should be cleared after recovery")
+	}
+}

@@ -98,3 +98,45 @@ func TestLiveElapsedTodayClipsAtMidnight(t *testing.T) {
 		t.Errorf("same-day start = %d; want 600", got)
 	}
 }
+
+// TestSessionExistsMatchesIdentityAndStart pins the recovery de-dup lookup:
+// only the same app identity at the same start second counts as a duplicate.
+func TestSessionExistsMatchesIdentityAndStart(t *testing.T) {
+	setupStorageEnv(t)
+
+	start := time.Now().Add(-time.Hour).Truncate(time.Second)
+	session := &Session{
+		AppName:      "Code",
+		ExeName:      "code",
+		ExePath:      `C:\code.exe`,
+		AppID:        "code|aaaa1111",
+		WindowTitle:  "main.go",
+		StartTime:    start,
+		EndTime:      start.Add(10 * time.Minute),
+		DurationSecs: 600,
+		Date:         Today(),
+	}
+	if err := InsertSessionWithDaily(session, ""); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	exists, err := SessionExists(&Session{ExeName: "code", AppID: "code|aaaa1111", StartTime: start})
+	if err != nil {
+		t.Fatalf("SessionExists failed: %v", err)
+	}
+	if !exists {
+		t.Error("the same identity and start time should match")
+	}
+
+	if exists, _ := SessionExists(&Session{ExeName: "code", AppID: "code|aaaa1111", StartTime: start.Add(time.Minute)}); exists {
+		t.Error("a different start time must not match")
+	}
+	if exists, _ := SessionExists(&Session{ExeName: "code", AppID: "code|bbbb2222", StartTime: start}); exists {
+		t.Error("a different identity must not match")
+	}
+	// A row without an app id resolves through the legacy key, which must not
+	// accidentally match an install that has a real key.
+	if exists, _ := SessionExists(&Session{ExeName: "code", StartTime: start}); exists {
+		t.Error("the legacy identity must not match a hashed install")
+	}
+}
