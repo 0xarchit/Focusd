@@ -633,6 +633,16 @@ func (t *Tracker) flushPendingSessions() {
 	}
 }
 
+// flushForRead persists what a read needs without closing the live session.
+// The IPC flush command backs `focusd status`, `focusd stats`, and the TUI
+// refresh, which only want current data on disk; closing the session here
+// fragmented it, bumped open counts, and dropped the active_session row until
+// the next poll. Closing a session is stop's job.
+func (t *Tracker) flushForRead() {
+	t.flushPendingSessions()
+	t.persistActiveSession()
+}
+
 var nameMap = map[string]string{
 	"code":            "VS Code",
 	"devenv":          "Visual Studio",
@@ -739,9 +749,7 @@ func (t *Tracker) handleIPCConnection(conn net.Conn) {
 		}
 		t.Stop()
 	case "flush":
-		t.flushCurrentSession()
-		t.flushPendingSessions()
-		t.persistActiveSession()
+		t.flushForRead()
 		if _, err := conn.Write([]byte("ok\n")); err != nil {
 			log.Printf("WARN: IPC write failed: %v", err)
 		}

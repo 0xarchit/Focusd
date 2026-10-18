@@ -203,3 +203,38 @@ func TestRetentionDays(t *testing.T) {
 		t.Errorf("expected custom retention days to be %d, got %d", customDays, got)
 	}
 }
+
+// TestFlushForReadKeepsLiveSession pins that the IPC flush behind `focusd
+// status`, `focusd stats`, and the TUI refresh only persists state: closing
+// the session there fragmented it, bumped open counts, and cleared
+// active_session until the next poll.
+func TestFlushForReadKeepsLiveSession(t *testing.T) {
+	setupTestDB(t)
+
+	tracker := &Tracker{pollInterval: time.Second}
+	tracker.currentSession = &activeSession{
+		AppName:     "TestApp",
+		ExeName:     "test.exe",
+		AppID:       "test|abcd1234",
+		WindowTitle: "Window",
+		StartTime:   time.Now().Add(-time.Minute),
+		Date:        storage.Today(),
+	}
+
+	tracker.flushForRead()
+
+	if tracker.currentSession == nil {
+		t.Fatal("flush for a read closed the live session")
+	}
+
+	active, err := storage.GetActiveSession()
+	if err != nil {
+		t.Fatalf("GetActiveSession failed: %v", err)
+	}
+	if active == nil {
+		t.Fatal("active_session row missing after a read flush")
+	}
+	if active.ExeName != "test.exe" {
+		t.Errorf("active_session exe = %q; want test.exe", active.ExeName)
+	}
+}
