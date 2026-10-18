@@ -6,6 +6,16 @@ import "time"
 // is spread across the hours it covers, so no bucket can exceed sixty minutes.
 func GetHourlyUsageToday(date string) ([24]int, error) {
 	var buckets [24]int
+	err := withBusyRetry(func() error {
+		var err error
+		buckets, err = getHourlyUsageTodayOnce(date)
+		return err
+	})
+	return buckets, err
+}
+
+func getHourlyUsageTodayOnce(date string) ([24]int, error) {
+	var buckets [24]int
 
 	rows, err := db.Query(`
 		SELECT start_time, COALESCE(end_time, start_time) AS end_time
