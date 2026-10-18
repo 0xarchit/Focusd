@@ -387,6 +387,53 @@ func TestMigrateRepairsStampedLegacyDatabase(t *testing.T) {
 	}
 }
 
+// TestMigrateCorruptVersionKeepsV3Data pins F26: an unparseable schema_version
+// is read as 0, so without the shape gate the migration would re-run against
+// already-v3 tables - collapsing per-install rows into |legacy buckets. The
+// shape decides, so a corrupt version on a v3 database is only re-stamped.
+func TestMigrateCorruptVersionKeepsV3Data(t *testing.T) {
+	dir := setupStorageEnv(t)
+
+	if _, err := db.Exec(`
+		INSERT INTO apps_daily (date, app_name, exe_name, exe_path, app_id, total_duration_secs, open_count)
+		VALUES ('2026-10-18', 'Chrome', 'chrome.exe', 'C:\chrome.exe', 'chrome|aaaa1111', 120, 1)
+	`); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+	if err := SetConfig(schemaVersionKey, "not-a-number"); err != nil {
+		t.Fatalf("SetConfig failed: %v", err)
+	}
+
+	if err := Migrate(); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	var appID string
+	if err := db.QueryRow(`SELECT app_id FROM apps_daily WHERE exe_name = 'chrome.exe'`).Scan(&appID); err != nil {
+		t.Fatalf("read back failed: %v", err)
+	}
+	if appID != "chrome|aaaa1111" {
+		t.Errorf("app_id = %q; want the per-install key preserved", appID)
+	}
+
+	version, err := GetConfig(schemaVersionKey)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if version != "3" {
+		t.Errorf("schema_version = %q; want a re-stamp to 3", version)
+	}
+
+	// No rebuild means no backup was taken.
+	matches, err := filepath.Glob(filepath.Join(dir, "focusd", "focusd.db.*pre-v3"))
+	if err != nil {
+		t.Fatalf("glob failed: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Errorf("unexpected pre-migration backup(s): %v", matches)
+	}
+}
+
 // TestMigrateMergesExeSuffixVariants covers rows that differ only by the .exe
 // suffix. Both compute the same legacy app id, so grouping by the raw
 // exe_name put them in separate groups and UNIQUE(date, app_id) rejected the
