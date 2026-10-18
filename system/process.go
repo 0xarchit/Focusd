@@ -55,6 +55,11 @@ func getProcessPath(pid uint32) (string, error) {
 	}
 	defer procCloseHandle.Call(handle)
 
+	return queryProcessPath(handle)
+}
+
+// queryProcessPath resolves the image path of an already-open process handle.
+func queryProcessPath(handle uintptr) (string, error) {
 	// Windows caps this at 32767 characters including the terminator.
 	buf := make([]uint16, 32768)
 	size := uint32(len(buf))
@@ -68,6 +73,22 @@ func getProcessPath(pid uint32) (string, error) {
 		return "", err
 	}
 	return syscall.UTF16ToString(buf[:size]), nil
+}
+
+// openProcessForKill opens one handle with both query and terminate rights, so
+// a path can be verified and the process terminated through the same handle.
+// Reopening by pid between the two steps races pid reuse and can terminate an
+// unrelated process.
+func openProcessForKill(pid uint32) (uintptr, error) {
+	handle, _, err := procOpenProcess.Call(
+		uintptr(processQueryLimitedInformation|processTerminate),
+		0,
+		uintptr(pid),
+	)
+	if handle == 0 {
+		return 0, err
+	}
+	return handle, nil
 }
 
 // sameDir reports whether an executable path sits in dir. Kept separate from
@@ -137,6 +158,12 @@ func terminateProcessByPID(pid uint32) error {
 	}
 	defer procCloseHandle.Call(handle)
 
+	return terminateHandle(handle, pid)
+}
+
+// terminateHandle terminates an already-open process handle. The caller owns
+// the handle.
+func terminateHandle(handle uintptr, pid uint32) error {
 	ret, _, _ := procTerminateProcess.Call(handle, 1)
 	if ret == 0 {
 		return fmt.Errorf("failed to terminate process %d", pid)
@@ -187,8 +214,17 @@ func KillInstancesInDir(name, dir string) error {
 			return true
 		}
 
-		exePath, err := getProcessPath(pe.ProcessID)
-		if err != nil || exePath == "" {
+		// Verify and terminate through a single handle: reopening the pid
+		// between the two calls races pid reuse, and the kill could then land
+		// on an unrelated process.
+		handle, oerr := openProcessForKill(pe.ProcessID)
+		if oerr != nil {
+			return true
+		}
+		defer procCloseHandle.Call(handle)
+
+		exePath, qerr := queryProcessPath(handle)
+		if qerr != nil || exePath == "" {
 			// Cannot confirm the location, so leave it alone rather than
 			// terminate a process that may not be ours.
 			return true
@@ -197,7 +233,7 @@ func KillInstancesInDir(name, dir string) error {
 			return true
 		}
 
-		if err := terminateProcessByPID(pe.ProcessID); err != nil {
+		if err := terminateHandle(handle, pe.ProcessID); err != nil {
 			lastErr = err
 		}
 		return true

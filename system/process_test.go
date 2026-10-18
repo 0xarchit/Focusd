@@ -76,3 +76,22 @@ func TestGetProcessPathSelf(t *testing.T) {
 		t.Errorf("path %q does not match its own directory", path)
 	}
 }
+
+// TestOpenProcessForKillSelf pins that one combined handle can both resolve
+// the image path and hold terminate rights for a real process. The handle is
+// never used to terminate anything: the kill itself stays out of tests.
+func TestOpenProcessForKillSelf(t *testing.T) {
+	handle, err := openProcessForKill(uint32(currentPID()))
+	if err != nil {
+		t.Fatalf("openProcessForKill failed for self: %v", err)
+	}
+	defer procCloseHandle.Call(handle)
+
+	path, err := queryProcessPath(handle)
+	if err != nil {
+		t.Fatalf("queryProcessPath failed: %v", err)
+	}
+	if path == "" {
+		t.Fatal("expected a non-empty image path")
+	}
+}
