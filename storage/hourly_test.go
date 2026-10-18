@@ -140,3 +140,31 @@ func TestGetHourlyUsageTodayEmpty(t *testing.T) {
 		}
 	}
 }
+
+// TestSplitSessionHoursDSTFallBack pins that a session crossing a DST
+// fall-back still terminates: the second occurrence of the repeated hour
+// re-resolves to its first start, and without a forward-progress clamp the
+// cursor never advanced (an infinite loop that hung the hourly view).
+func TestSplitSessionHoursDSTFallBack(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skipf("zoneinfo unavailable: %v", err)
+	}
+	old := time.Local
+	time.Local = loc
+	t.Cleanup(func() { time.Local = old })
+
+	// 2026-11-01: 01:00-02:00 EDT repeats as 01:00-02:00 EST.
+	start := time.Date(2026, 11, 1, 0, 30, 0, 0, loc)
+	end := start.Add(2 * time.Hour)
+
+	buckets := splitSessionHours(start.Unix(), end.Unix())
+
+	total := 0
+	for _, secs := range buckets {
+		total += secs
+	}
+	if want := int(end.Sub(start).Seconds()); total != want {
+		t.Errorf("bucket total = %d; want %d (no time lost, no hang)", total, want)
+	}
+}

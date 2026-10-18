@@ -45,6 +45,13 @@ func splitSessionHours(start, end int64) map[int]int {
 	for cursor < end {
 		ts := time.Unix(cursor, 0)
 		next := time.Date(ts.Year(), ts.Month(), ts.Day(), ts.Hour(), 0, 0, 0, ts.Location()).Add(time.Hour).Unix()
+		// The wall-clock hour start is re-resolved locally, so on a DST
+		// fall-back the second occurrence of the repeated hour maps back to
+		// its first start and the cursor would not advance. Clamp to a full
+		// hour of real time instead.
+		if next <= cursor {
+			next = cursor + 3600
+		}
 		if next > end {
 			next = end
 		}
