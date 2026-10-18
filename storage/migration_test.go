@@ -386,3 +386,47 @@ func TestMigrateRepairsStampedLegacyDatabase(t *testing.T) {
 		t.Errorf("repairing a stamped database should keep a backup")
 	}
 }
+
+// TestMigrateMergesExeSuffixVariants covers rows that differ only by the .exe
+// suffix. Both compute the same legacy app id, so grouping by the raw
+// exe_name put them in separate groups and UNIQUE(date, app_id) rejected the
+// second row - aborting the migration on every retry.
+func TestMigrateMergesExeSuffixVariants(t *testing.T) {
+	setupStorageEnv(t)
+	createLegacySchema(t)
+
+	for _, row := range []struct {
+		appName string
+		exeName string
+		secs    int
+		opens   int
+	}{
+		{"Chrome", "chrome.exe", 1200, 2},
+		{"Chrome", "chrome", 300, 1},
+	} {
+		if _, err := db.Exec(
+			`INSERT INTO apps_daily (date, app_name, exe_name, total_duration_secs, open_count) VALUES ('2026-06-26', ?, ?, ?, ?)`,
+			row.appName, row.exeName, row.secs, row.opens,
+		); err != nil {
+			t.Fatalf("seed failed: %v", err)
+		}
+	}
+
+	if err := Migrate(); err != nil {
+		t.Fatalf("Migrate aborted on .exe suffix variants: %v", err)
+	}
+
+	var appID string
+	var secs, opens int
+	if err := db.QueryRow(
+		`SELECT COALESCE(app_id, ''), total_duration_secs, open_count FROM apps_daily WHERE date = '2026-06-26'`,
+	).Scan(&appID, &secs, &opens); err != nil {
+		t.Fatalf("query failed: %v", err)
+	}
+	if secs != 1500 || opens != 3 {
+		t.Errorf("merged row = %ds/%d opens; want 1500s/3 opens", secs, opens)
+	}
+	if appID != "chrome|legacy" {
+		t.Errorf("app_id = %q; want chrome|legacy", appID)
+	}
+}

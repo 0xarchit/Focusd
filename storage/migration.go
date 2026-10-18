@@ -218,8 +218,10 @@ const legacyAppIDExpr = `CASE WHEN lower(%s) LIKE '%%.exe' ` +
 	`THEN substr(lower(%s), 1, length(lower(%s)) - 4) ELSE lower(%s) END || '|legacy'`
 
 // migrateAppsDaily rebuilds the table keyed by app identity. GROUP BY is
-// required because the old UNIQUE(date, exe_name) was case sensitive, so
-// case-variant rows would otherwise abort the insert.
+// required twice over: the old UNIQUE(date, exe_name) was case sensitive, so
+// case-variant rows would otherwise abort the insert; and "chrome" plus
+// "chrome.exe" collapse to one app id, so grouping them apart would collide on
+// UNIQUE(date, app_id) and roll the whole migration back.
 func migrateAppsDaily(tx *sql.Tx) error {
 	if _, err := tx.Exec(`
 		CREATE TABLE apps_daily_v3 (
@@ -237,19 +239,18 @@ func migrateAppsDaily(tx *sql.Tx) error {
 		return err
 	}
 
-	if _, err := tx.Exec(`
+	appIDExpr := fmt.Sprintf(legacyAppIDExpr, "exe_name", "exe_name", "exe_name", "exe_name")
+	if _, err := tx.Exec(fmt.Sprintf(`
 		INSERT INTO apps_daily_v3 (date, app_name, exe_name, app_id, total_duration_secs, open_count)
 		SELECT date,
 		       MIN(app_name),
 		       MIN(exe_name),
-		       CASE WHEN lower(exe_name) LIKE '%.exe'
-		            THEN substr(lower(exe_name), 1, length(lower(exe_name)) - 4)
-		            ELSE lower(exe_name) END || '|legacy',
+		       %s,
 		       SUM(total_duration_secs),
 		       SUM(open_count)
 		FROM apps_daily
-		GROUP BY date, lower(exe_name)
-	`); err != nil {
+		GROUP BY date, %s
+	`, appIDExpr, appIDExpr)); err != nil {
 		return err
 	}
 
