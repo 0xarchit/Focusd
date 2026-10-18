@@ -79,3 +79,22 @@ func TestGetAppUsageTodaySecondsForConfigIncludesLiveSession(t *testing.T) {
 		t.Errorf("usage for an unrelated install = %d; want 0", got)
 	}
 }
+
+// TestLiveElapsedTodayClipsAtMidnight pins the "today" portion of a session
+// that crossed local midnight: only the time after midnight counts, not the
+// prior day's stretch.
+func TestLiveElapsedTodayClipsAtMidnight(t *testing.T) {
+	midnight := time.Date(2026, 6, 26, 0, 0, 0, 0, time.Local)
+	now := midnight.Add(2 * time.Minute)
+
+	// Session started yesterday 23:00: only the 2 minutes since midnight.
+	if got := liveElapsedToday(midnight.Add(-time.Hour), now); got != 120 {
+		t.Errorf("pre-midnight start = %d; want 120", got)
+	}
+
+	// Same-day session: the full elapsed time.
+	now2 := midnight.Add(30 * time.Minute)
+	if got := liveElapsedToday(now2.Add(-10*time.Minute), now2); got != 600 {
+		t.Errorf("same-day start = %d; want 600", got)
+	}
+}

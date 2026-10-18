@@ -136,18 +136,11 @@ func startOfLocalDay(t time.Time) time.Time {
 // tracker rotates it.
 func liveElapsedToday(start time.Time, now time.Time) int {
 	midnight := startOfLocalDay(now)
-	if start.Before(midnight) {
-		end := midnight
-		if now.Before(midnight) {
-			return 0
-		}
-		elapsed := int(end.Sub(start).Seconds())
-		if elapsed > 0 {
-			return elapsed
-		}
-		return 0
+	begin := start
+	if begin.Before(midnight) {
+		begin = midnight
 	}
-	elapsed := int(now.Sub(start).Seconds())
+	elapsed := int(now.Sub(begin).Seconds())
 	if elapsed > 0 {
 		return elapsed
 	}
