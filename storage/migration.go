@@ -41,19 +41,40 @@ func currentSchemaVersion() (int, error) {
 	return v, nil
 }
 
-// hasAnyData reports whether the legacy tables hold anything. An empty database
-// needs no migration, only the new schema.
-func hasAnyData() (bool, error) {
-	for _, table := range []string{"sessions", "apps_daily", "browsing_daily"} {
-		var count int
-		if err := db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count); err != nil {
-			return false, fmt.Errorf("count %s: %w", table, err)
+// legacyShape reports whether apps_daily exists without the v3 columns. Row
+// counts are deliberately ignored: an empty v2 database still needs its tables
+// rebuilt. A missing table means a fresh database, where the schema creation
+// that follows builds the current layout.
+func legacyShape() (bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(apps_daily)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	exists := false
+	hasAppID := false
+	for rows.Next() {
+		var (
+			cid          int
+			name         string
+			columnType   string
+			notNull      int
+			defaultValue sql.NullString
+			primaryKey   int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return false, err
 		}
-		if count > 0 {
-			return true, nil
+		exists = true
+		if strings.EqualFold(name, "app_id") {
+			hasAppID = true
 		}
 	}
-	return false, nil
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	return exists && !hasAppID, nil
 }
 
 // backupDatabaseFile copies focusd.db aside. The copy must succeed, otherwise
@@ -117,18 +138,19 @@ func Migrate() error {
 		return fmt.Errorf("read schema version: %w", err)
 	}
 
-	if version >= schemaVersion {
-		return nil
-	}
-
-	needsData, err := hasAnyData()
+	legacy, err := legacyShape()
 	if err != nil {
-		// A brand new database has no legacy tables yet; creating them is the
-		// only step needed.
-		needsData = false
+		return fmt.Errorf("inspect schema shape: %w", err)
 	}
 
-	if !needsData {
+	// The shape of apps_daily decides, not the stored version or the row
+	// counts: a v2 database that never recorded anything still needs its
+	// tables rebuilt, and a database the old data-counting gate stamped v3
+	// without rebuilding is repaired here.
+	if !legacy {
+		if version >= schemaVersion {
+			return nil
+		}
 		return setSchemaVersion(schemaVersion)
 	}
 

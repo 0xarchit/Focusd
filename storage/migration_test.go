@@ -336,3 +336,53 @@ func TestLegacyAppIDFor(t *testing.T) {
 		}
 	}
 }
+
+// TestMigrateEmptyLegacyDatabase covers the install that upgraded but never
+// recorded anything: deciding on row counts stamped such a database v3 and
+// left the legacy tables in place, so every later query hit missing columns.
+func TestMigrateEmptyLegacyDatabase(t *testing.T) {
+	setupStorageEnv(t)
+	createLegacySchema(t)
+
+	if err := Migrate(); err != nil {
+		t.Fatalf("Migrate failed on an empty legacy database: %v", err)
+	}
+
+	for _, query := range []string{
+		`SELECT COUNT(app_id) FROM apps_daily`,
+		`SELECT COUNT(exe_path) FROM apps_daily`,
+		`SELECT COUNT(app_id) FROM sessions`,
+		`SELECT COUNT(site_name) FROM browsing_daily`,
+	} {
+		var count int
+		if err := db.QueryRow(query).Scan(&count); err != nil {
+			t.Errorf("empty legacy database was not rebuilt (%s failed): %v", query, err)
+		}
+	}
+}
+
+// TestMigrateRepairsStampedLegacyDatabase reproduces the brick itself: the old
+// gate stamped v3 on an empty v2 database without rebuilding it. The shape has
+// to win over the stored version so the next start repairs the database.
+func TestMigrateRepairsStampedLegacyDatabase(t *testing.T) {
+	dir := setupStorageEnv(t)
+	createLegacySchema(t)
+
+	if err := setSchemaVersion(schemaVersion); err != nil {
+		t.Fatalf("failed to stamp the broken version: %v", err)
+	}
+
+	if err := Migrate(); err != nil {
+		t.Fatalf("Migrate failed to repair a stamped legacy database: %v", err)
+	}
+
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(app_id) FROM apps_daily`).Scan(&count); err != nil {
+		t.Fatalf("apps_daily still legacy shaped after repair: %v", err)
+	}
+
+	matches, _ := filepath.Glob(filepath.Join(dir, "focusd", "focusd.db.*pre-v3"))
+	if len(matches) == 0 {
+		t.Errorf("repairing a stamped database should keep a backup")
+	}
+}
