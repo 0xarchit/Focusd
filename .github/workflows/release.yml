@@ -16,6 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # Release notes diff the previous tag; a shallow clone fetches no tags.
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Validate tag format

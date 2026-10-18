@@ -28,7 +28,8 @@ jobs:
         env:
           CGO_ENABLED: 0
         run: |
-          go build -ldflags="-s -w -H=windowsgui" -trimpath -o focusd.exe ./cmd/focusd
+          go build -ldflags="-s -w -X 'focusd/system.Version=test-build'" -trimpath -o focusd.exe ./cmd/focusd
+          go build -ldflags="-s -w -H=windowsgui -X 'focusd/system.Version=test-build'" -trimpath -o focusd_daemon.exe ./cmd/focusd_daemon
 
       - name: Build NSIS Installer
         run: |
@@ -40,5 +41,6 @@ jobs:
           name: focusd-test-build
           path: |
             focusd.exe
+            focusd_daemon.exe
             focusd_setup.exe
           retention-days: 5
