@@ -160,15 +160,22 @@ func TestPowerShellExeResolution(t *testing.T) {
 	}
 }
 
-// TestActionToastReadsEventArgs pins that the action script reads the
-// activation arguments from $r.SourceEventArgs: MessageData is always null
-// unless -MessageData was passed to Register-ObjectEvent, so the disable
-// callback never fired.
-func TestActionToastReadsEventArgs(t *testing.T) {
-	if !strings.Contains(actionToastScript, "$r.SourceEventArgs.Arguments") {
-		t.Error("the action toast script must read $r.SourceEventArgs.Arguments")
+// TestActionToastSubscribesToActivation pins the interactive-alert contract:
+// Register-ObjectEvent cannot subscribe to Windows Runtime events in Windows
+// PowerShell, which aborted the script right after the toast was shown and left
+// the Disable button dead. The handler is installed through add_Activated and a
+// message pump keeps the script alive for the answer.
+func TestActionToastSubscribesToActivation(t *testing.T) {
+	if !strings.Contains(actionToastScript, "add_Activated") {
+		t.Error("the action toast script must subscribe through add_Activated")
 	}
-	if strings.Contains(actionToastScript, "$r.MessageData") {
-		t.Error("the action toast script must not read the always-null $r.MessageData")
+	if !strings.Contains(actionToastScript, "$e.Arguments") {
+		t.Error("the action toast script must read $e.Arguments")
+	}
+	if !strings.Contains(actionToastScript, "DoEvents") {
+		t.Error("the action toast script must pump messages while it waits")
+	}
+	if strings.Contains(actionToastScript, "Register-ObjectEvent") {
+		t.Error("Register-ObjectEvent cannot subscribe to Windows Runtime events")
 	}
 }

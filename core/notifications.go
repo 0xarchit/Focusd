@@ -166,11 +166,24 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
 [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('` + toastAUMID + `').Show($toast)
 `
 
+// actionToastScript extends the plain script with a two-minute activation
+// window. Register-ObjectEvent cannot subscribe to Windows Runtime events in
+// Windows PowerShell, which used to abort the script right after the toast was
+// shown and leave the Disable button dead; add_Activated plus a message pump
+// keeps the script alive and able to answer.
 const actionToastScript = plainToastScript + `
-$evt = Register-ObjectEvent -InputObject $toast -EventName Activated -SourceIdentifier FocusdAct 2>$null
-$r = Wait-Event -SourceIdentifier FocusdAct -Timeout 120 2>$null
-if ($r -ne $null) { $r.SourceEventArgs.Arguments } else { 'timeout' }
-Unregister-Event -SourceIdentifier FocusdAct -ErrorAction SilentlyContinue
+$global:focusdChoice = ''
+$handler = [Windows.Foundation.TypedEventHandler[Windows.UI.Notifications.ToastNotification, System.Object]]{
+    param($sender, $e) $global:focusdChoice = [string]$e.Arguments
+}
+$null = $toast.add_Activated($handler)
+Add-Type -AssemblyName System.Windows.Forms
+$deadline = (Get-Date).AddSeconds(120)
+while ($global:focusdChoice -eq '' -and (Get-Date) -lt $deadline) {
+    [System.Windows.Forms.Application]::DoEvents()
+    Start-Sleep -Milliseconds 200
+}
+if ($global:focusdChoice -ne '') { $global:focusdChoice } else { 'timeout' }
 `
 
 const toastXMLTemplate = `<toast><visual><binding template="ToastGeneric"><text id="1"></text><text id="2"></text></binding></visual></toast>`
