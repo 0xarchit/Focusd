@@ -82,11 +82,17 @@ func getWindowText(hwnd uintptr) string {
 }
 
 func getProcessName(pid uint32) string {
-	handle, _, _ := procOpenProcess.Call(
-		processQueryInformation|processVMRead,
-		0,
-		uintptr(pid),
-	)
+	// Limited query rights are granted where full query plus VM read are not
+	// (elevated and packaged processes), so try the limited handle first and
+	// widen only as a fallback.
+	handle, _, _ := procOpenProcess.Call(processQueryLimitedInformation, 0, uintptr(pid))
+	if handle == 0 {
+		handle, _, _ = procOpenProcess.Call(
+			processQueryInformation|processVMRead,
+			0,
+			uintptr(pid),
+		)
+	}
 	if handle == 0 {
 		return ""
 	}
@@ -100,6 +106,11 @@ func getProcessName(pid uint32) string {
 		260,
 	)
 	if ret == 0 {
+		// Module enumeration needs VM read; the image path still resolves
+		// with only limited query rights.
+		if path, err := getProcessPath(pid); err == nil && path != "" {
+			return filepath.Base(path)
+		}
 		return ""
 	}
 	return syscall.UTF16ToString(buf)
