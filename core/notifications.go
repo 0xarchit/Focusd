@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -93,10 +94,28 @@ type toastProcess struct {
 	runErr error
 }
 
+// powershellExe resolves Windows PowerShell by absolute path. exec.LookPath
+// uses the daemon's PATH, and a stale copy there would make every alert fail;
+// the fallback keeps PATH resolution for unusual installations.
+func powershellExe() string {
+	return powershellExeIn(os.Getenv("SystemRoot"))
+}
+
+func powershellExeIn(systemRoot string) string {
+	if systemRoot == "" {
+		return "powershell"
+	}
+	candidate := filepath.Join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+	return "powershell"
+}
+
 // startToast launches the toast script. Cancelling ctx kills the process, so a
 // pending action toast cannot outlive shutdown by its full timeout.
 func startToast(ctx context.Context, script string, env []string) *toastProcess {
-	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive",
+	cmd := exec.CommandContext(ctx, powershellExe(), "-NoProfile", "-NonInteractive",
 		"-WindowStyle", "Hidden", "-Command", script)
 	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: notificationProcessWindowHidden}

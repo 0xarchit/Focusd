@@ -3,6 +3,8 @@ package core
 import (
 	"encoding/xml"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -131,6 +133,30 @@ func TestNotificationRateLimit(t *testing.T) {
 	}
 	if notificationRateLimited() {
 		t.Error("an immediate second notification should be suppressed")
+	}
+}
+
+// TestPowerShellExeResolution pins the absolute-path lookup and its fallback,
+// so a missing installation still resolves through PATH instead of failing.
+func TestPowerShellExeResolution(t *testing.T) {
+	if got := powershellExeIn(""); got != "powershell" {
+		t.Errorf("powershellExeIn(\"\") = %q; want the PATH fallback", got)
+	}
+
+	root := t.TempDir()
+	if got := powershellExeIn(root); got != "powershell" {
+		t.Errorf("missing powershell.exe must fall back to PATH; got %q", got)
+	}
+
+	candidate := filepath.Join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	if err := os.MkdirAll(filepath.Dir(candidate), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(candidate, []byte("stub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := powershellExeIn(root); got != candidate {
+		t.Errorf("powershellExeIn(root) = %q; want %q", got, candidate)
 	}
 }
 
