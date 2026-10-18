@@ -6,7 +6,14 @@ import (
 )
 
 func EnforceRetention() {
-	days := GetRetentionDays()
+	days, err := resolveRetentionDays()
+	if err != nil {
+		// Never fall back to the default here: one transient read failure
+		// (for example SQLITE_BUSY) would silently prune the history down to
+		// the default window.
+		log.Printf("WARN: retention skipped, configured window unreadable: %v", err)
+		return
+	}
 	cutoff := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
 
 	tx, err := db.Begin()
