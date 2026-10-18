@@ -49,7 +49,7 @@ func runStatus() {
 
 	summary, err := coreapi.GetDailySummary(storage.Today())
 	if err != nil {
-		ui.PrintWarn("No data for today yet")
+		ui.PrintWarn(fmt.Sprintf("Could not read today's stats: %v", err))
 		return
 	}
 

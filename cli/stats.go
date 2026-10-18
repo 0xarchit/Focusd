@@ -19,7 +19,11 @@ func runStats() {
 
 	today := storage.Today()
 	summary, err := coreapi.GetDailySummary(today)
-	if err != nil || summary.AppCount == 0 {
+	if err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to read stats: %v", err))
+		os.Exit(1)
+	}
+	if summary.AppCount == 0 {
 		ui.PrintInfo("No data recorded yet. Start tracking with 'focusd' command.")
 		return
 	}
