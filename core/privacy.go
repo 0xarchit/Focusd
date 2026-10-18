@@ -1,6 +1,10 @@
 package core
 
-import "strings"
+import (
+	"strings"
+
+	"focusd/system"
+)
 
 // privateTitleMarkers identify a private or incognito window, matched
 // case-insensitively. Best effort: it errs toward keeping a title.
@@ -13,20 +17,6 @@ var privateTitleMarkers = []string{
 	"private mode",
 	"-private",
 	"guest mode",
-}
-
-// redactTitles controls whether titles are stored at all. Disabled means only
-// the app and its duration are recorded, with no window text.
-var redactTitles = false
-
-// SetRedactTitles turns window-title storage off.
-func SetRedactTitles(enabled bool) {
-	redactTitles = enabled
-}
-
-// RedactTitles reports whether title storage is disabled.
-func RedactTitles() bool {
-	return redactTitles
 }
 
 // IsPrivateWindowTitle reports whether a title belongs to a private browsing
@@ -45,8 +35,9 @@ func IsPrivateWindowTitle(title string) bool {
 }
 
 // storableTitle returns the title to persist, or an empty string when it must
-// not be stored. With redaction on, a title is replaced with a placeholder
-// rather than dropped, so the app and duration are still visible.
+// not be stored. With redaction on (the redact_titles switch in config.json),
+// a title is replaced with a placeholder rather than dropped, so the app and
+// duration are still visible.
 func storableTitle(title string) string {
 	trimmed := strings.TrimSpace(title)
 	if trimmed == "" {
@@ -55,7 +46,7 @@ func storableTitle(title string) string {
 	if IsPrivateWindowTitle(trimmed) {
 		return ""
 	}
-	if redactTitles {
+	if system.GetRedactTitles() {
 		return "[redacted]"
 	}
 	return trimmed

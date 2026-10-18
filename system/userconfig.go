@@ -21,6 +21,8 @@ type UserConfig struct {
 	CustomBrowsers        []string       `json:"custom_browsers"`
 	IdleThresholdMinutes  int            `json:"idle_threshold_minutes"`
 	TrackWhileIdle        bool           `json:"track_while_idle"`
+	// RedactTitles stores a placeholder instead of window title text.
+	RedactTitles bool `json:"redact_titles"`
 	// DisplayOverrides renames an app in the UI without touching history,
 	// keyed by app id.
 	DisplayOverrides map[string]string `json:"display_overrides,omitempty"`
@@ -41,6 +43,7 @@ type userConfigFile struct {
 	CustomBrowsers        []string          `json:"custom_browsers"`
 	IdleThresholdMinutes  *int              `json:"idle_threshold_minutes"`
 	TrackWhileIdle        *bool             `json:"track_while_idle"`
+	RedactTitles          bool              `json:"redact_titles"`
 	DisplayOverrides      map[string]string `json:"display_overrides"`
 	SiteOverrides         map[string]string `json:"site_overrides"`
 }
@@ -78,6 +81,7 @@ func defaultUserConfig() *UserConfig {
 		CustomBrowsers:        []string{},
 		IdleThresholdMinutes:  DefaultIdleThresholdMinutes,
 		TrackWhileIdle:        false,
+		RedactTitles:          false,
 		DisplayOverrides:      make(map[string]string),
 		SiteOverrides:         make(map[string]string),
 	}
@@ -131,6 +135,7 @@ func loadFromDisk() {
 			if temp.TrackWhileIdle != nil {
 				userConfig.TrackWhileIdle = *temp.TrackWhileIdle
 			}
+			userConfig.RedactTitles = temp.RedactTitles
 			if temp.DisplayOverrides != nil {
 				userConfig.DisplayOverrides = temp.DisplayOverrides
 			}
@@ -446,6 +451,24 @@ func GetTrackWhileIdle() bool {
 	configMu.RLock()
 	defer configMu.RUnlock()
 	return userConfig.TrackWhileIdle
+}
+
+// GetRedactTitles reports whether window titles are stored as a placeholder
+// instead of their text.
+func GetRedactTitles() bool {
+	loadFromDisk()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return userConfig.RedactTitles
+}
+
+// SetRedactTitles turns window-title redaction on or off.
+func SetRedactTitles(enabled bool) error {
+	loadFromDisk()
+	configMu.Lock()
+	defer configMu.Unlock()
+	userConfig.RedactTitles = enabled
+	return saveUserConfigLocked()
 }
 
 // SetIdleThreshold sets the idle cutoff. A negative value disables it, which is

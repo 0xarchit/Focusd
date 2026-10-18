@@ -3,6 +3,7 @@ package system
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -34,6 +35,36 @@ func TestIdleThresholdDefaults(t *testing.T) {
 	}
 	if GetTrackWhileIdle() {
 		t.Error("idle tracking should be off by default so time stops accruing")
+	}
+}
+
+func TestRedactTitlesRoundTrip(t *testing.T) {
+	setupConfigEnv(t)
+
+	if GetRedactTitles() {
+		t.Error("title redaction should be off by default")
+	}
+	if err := SetRedactTitles(true); err != nil {
+		t.Fatalf("SetRedactTitles failed: %v", err)
+	}
+	if !GetRedactTitles() {
+		t.Error("title redaction should be on after enabling")
+	}
+
+	// The switch persists to config.json.
+	data, err := os.ReadFile(filepath.Join(os.Getenv("APPDATA"), "focusd", "config.json"))
+	if err != nil {
+		t.Fatalf("config.json unreadable: %v", err)
+	}
+	if !strings.Contains(string(data), `"redact_titles": true`) {
+		t.Errorf("config.json does not carry the switch:\n%s", data)
+	}
+
+	if err := SetRedactTitles(false); err != nil {
+		t.Fatalf("SetRedactTitles failed: %v", err)
+	}
+	if GetRedactTitles() {
+		t.Error("title redaction should be off after disabling")
 	}
 }
 

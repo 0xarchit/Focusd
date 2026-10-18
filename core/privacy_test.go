@@ -3,6 +3,8 @@ package core
 import (
 	"testing"
 	"time"
+
+	"focusd/system"
 )
 
 func TestIsPrivateWindowTitle(t *testing.T) {
@@ -36,7 +38,10 @@ func TestIsPrivateWindowTitle(t *testing.T) {
 }
 
 func TestStorableTitleDropsPrivate(t *testing.T) {
-	SetRedactTitles(false)
+	setupTestDB(t)
+	if err := system.SetRedactTitles(false); err != nil {
+		t.Fatalf("SetRedactTitles failed: %v", err)
+	}
 	if got := storableTitle("Bank - InPrivate"); got != "" {
 		t.Errorf("storableTitle of a private title = %q; want empty", got)
 	}
@@ -49,8 +54,11 @@ func TestStorableTitleDropsPrivate(t *testing.T) {
 }
 
 func TestStorableTitleRedaction(t *testing.T) {
-	SetRedactTitles(true)
-	defer SetRedactTitles(false)
+	setupTestDB(t)
+	if err := system.SetRedactTitles(true); err != nil {
+		t.Fatalf("SetRedactTitles failed: %v", err)
+	}
+	t.Cleanup(func() { system.SetRedactTitles(false) })
 
 	if got := storableTitle("GitHub - Chrome"); got != "[redacted]" {
 		t.Errorf("with redaction on, storableTitle = %q; want [redacted]", got)
@@ -86,16 +94,5 @@ func TestPrivateSessionStoresNoPageText(t *testing.T) {
 	}
 	if stored != privateWindowLabel("firefox.exe") {
 		t.Errorf("stored title = %q; want %q", stored, privateWindowLabel("firefox.exe"))
-	}
-}
-
-func TestRedactTitlesFlag(t *testing.T) {
-	SetRedactTitles(true)
-	if !RedactTitles() {
-		t.Error("RedactTitles should report true after enabling")
-	}
-	SetRedactTitles(false)
-	if RedactTitles() {
-		t.Error("RedactTitles should report false after disabling")
 	}
 }
