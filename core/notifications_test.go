@@ -133,3 +133,16 @@ func TestNotificationRateLimit(t *testing.T) {
 		t.Error("an immediate second notification should be suppressed")
 	}
 }
+
+// TestActionToastReadsEventArgs pins that the action script reads the
+// activation arguments from $r.SourceEventArgs: MessageData is always null
+// unless -MessageData was passed to Register-ObjectEvent, so the disable
+// callback never fired.
+func TestActionToastReadsEventArgs(t *testing.T) {
+	if !strings.Contains(actionToastScript, "$r.SourceEventArgs.Arguments") {
+		t.Error("the action toast script must read $r.SourceEventArgs.Arguments")
+	}
+	if strings.Contains(actionToastScript, "$r.MessageData") {
+		t.Error("the action toast script must not read the always-null $r.MessageData")
+	}
+}

@@ -117,7 +117,7 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
 const actionToastScript = plainToastScript + `
 $evt = Register-ObjectEvent -InputObject $toast -EventName Activated -SourceIdentifier FocusdAct 2>$null
 $r = Wait-Event -SourceIdentifier FocusdAct -Timeout 120 2>$null
-if ($r -ne $null) { $r.MessageData.Arguments } else { 'timeout' }
+if ($r -ne $null) { $r.SourceEventArgs.Arguments } else { 'timeout' }
 Unregister-Event -SourceIdentifier FocusdAct -ErrorAction SilentlyContinue
 `
 
