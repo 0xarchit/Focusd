@@ -51,8 +51,8 @@ func expiredPomodoro(t *testing.T) {
 	}
 }
 
-// TestCheckPomodoroNotifiesOnce checks that a lost CAS cannot produce a second
-// notification on retry.
+// TestCheckPomodoroNotifiesOnce checks the happy path: the completion is
+// announced exactly once and the completed state is committed.
 func TestCheckPomodoroNotifiesOnce(t *testing.T) {
 	setupPomodoroEnv(t)
 	expiredPomodoro(t)
@@ -132,6 +132,42 @@ func TestCheckPomodoroNilCallback(t *testing.T) {
 	state, _ := LoadPomodoroStateRaw()
 	if state.Active {
 		t.Error("the timer should have been completed")
+	}
+}
+
+// TestCheckPomodoroRetriesThrottledToast pins that a throttled toast does not
+// burn the one-shot completion: the timer stays un-notified and the next check
+// announces it.
+func TestCheckPomodoroRetriesThrottledToast(t *testing.T) {
+	setupPomodoroEnv(t)
+	expiredPomodoro(t)
+
+	throttled := 0
+	CheckPomodoroAndNotify(func(title, msg string) bool {
+		throttled++
+		return false
+	})
+	if throttled != 1 {
+		t.Fatalf("notify called %d times; want 1", throttled)
+	}
+
+	state, _ := LoadPomodoroStateRaw()
+	if !state.Active || state.Notified {
+		t.Fatalf("a throttled toast must leave the timer un-notified (active=%v notified=%v)", state.Active, state.Notified)
+	}
+
+	announced := 0
+	CheckPomodoroAndNotify(func(title, msg string) bool {
+		announced++
+		return true
+	})
+	if announced != 1 {
+		t.Errorf("retry notify called %d times; want 1", announced)
+	}
+
+	state, _ = LoadPomodoroStateRaw()
+	if state.Active || !state.Notified {
+		t.Errorf("timer should be completed after the retry (active=%v notified=%v)", state.Active, state.Notified)
 	}
 }
 

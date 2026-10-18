@@ -136,8 +136,11 @@ func GetPomodoroStatus() (active bool, remaining time.Duration, total int) {
 	return true, remaining, state.Duration
 }
 
-// CheckPomodoroAndNotify completes an expired timer. The state is committed
-// before notifying, so a lost CAS cannot produce a duplicate alert on retry.
+// CheckPomodoroAndNotify completes an expired timer. The completion is
+// announced before the state is committed: a throttled toast must not mark the
+// timer notified, or the single completion alert would be lost. A lost CAS can
+// at worst re-announce, and any writer that beats it either marks the timer
+// notified itself or starts a new one.
 func CheckPomodoroAndNotify(notifyFn func(title, msg string) bool) {
 	for i := 0; i < 5; i++ {
 		state, raw := LoadPomodoroStateRaw()
@@ -152,6 +155,12 @@ func CheckPomodoroAndNotify(notifyFn func(title, msg string) bool) {
 			return
 		}
 
+		if notifyFn != nil && !notifyFn("Pomodoro Complete!", "Great work! Take a break.") {
+			// The toast was throttled; leave the timer un-notified so the next
+			// check retries instead of dropping the only completion alert.
+			return
+		}
+
 		state.Notified = true
 		state.Active = false
 		ok, err := SavePomodoroStateCAS(raw, state)
@@ -162,10 +171,6 @@ func CheckPomodoroAndNotify(notifyFn func(title, msg string) bool) {
 		if !ok {
 			time.Sleep(10 * time.Millisecond)
 			continue
-		}
-
-		if notifyFn != nil {
-			notifyFn("Pomodoro Complete!", "Great work! Take a break.")
 		}
 		return
 	}

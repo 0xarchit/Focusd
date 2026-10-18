@@ -179,11 +179,10 @@ func (t *Tracker) Start() error {
 			if system.GetBreakReminderEnabled() && !breakSnoozed && continuousUseActive {
 				mins := system.GetBreakReminderMinutes()
 				if elapsed >= time.Duration(mins)*time.Minute {
-					stateMu.Lock()
-					continuousUseStart = time.Now() // Reset immediately to prevent repeated triggers
-					stateMu.Unlock()
-
-					showNotificationWithAction(notifyContext, "Break Reminder",
+					// Reset the anchor only once the toast actually goes out:
+					// resetting it before a throttled notify dropped the
+					// reminder for another full interval.
+					if showNotificationWithAction(notifyContext, "Break Reminder",
 						fmt.Sprintf("You've been working for %d min. Take a break!", mins),
 						func(disable bool) {
 							if disable {
@@ -191,7 +190,11 @@ func (t *Tracker) Start() error {
 								breakSnoozedUntil = time.Now().Add(snoozeDuration)
 								stateMu.Unlock()
 							}
-						})
+						}) {
+						stateMu.Lock()
+						continuousUseStart = time.Now()
+						stateMu.Unlock()
+					}
 				}
 			}
 
@@ -240,9 +243,11 @@ func (t *Tracker) Start() error {
 					todayUsageSeconds := storage.GetAppUsageTodaySeconds(sessionAppID)
 					todayUsage := todayUsageSeconds / 60
 					if todayUsage >= limit {
-						prevSessionApp = limitKey // Set guard immediately to prevent repeated triggers
 						keyCopy := limitKey
-						showNotificationWithAction(notifyContext, "App Time Limit",
+						// Arm the guard only once the toast actually goes out:
+						// arming it before a throttled notify dropped the alert
+						// until the app was switched away and back.
+						if showNotificationWithAction(notifyContext, "App Time Limit",
 							sessionAppName+" has exceeded daily limit!",
 							func(disable bool) {
 								if disable {
@@ -250,7 +255,9 @@ func (t *Tracker) Start() error {
 									disabledLimitApps[keyCopy] = time.Now().Add(snoozeDuration)
 									stateMu.Unlock()
 								}
-							})
+							}) {
+							prevSessionApp = limitKey
+						}
 					}
 				}
 			}
