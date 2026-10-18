@@ -1,6 +1,7 @@
 package system
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,6 +66,85 @@ func TestRedactTitlesRoundTrip(t *testing.T) {
 	}
 	if GetRedactTitles() {
 		t.Error("title redaction should be off after disabling")
+	}
+}
+
+// TestConfigUpdatesSerializeOnTheFileLock pins F24: a setter must wait for the
+// cross-process lock, so two processes cannot interleave their
+// read-modify-write and silently drop one change.
+func TestConfigUpdatesSerializeOnTheFileLock(t *testing.T) {
+	dir := setupConfigEnv(t)
+	configPath := filepath.Join(dir, "focusd", "config.json")
+
+	release, err := lockUserConfig(configPath)
+	if err != nil {
+		t.Fatalf("lockUserConfig failed: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- SetPomodoroMinutes(30)
+	}()
+
+	select {
+	case <-done:
+		release()
+		t.Fatal("the setter completed while the config lock was held")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	release()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("setter failed after the lock was released: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the setter never finished after the lock was released")
+	}
+}
+
+// TestConfigUpdateMergesConcurrentChange pins the fresh-reload half of F24: a
+// read-modify-write starts from the on-disk state, so a field another process
+// changed is preserved.
+func TestConfigUpdateMergesConcurrentChange(t *testing.T) {
+	dir := setupConfigEnv(t)
+
+	if err := SetPomodoroMinutes(30); err != nil {
+		t.Fatalf("SetPomodoroMinutes failed: %v", err)
+	}
+
+	// Another process rewrites config.json, touching a field we never set.
+	configPath := filepath.Join(dir, "focusd", "config.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+	raw["redact_titles"] = true
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent failed: %v", err)
+	}
+	if err := os.WriteFile(configPath, out, 0600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	if err := SetIdleThreshold(45); err != nil {
+		t.Fatalf("SetIdleThreshold failed: %v", err)
+	}
+
+	if !GetRedactTitles() {
+		t.Error("the other process's change was lost")
+	}
+	if got := GetIdleThresholdMinutes(); got != 45 {
+		t.Errorf("idle threshold = %d; want 45", got)
+	}
+	if got := GetPomodoroMinutes(); got != 30 {
+		t.Errorf("pomodoro minutes = %d; want 30", got)
 	}
 }
 

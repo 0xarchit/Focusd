@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 type UserConfig struct {
@@ -90,7 +92,13 @@ func defaultUserConfig() *UserConfig {
 func loadFromDisk() {
 	configMu.Lock()
 	defer configMu.Unlock()
+	reloadFromDiskLocked(false)
+}
 
+// reloadFromDiskLocked refreshes the in-memory config from disk. Caller holds
+// configMu. With force, the mtime fast path is skipped so a read-modify-write
+// always starts from the freshest file.
+func reloadFromDiskLocked(force bool) {
 	configPath, err := getUserConfigPath()
 	if err != nil || configPath == "" {
 		if userConfig == nil {
@@ -107,7 +115,7 @@ func loadFromDisk() {
 		return
 	}
 
-	if userConfig != nil && !fi.ModTime().After(lastModTime) {
+	if !force && userConfig != nil && !fi.ModTime().After(lastModTime) {
 		return
 	}
 
@@ -209,6 +217,55 @@ func saveUserConfigLocked() error {
 	return nil
 }
 
+// lockUserConfig takes an exclusive lock on a sidecar file next to the config,
+// serializing read-modify-write updates across processes (TUI, CLI, daemon).
+// Windows releases the lock when the handle closes or the process dies, so a
+// crash cannot leave the config wedged.
+func lockUserConfig(configPath string) (func(), error) {
+	lockPath := configPath + ".lock"
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0700); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	overlapped := new(windows.Overlapped)
+	if err := windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, overlapped); err != nil {
+		f.Close()
+		return nil, fmt.Errorf("failed to lock the user config: %w", err)
+	}
+	return func() {
+		windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, overlapped)
+		f.Close()
+	}, nil
+}
+
+// beginConfigUpdate starts a cross-process-safe read-modify-write of the user
+// config: it takes the in-process mutex plus the inter-process file lock and
+// reloads the on-disk state, so a change another process made while we were
+// idle is not silently overwritten. The caller must defer the returned
+// release function.
+func beginConfigUpdate() (func(), error) {
+	configMu.Lock()
+
+	configPath, err := getUserConfigPath()
+	if err != nil {
+		configMu.Unlock()
+		return nil, err
+	}
+	release, err := lockUserConfig(configPath)
+	if err != nil {
+		configMu.Unlock()
+		return nil, err
+	}
+	reloadFromDiskLocked(true)
+	return func() {
+		release()
+		configMu.Unlock()
+	}, nil
+}
+
 // IsWhitelisted reports whether an app should be excluded from tracking. The
 // exe name is matched against the normalized config entries so both "foo" and
 // "foo.exe" address the same app.
@@ -236,9 +293,11 @@ func GetWhitelistApps() []string {
 }
 
 func AddWhitelistApp(exeName string) error {
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
 	exeName = normalizeConfigName(exeName)
 	if exeName == "unknown" || exeName == "" {
 		return fmt.Errorf("invalid app name")
@@ -253,9 +312,11 @@ func AddWhitelistApp(exeName string) error {
 }
 
 func RemoveWhitelistApp(exeName string) error {
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	// Normalize exactly like insertion, so "foo" removes the stored "foo.exe".
 	target := normalizeConfigName(exeName)
@@ -291,9 +352,11 @@ func GetBreakReminderMinutes() int {
 }
 
 func SetBreakReminder(enabled bool, minutes int) error {
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
 	userConfig.BreakReminderEnabled = enabled
 	if minutes > 0 {
 		userConfig.BreakReminderMinutes = minutes
@@ -313,9 +376,11 @@ func GetAppTimeLimits() map[string]int {
 }
 
 func SetAppTimeLimit(exeName string, minutes int) error {
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
 	exeName = normalizeConfigName(exeName)
 	if minutes <= 0 {
 		delete(userConfig.AppTimeLimits, exeName)
@@ -333,9 +398,11 @@ func GetPomodoroMinutes() int {
 }
 
 func SetPomodoroMinutes(minutes int) error {
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
 	userConfig.PomodoroMinutes = minutes
 	return saveUserConfigLocked()
 }
@@ -398,9 +465,11 @@ func SetDisplayOverride(appID, name string) error {
 	if appID == "" {
 		return fmt.Errorf("app id is required")
 	}
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -464,9 +533,11 @@ func GetRedactTitles() bool {
 
 // SetRedactTitles turns window-title redaction on or off.
 func SetRedactTitles(enabled bool) error {
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
 	userConfig.RedactTitles = enabled
 	return saveUserConfigLocked()
 }
@@ -474,9 +545,11 @@ func SetRedactTitles(enabled bool) error {
 // SetIdleThreshold sets the idle cutoff. A negative value disables it, which is
 // how a user opts back into counting unattended time.
 func SetIdleThreshold(minutes int) error {
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
 	if minutes < MinIdleThresholdMinutes {
 		minutes = MinIdleThresholdMinutes
 	}
@@ -550,9 +623,11 @@ func AddCustomBrowser(exeName string) error {
 		exeName += ".exe"
 	}
 
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	for _, b := range userConfig.CustomBrowsers {
 		if b == exeName {
@@ -571,9 +646,11 @@ func AddCustomBrowser(exeName string) error {
 func RemoveCustomBrowser(exeName string) error {
 	exeName = strings.ToLower(strings.TrimSpace(exeName))
 
-	loadFromDisk()
-	configMu.Lock()
-	defer configMu.Unlock()
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	if !strings.HasSuffix(exeName, ".exe") {
 		exeName += ".exe"
