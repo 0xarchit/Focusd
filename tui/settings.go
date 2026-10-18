@@ -4,7 +4,6 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
 	"os"
@@ -122,19 +121,14 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 		switch m.settingsSelected {
 		case 0:
 			if m.daemonActive {
-				if coreapi.SendIPCCmd("stop") {
-					m.addToast("Daemon stopped gracefully", toastSuccess)
-				} else {
-					m.addToast("Failed to stop daemon gracefully", toastError)
-				}
+				return *m, stopDaemonCmd()
+			}
+			pid, err := system.StartDaemon()
+			if err != nil {
+				m.addToast("Failed to start daemon: "+err.Error(), toastError)
 			} else {
-				pid, err := system.StartDaemon()
-				if err != nil {
-					m.addToast("Failed to start daemon: "+err.Error(), toastError)
-				} else {
-					m.addToast(fmt.Sprintf("Daemon started (PID %d)", pid), toastSuccess)
-					m.daemonActive = true
-				}
+				m.addToast(fmt.Sprintf("Daemon started (PID %d)", pid), toastSuccess)
+				m.daemonActive = true
 			}
 		case 1:
 			enabled, _, err := system.GetAutoStartEnabled()

@@ -65,6 +65,7 @@ type secondTickMsg time.Time
 type splashDoneMsg struct{}
 type flushDoneMsg struct{}
 type statusMsg bool
+type daemonStopMsg bool
 type toastKind int
 
 const (
@@ -206,6 +207,15 @@ func (m *Model) dueForRefreshForTest(now time.Time) bool {
 func checkDaemon() tea.Cmd {
 	return func() tea.Msg {
 		return statusMsg(system.GetProcessCount(system.DaemonProcessName) >= 1)
+	}
+}
+
+// stopDaemonCmd stops the daemon without blocking the render loop: the IPC
+// round trip has multi-second dial and read deadlines, and running it inline
+// froze the TUI for up to that long.
+func stopDaemonCmd() tea.Cmd {
+	return func() tea.Msg {
+		return daemonStopMsg(coreapi.SendIPCCmd("stop"))
 	}
 }
 
@@ -492,6 +502,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case statusMsg:
 		m.daemonActive = bool(msg)
+	case daemonStopMsg:
+		if bool(msg) {
+			m.addToast("Daemon stopped gracefully", toastSuccess)
+		} else {
+			m.addToast("Failed to stop daemon gracefully", toastError)
+		}
+		cmds = append(cmds, checkDaemon())
 	case dashboardLoadedMsg:
 		m.dashboard = tuiData(msg)
 		m.dashSelected = min(m.dashSelected, max(0, len(m.dashboard.Apps)-1))
