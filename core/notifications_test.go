@@ -1,6 +1,8 @@
 package core
 
 import (
+	"encoding/xml"
+	"io"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -48,43 +50,62 @@ func TestTruncateRunesLongTitle(t *testing.T) {
 	}
 }
 
-func TestXMLEscape(t *testing.T) {
-	tests := []struct {
-		in   string
-		want string
-	}{
-		{"plain", "plain"},
-		{"a & b", "a &amp; b"},
-		{"<tag>", "&lt;tag&gt;"},
-		{`quote " here`, "quote &quot; here"},
-		{"it's", "it&apos;s"},
-		{"a<b>&c\"d'e", "a&lt;b&gt;&amp;c&quot;d&apos;e"},
+// TestToastEnvPassesRawValues pins the contract with the PowerShell script:
+// LoadXml needs the literal template, and title/message reach the XML through
+// InnerText, which escapes on its own. Escaping here killed every toast.
+func TestToastEnvPassesRawValues(t *testing.T) {
+	title := "Focus & <limits>"
+	message := `"Time's up" & co`
+	env := toastEnv(title, message, toastXMLTemplate)
+
+	values := map[string]string{}
+	for _, kv := range env {
+		if key, val, ok := strings.Cut(kv, "="); ok {
+			switch key {
+			case "FOCUS_TITLE", "FOCUS_MSG", "FOCUS_TOAST_XML":
+				values[key] = val
+			}
+		}
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.in, func(t *testing.T) {
-			if got := xmlEscape(tc.in); got != tc.want {
-				t.Errorf("xmlEscape(%q) = %q; want %q", tc.in, got, tc.want)
-			}
-		})
+	if values["FOCUS_TITLE"] != title {
+		t.Errorf("FOCUS_TITLE = %q; want raw %q", values["FOCUS_TITLE"], title)
+	}
+	if values["FOCUS_MSG"] != message {
+		t.Errorf("FOCUS_MSG = %q; want raw %q", values["FOCUS_MSG"], message)
+	}
+	if values["FOCUS_TOAST_XML"] != toastXMLTemplate {
+		t.Errorf("FOCUS_TOAST_XML = %q; want the literal template", values["FOCUS_TOAST_XML"])
 	}
 }
 
-// TestToastXMLIsWellFormed checks the templates contain no stray characters that
-// would break the document.
+// TestToastXMLIsWellFormed parses the templates the way LoadXml does: any
+// stray character is a load error, and a failed load means no toast at all.
 func TestToastXMLIsWellFormed(t *testing.T) {
 	for name, tmpl := range map[string]string{
 		"plain":  toastXMLTemplate,
 		"action": actionToastXMLTemplate,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if !strings.HasPrefix(tmpl, "<toast>") || !strings.HasSuffix(tmpl, "</toast>") {
-				t.Errorf("template is not a single toast element: %q", tmpl)
-			}
-			if strings.Count(tmpl, "<text") != strings.Count(tmpl, "</text>") {
-				t.Errorf("unbalanced text elements: %q", tmpl)
+			dec := xml.NewDecoder(strings.NewReader(tmpl))
+			for {
+				if _, err := dec.Token(); err != nil {
+					if err == io.EOF {
+						break
+					}
+					t.Fatalf("template is not well-formed XML: %v", err)
+				}
 			}
 		})
+	}
+}
+
+// TestToastScriptStopsOnError keeps the failure path loud: under the default
+// Continue preference a LoadXml failure would not reliably set a non-zero exit
+// code, so runToast would have nothing to log.
+func TestToastScriptStopsOnError(t *testing.T) {
+	if !strings.Contains(plainToastScript, "$ErrorActionPreference = 'Stop'") {
+		t.Error("toast script must fail fast so runToast can log the failure")
 	}
 }
 

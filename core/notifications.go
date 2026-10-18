@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -46,18 +47,6 @@ func truncateRunes(s string, n int) string {
 	return s
 }
 
-// xmlEscape escapes characters that cannot appear literally in the toast XML.
-func xmlEscape(s string) string {
-	replacer := strings.NewReplacer(
-		"&", "&amp;",
-		"<", "&lt;",
-		">", "&gt;",
-		`"`, "&quot;",
-		"'", "&apos;",
-	)
-	return replacer.Replace(s)
-}
-
 func notificationRateLimited() bool {
 	notificationMu.Lock()
 	defer notificationMu.Unlock()
@@ -84,11 +73,15 @@ func runToast(ctx context.Context, script string, env []string) []byte {
 	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: notificationProcessWindowHidden}
 
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+
 	// Bound the wait so a wedged PowerShell cannot outlive the daemon.
 	done := make(chan struct{})
 	var out []byte
+	var runErr error
 	go func() {
-		out, _ = cmd.Output()
+		out, runErr = cmd.Output()
 		close(done)
 	}()
 
@@ -100,10 +93,17 @@ func runToast(ctx context.Context, script string, env []string) []byte {
 		}
 		<-done
 	}
+
+	// A kill during shutdown is expected; any other failure means the toast
+	// never appeared and must not stay silent.
+	if runErr != nil && ctx.Err() == nil {
+		log.Printf("WARN: toast script failed: %v: %s", runErr, strings.TrimSpace(stderr.String()))
+	}
 	return out
 }
 
 const plainToastScript = `
+$ErrorActionPreference = 'Stop'
 [void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
 [void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
 $xml = [Windows.Data.Xml.Dom.XmlDocument]::new()
@@ -125,11 +125,14 @@ const toastXMLTemplate = `<toast><visual><binding template="ToastGeneric"><text 
 
 const actionToastXMLTemplate = `<toast><visual><binding template="ToastGeneric"><text id="1"></text><text id="2"></text></binding></visual><actions><action content="Disable this reminder" arguments="disable" activationType="background"/><action content="Just close" arguments="close" activationType="background"/></actions></toast>`
 
+// toastEnv passes values raw. The script assigns title and message through
+// InnerText, which escapes on its own, and LoadXml requires the template to be
+// literal XML; pre-escaping either made every toast fail to parse.
 func toastEnv(title, message, xml string) []string {
 	return append(os.Environ(),
-		"FOCUS_TITLE="+xmlEscape(title),
-		"FOCUS_MSG="+xmlEscape(message),
-		"FOCUS_TOAST_XML="+xmlEscape(xml),
+		"FOCUS_TITLE="+title,
+		"FOCUS_MSG="+message,
+		"FOCUS_TOAST_XML="+xml,
 	)
 }
 
