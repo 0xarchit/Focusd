@@ -92,3 +92,38 @@ func TestStatsRangeDates(t *testing.T) {
 		})
 	}
 }
+
+// The range limit is inclusive: a full leap year spans 366 dates and must be
+// accepted, while one date more crosses the documented bound.
+func TestValidateCustomRangeLeapBoundary(t *testing.T) {
+	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+	if _, _, err := validateCustomRange("2024-01-01", "2024-12-31", now); err != nil {
+		t.Errorf("a full leap year (366 dates) was rejected: %v", err)
+	}
+	if _, _, err := validateCustomRange("2024-01-01", "2025-01-01", now); err == nil {
+		t.Error("367 dates were accepted; want rejection")
+	}
+}
+
+// "Today" must be selectable at any local time. The dates parse as UTC
+// midnight, so the old wall-clock comparison rejected the local "today" in
+// every timezone east of UTC until its offset had elapsed.
+func TestValidateCustomRangeAcceptsTodayAtLocalMidnight(t *testing.T) {
+	ist := time.FixedZone("IST", 5*3600+1800) // UTC+5:30
+	now := time.Date(2026, 10, 18, 2, 0, 0, 0, ist)
+	from, to, err := validateCustomRange("2026-10-18", "2026-10-18", now)
+	if err != nil {
+		t.Fatalf("today was rejected at 02:00 local in a UTC+5:30 zone: %v", err)
+	}
+	if from != "2026-10-18" || to != "2026-10-18" {
+		t.Errorf("validateCustomRange returned %q, %q; want both unchanged", from, to)
+	}
+}
+
+func TestValidateCustomRangeRejectsTomorrow(t *testing.T) {
+	ist := time.FixedZone("IST", 5*3600+1800) // UTC+5:30
+	now := time.Date(2026, 10, 18, 2, 0, 0, 0, ist)
+	if _, _, err := validateCustomRange("2026-10-18", "2026-10-19", now); err == nil {
+		t.Error("a future end date was accepted; want rejection")
+	}
+}

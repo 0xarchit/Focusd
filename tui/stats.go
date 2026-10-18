@@ -55,7 +55,7 @@ func (m Model) handleCustomRangeModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 		}
 	case "enter":
-		from, to, err := validateCustomRange(m.statsCustomDraftFrom, m.statsCustomDraftTo)
+		from, to, err := validateCustomRange(m.statsCustomDraftFrom, m.statsCustomDraftTo, time.Now())
 		if err != nil {
 			m.modal.Error = err.Error()
 			return m, nil
@@ -204,7 +204,7 @@ func (m Model) handleStatsKey(key string) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func validateCustomRange(from, to string) (string, string, error) {
+func validateCustomRange(from, to string, now time.Time) (string, string, error) {
 	fromTime, err := time.Parse("2006-01-02", from)
 	if err != nil {
 		return "", "", fmt.Errorf("Invalid date format. Use YYYY-MM-DD")
@@ -216,7 +216,10 @@ func validateCustomRange(from, to string) (string, string, error) {
 	if fromTime.After(toTime) {
 		return "", "", fmt.Errorf("From date must be before To date")
 	}
-	if toTime.After(time.Now()) {
+	// The dates parse as UTC midnight, so comparing them against the local
+	// wall clock rejects "today" for every timezone east of UTC until its
+	// offset has elapsed. The local calendar date is the right reference.
+	if to > now.Format("2006-01-02") {
 		return "", "", fmt.Errorf("To date cannot be in the future")
 	}
 	if int(toTime.Sub(fromTime).Hours()/24)+1 > 366 {
@@ -231,69 +234,58 @@ func (m *Model) renderStats(width, height int) string {
 	topPanel := panelWithHover("TIME RANGE", "", inner, "\n"+rangeSelector+"\n", m.panelFocus == 0, m.hoveredPanel == 0)
 
 	topH := lipgloss.Height(topPanel)
-	contentHeight := height - topH - 2
-	if contentHeight < 6 {
-		contentHeight = 6
-	}
+	topY := m.contentTop + topH
 
 	m.clickableRegions = append(m.clickableRegions, clickableRegion{
-		X1: 1, Y1: 5, X2: inner + 1, Y2: 5 + topH,
+		X1: 0, Y1: m.contentTop, X2: lipgloss.Width(topPanel), Y2: m.clampBodyBottom(topY, height),
 		ID: "panel-0", Kind: "panel",
 	})
 
 	var middleRow string
-	topY := 5 + topH + 1
-	var middleHeight int
-
 	if inner >= 120 {
 		leftW := (inner - 2) / 2
 		rightW := inner - 2 - leftW
-		middleHeight = (contentHeight * 60) / 100
-
-		m.clickableRegions = append(m.clickableRegions, clickableRegion{
-			X1: 1, Y1: topY, X2: leftW + 1, Y2: topY + middleHeight,
-			ID: "panel-1", Kind: "panel",
-		})
-		m.clickableRegions = append(m.clickableRegions, clickableRegion{
-			X1: leftW + 3, Y1: topY, X2: width - 1, Y2: topY + middleHeight,
-			ID: "panel-2", Kind: "panel",
-		})
 
 		usageRows := m.statsVisibleRows(false)
 		browserRows := m.statsVisibleRows(true)
 		appsPanel := panelWithHover("APPLICATION BREAKDOWN", "", leftW, "\n"+m.renderUsageBreakdown(leftW, usageRows)+"\n", m.panelFocus == 1, m.hoveredPanel == 1)
 		browsersPanel := panelWithHover("BROWSER USAGE", "", rightW, "\n"+m.renderBrowserUsage(rightW, browserRows)+"\n", m.panelFocus == 2, m.hoveredPanel == 2)
 		middleRow = lipgloss.JoinHorizontal(lipgloss.Top, appsPanel, " ", browsersPanel)
-	} else {
-		middleHeight = contentHeight - 6
-		if m.panelFocus == 0 || m.panelFocus == 1 {
-			m.clickableRegions = append(m.clickableRegions, clickableRegion{
-				X1: 1, Y1: topY, X2: inner + 1, Y2: topY + middleHeight,
+
+		appsW := lipgloss.Width(appsPanel)
+		m.clickableRegions = append(m.clickableRegions,
+			clickableRegion{
+				X1: 0, Y1: topY, X2: appsW, Y2: m.clampBodyBottom(topY+lipgloss.Height(appsPanel), height),
 				ID: "panel-1", Kind: "panel",
-			})
-			usageRows := m.statsVisibleRows(false)
-			middleRow = panelWithHover("APPLICATION BREAKDOWN", "", inner, "\n"+m.renderUsageBreakdown(inner, usageRows)+"\n", m.panelFocus == 1, m.hoveredPanel == 1)
-		} else {
-			m.clickableRegions = append(m.clickableRegions, clickableRegion{
-				X1: 1, Y1: topY, X2: inner + 1, Y2: topY + middleHeight,
+			},
+			clickableRegion{
+				X1: appsW + 1, Y1: topY, X2: appsW + 1 + lipgloss.Width(browsersPanel), Y2: m.clampBodyBottom(topY+lipgloss.Height(browsersPanel), height),
 				ID: "panel-2", Kind: "panel",
 			})
+	} else {
+		if m.panelFocus == 0 || m.panelFocus == 1 {
+			usageRows := m.statsVisibleRows(false)
+			middleRow = panelWithHover("APPLICATION BREAKDOWN", "", inner, "\n"+m.renderUsageBreakdown(inner, usageRows)+"\n", m.panelFocus == 1, m.hoveredPanel == 1)
+			m.clickableRegions = append(m.clickableRegions, clickableRegion{
+				X1: 0, Y1: topY, X2: lipgloss.Width(middleRow), Y2: m.clampBodyBottom(topY+lipgloss.Height(middleRow), height),
+				ID: "panel-1", Kind: "panel",
+			})
+		} else {
 			browserRows := m.statsVisibleRows(true)
 			middleRow = panelWithHover("BROWSER USAGE", "", inner, "\n"+m.renderBrowserUsage(inner, browserRows)+"\n", m.panelFocus == 2, m.hoveredPanel == 2)
+			m.clickableRegions = append(m.clickableRegions, clickableRegion{
+				X1: 0, Y1: topY, X2: lipgloss.Width(middleRow), Y2: m.clampBodyBottom(topY+lipgloss.Height(middleRow), height),
+				ID: "panel-2", Kind: "panel",
+			})
 		}
 	}
 
-	historyY := topY + middleHeight + 1
-	historyHeight := height - historyY
-	if historyHeight < 3 {
-		historyHeight = 3
-	}
+	historyPanel := m.renderDailyHistory(inner)
+	historyY := topY + lipgloss.Height(middleRow)
 	m.clickableRegions = append(m.clickableRegions, clickableRegion{
-		X1: 1, Y1: historyY, X2: inner + 1, Y2: height - 1,
+		X1: 0, Y1: historyY, X2: lipgloss.Width(historyPanel), Y2: m.clampBodyBottom(historyY+lipgloss.Height(historyPanel), height),
 		ID: "panel-3", Kind: "panel",
 	})
-
-	historyPanel := m.renderDailyHistory(inner)
 
 	return lipgloss.JoinVertical(lipgloss.Left, topPanel, middleRow, historyPanel)
 }
@@ -301,35 +293,33 @@ func (m *Model) renderStats(width, height int) string {
 func (m *Model) renderRangeSelector(width int) string {
 	ranges := []string{"TODAY", "LAST 7 DAYS", "LAST 30 DAYS", "CUSTOM RANGE"}
 	var parts []string
-
-	selectorText := "[ TODAY ]   [ LAST 7 DAYS ]   [ LAST 30 DAYS ]   [ CUSTOM RANGE ]"
-	if m.statsRange == 3 {
-		customInfo := fmt.Sprintf("   Range: %s to %s", m.statsCustomFrom, m.statsCustomTo)
-		selectorText += customInfo
-	}
-	selectorLen := len(selectorText)
-	startOffset := 3 + max(0, (width-selectorLen)/2)
-
-	btnWidths := []int{11, 17, 18, 18}
-	offsets := []int{0, 14, 34, 55}
+	var labelWidths []int
 
 	for i, r := range ranges {
-		startX := startOffset + offsets[i]
-		m.clickableRegions = append(m.clickableRegions, clickableRegion{
-			X1: startX, Y1: 8, X2: startX + btnWidths[i], Y2: 9,
-			ID: fmt.Sprintf("range-%d", i), Kind: "button",
-		})
-
+		label := "[ " + r + " ]"
+		labelWidths = append(labelWidths, lipgloss.Width(label))
 		if i == m.statsRange {
-			parts = append(parts, cyanStyle.Bold(true).Render("[ "+r+" ]"))
+			parts = append(parts, cyanStyle.Bold(true).Render(label))
 		} else {
-			parts = append(parts, mutedStyle.Render("[ "+r+" ]"))
+			parts = append(parts, mutedStyle.Render(label))
 		}
 	}
 	selector := strings.Join(parts, "   ")
 	if m.statsRange == 3 {
-		customInfo := fmt.Sprintf("   Range: %s to %s", m.statsCustomFrom, m.statsCustomTo)
-		selector += mutedStyle.Render(customInfo)
+		selector += mutedStyle.Render(fmt.Sprintf("   Range: %s to %s", m.statsCustomFrom, m.statsCustomTo))
+	}
+
+	// The renderer centers the selector line inside the panel body, so the
+	// buttons are registered from that same padding and the actual label
+	// widths instead of an offset table that drifts from the render.
+	pad := max(0, (width-lipgloss.Width(selector))/2)
+	startX := 1 + pad // the panel's left border owns column 0
+	for i := range ranges {
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{
+			X1: startX, Y1: m.contentTop + 2, X2: startX + labelWidths[i], Y2: m.contentTop + 3,
+			ID: fmt.Sprintf("range-%d", i), Kind: "button",
+		})
+		startX += labelWidths[i] + 3
 	}
 
 	var kpiParts []string
@@ -645,19 +635,36 @@ func (m *Model) sortedStatsApps() []appUsage {
 	}
 	apps := append([]appUsage(nil), m.stats.Apps...)
 	sort.Slice(apps, func(i, j int) bool {
-		a, b := i, j
-		if !m.statsAsc {
-			a, b = j, i
-		}
+		cmp := 0
 		switch m.statsSort {
 		case 0:
-			return apps[a].Duration < apps[b].Duration
+			if apps[i].Duration != apps[j].Duration {
+				cmp = 1
+				if apps[i].Duration < apps[j].Duration {
+					cmp = -1
+				}
+			}
 		case 1:
-			return apps[a].Name < apps[b].Name
+			cmp = strings.Compare(apps[i].Name, apps[j].Name)
 		case 2:
-			return apps[a].Opens < apps[b].Opens
+			if apps[i].Opens != apps[j].Opens {
+				cmp = 1
+				if apps[i].Opens < apps[j].Opens {
+					cmp = -1
+				}
+			}
+		default:
+			return false
 		}
-		return false
+		if cmp == 0 {
+			// Equal rows fall back to the name so the list cannot reshuffle
+			// between refreshes.
+			return apps[i].Name < apps[j].Name
+		}
+		if m.statsAsc {
+			return cmp < 0
+		}
+		return cmp > 0
 	})
 	m.sortedAppsCache = apps
 	m.sortedAppsCacheKey = key

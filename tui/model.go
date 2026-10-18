@@ -149,6 +149,12 @@ type Model struct {
 	hoveredPanel     int
 	clickableRegions []clickableRegion
 
+	// contentTop is the frame row where the active tab's body starts. View
+	// sets it from the header and tab bar before rendering the body; the
+	// clickable regions share bubbletea's zero-based screen coordinates, so
+	// they must be anchored to the same origin the body is drawn at.
+	contentTop int
+
 	lastRefreshAt time.Time
 
 	sortedAppsCache    []appUsage
@@ -419,7 +425,15 @@ func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error
 		out = append(out, item)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].TotalDurationSecs > out[j].TotalDurationSecs
+		if out[i].TotalDurationSecs != out[j].TotalDurationSecs {
+			return out[i].TotalDurationSecs > out[j].TotalDurationSecs
+		}
+		// Equal totals must not fall back to the randomized map order, or the
+		// list reshuffles between refreshes.
+		if out[i].AppName != out[j].AppName {
+			return out[i].AppName < out[j].AppName
+		}
+		return out[i].AppID < out[j].AppID
 	})
 	return out, nil
 }
@@ -446,7 +460,15 @@ func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, e
 		out = append(out, item)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].TotalDurationSecs > out[j].TotalDurationSecs
+		if out[i].TotalDurationSecs != out[j].TotalDurationSecs {
+			return out[i].TotalDurationSecs > out[j].TotalDurationSecs
+		}
+		// Equal totals must not fall back to the randomized map order, or the
+		// list reshuffles between refreshes.
+		if out[i].AppName != out[j].AppName {
+			return out[i].AppName < out[j].AppName
+		}
+		return out[i].AppID < out[j].AppID
 	})
 	return out, nil
 }
@@ -546,6 +568,13 @@ func (m Model) contentHeight() int {
 		return 1
 	}
 	return contentHeight
+}
+
+// clampBodyBottom limits a measured region bottom to the visible body area,
+// so a panel taller than the terminal cannot claim rows that belong to the
+// footer. height is the content height the view was rendered with.
+func (m Model) clampBodyBottom(y, height int) int {
+	return min(y, m.contentTop+height)
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
@@ -735,6 +764,10 @@ func (m *Model) View() string {
 	footer := m.renderFooter()
 
 	contentHeight := m.contentHeight()
+
+	// The body renders below the header and tab bar; regions use raw mouse
+	// coordinates, so they are anchored to the measured body origin.
+	m.contentTop = lipgloss.Height(header) + lipgloss.Height(nav)
 
 	var body string
 	switch m.activeTab {

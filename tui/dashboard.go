@@ -60,36 +60,49 @@ func (m *Model) renderDashboard(width, height int) string {
 	weeklyW := (inner * 70) / 100
 	quickW := inner - weeklyW - 1
 
-	var bottomPart string
+	var weeklyPanel, quickPanel string
 	if width < 100 {
-		weeklyPanel := m.renderWeeklyPanel(inner, weeklyH)
-		quickPanel := m.renderQuickActionsPanel(inner, quickH)
-		bottomPart = lipgloss.JoinVertical(lipgloss.Left, weeklyPanel, "", quickPanel)
+		weeklyPanel = m.renderWeeklyPanel(inner, weeklyH)
+		quickPanel = m.renderQuickActionsPanel(inner, quickH)
 	} else {
-		weeklyPanel := m.renderWeeklyPanel(weeklyW, bottomHeight)
-		quickPanel := m.renderQuickActionsPanel(quickW, bottomHeight)
-		bottomPart = lipgloss.JoinHorizontal(lipgloss.Top, weeklyPanel, " ", quickPanel)
-	}
-
-	topY := 5
-	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: topY, X2: leftW, Y2: topY + topHeight, ID: "panel-0", Kind: "panel"})
-	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: leftW + 2, Y1: topY, X2: leftW + 2 + midW, Y2: topY + topHeight, ID: "panel-1", Kind: "panel"})
-	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: leftW + midW + 4, Y1: topY, X2: width - 1, Y2: topY + topHeight, ID: "panel-2", Kind: "panel"})
-
-	bottomY := topY + topHeight + 1
-	if width < 100 {
-		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: bottomY, X2: width - 1, Y2: bottomY + weeklyH, ID: "panel-3", Kind: "panel"})
-		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: bottomY + weeklyH + 1, X2: width - 1, Y2: bottomY + weeklyH + 1 + quickH, ID: "panel-4", Kind: "panel"})
-	} else {
-		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: bottomY, X2: weeklyW, Y2: bottomY + bottomHeight, ID: "panel-3", Kind: "panel"})
-		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: weeklyW + 2, Y1: bottomY, X2: width - 1, Y2: bottomY + bottomHeight, ID: "panel-4", Kind: "panel"})
+		weeklyPanel = m.renderWeeklyPanel(weeklyW, bottomHeight)
+		quickPanel = m.renderQuickActionsPanel(quickW, bottomHeight)
 	}
 
 	todayPanel := m.renderTodayPanel(leftW, topHeight)
 	topAppsPanel := m.renderTopAppsPanel(midW, topHeight)
 	hourlyPanel := m.renderHourlyPanel(rightW, topHeight)
 
+	var bottomPart string
+	if width < 100 {
+		bottomPart = lipgloss.JoinVertical(lipgloss.Left, weeklyPanel, "", quickPanel)
+	} else {
+		bottomPart = lipgloss.JoinHorizontal(lipgloss.Top, weeklyPanel, " ", quickPanel)
+	}
 	topPart := lipgloss.JoinHorizontal(lipgloss.Top, todayPanel, " ", topAppsPanel, " ", hourlyPanel)
+
+	// Regions derive from the heights the panels actually rendered at; the
+	// body origin is the only frame offset involved, and bottoms are clamped
+	// to the visible body so clipped panels cannot claim footer rows.
+	topY := m.contentTop
+	topH := max(lipgloss.Height(todayPanel), lipgloss.Height(topAppsPanel), lipgloss.Height(hourlyPanel))
+	topEnd := m.clampBodyBottom(topY+topH, height)
+	todayW := lipgloss.Width(todayPanel)
+	appsW := lipgloss.Width(topAppsPanel)
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 0, Y1: topY, X2: todayW, Y2: topEnd, ID: "panel-0", Kind: "panel"})
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: todayW + 1, Y1: topY, X2: todayW + 1 + appsW, Y2: topEnd, ID: "panel-1", Kind: "panel"})
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: todayW + appsW + 2, Y1: topY, X2: todayW + appsW + 2 + lipgloss.Width(hourlyPanel), Y2: topEnd, ID: "panel-2", Kind: "panel"})
+
+	bottomY := topY + topH + 1
+	if width < 100 {
+		weeklyBottom := bottomY + lipgloss.Height(weeklyPanel)
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 0, Y1: bottomY, X2: lipgloss.Width(weeklyPanel), Y2: m.clampBodyBottom(weeklyBottom, height), ID: "panel-3", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 0, Y1: weeklyBottom + 1, X2: lipgloss.Width(quickPanel), Y2: m.clampBodyBottom(weeklyBottom+1+lipgloss.Height(quickPanel), height), ID: "panel-4", Kind: "panel"})
+	} else {
+		weeklyPanelW := lipgloss.Width(weeklyPanel)
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 0, Y1: bottomY, X2: weeklyPanelW, Y2: m.clampBodyBottom(bottomY+lipgloss.Height(weeklyPanel), height), ID: "panel-3", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: weeklyPanelW + 1, Y1: bottomY, X2: weeklyPanelW + 1 + lipgloss.Width(quickPanel), Y2: m.clampBodyBottom(bottomY+lipgloss.Height(quickPanel), height), ID: "panel-4", Kind: "panel"})
+	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, topPart, " ", bottomPart)
 }

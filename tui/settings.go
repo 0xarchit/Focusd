@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
@@ -316,12 +317,13 @@ func (m *Model) renderSettings(width, height int) string {
 		bodyLines = window
 	}
 
+	panel := panelWithHover("SETTINGS", "", width-2, "\n"+strings.Join(bodyLines, "\n")+"\n", true, m.hoveredPanel == 0)
 	m.clickableRegions = append(m.clickableRegions, clickableRegion{
-		X1: 1, Y1: 5, X2: width - 1, Y2: height - 1,
+		X1: 0, Y1: m.contentTop, X2: lipgloss.Width(panel), Y2: m.clampBodyBottom(m.contentTop+lipgloss.Height(panel), height),
 		ID: "panel-0", Kind: "panel",
 	})
 
-	return panelWithHover("SETTINGS", "", width-2, "\n"+strings.Join(bodyLines, "\n")+"\n", true, m.hoveredPanel == 0)
+	return panel
 }
 
 func (m *Model) settingRow(index, selected int, label, value string, width int) string {

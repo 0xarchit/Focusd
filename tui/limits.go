@@ -215,16 +215,11 @@ func (m *Model) renderLimits(width, height int) string {
 		lines = append(lines, "", mutedStyle.Render("No limits set. Press n to add one."))
 	}
 
-	tableY2 := 5 + height - 2
-	if m.limitForm.Visible {
-		tableY2 = 5 + height - 9
-	}
+	table := panelWithHover("APP LIMITS", fmt.Sprintf("(%d limits set)", len(rows)), maxW, "\n"+strings.Join(lines, "\n")+"\n", m.panelFocus == 0, m.hoveredPanel == 0)
 	m.clickableRegions = append(m.clickableRegions, clickableRegion{
-		X1: 1, Y1: 5, X2: width - 1, Y2: tableY2,
+		X1: 0, Y1: m.contentTop, X2: lipgloss.Width(table), Y2: m.clampBodyBottom(m.contentTop+lipgloss.Height(table), height),
 		ID: "panel-0", Kind: "panel",
 	})
-
-	table := panelWithHover("APP LIMITS", fmt.Sprintf("(%d limits set)", len(rows)), maxW, "\n"+strings.Join(lines, "\n")+"\n", m.panelFocus == 0, m.hoveredPanel == 0)
 	if !m.limitForm.Visible {
 		return table
 	}
@@ -260,13 +255,14 @@ func (m *Model) renderLimits(width, height int) string {
 		mutedStyle.Render("  Hint: Enter the process/exe name (e.g. 'chrome' or 'code')"),
 	}
 
-	formY := 5 + height - 8
+	formPanel := panelWithHover(formTitle, "", maxW, "\n"+strings.Join(fields, "\n")+"\n", m.panelFocus == 1, m.hoveredPanel == 1)
+	formTop := m.contentTop + lipgloss.Height(table)
 	m.clickableRegions = append(m.clickableRegions, clickableRegion{
-		X1: 1, Y1: formY, X2: width - 1, Y2: height - 1,
+		X1: 0, Y1: formTop, X2: lipgloss.Width(formPanel), Y2: m.clampBodyBottom(formTop+lipgloss.Height(formPanel), height),
 		ID: "panel-1", Kind: "panel",
 	})
 
-	return lipgloss.JoinVertical(lipgloss.Left, table, panelWithHover(formTitle, "", maxW, "\n"+strings.Join(fields, "\n")+"\n", m.panelFocus == 1, m.hoveredPanel == 1))
+	return lipgloss.JoinVertical(lipgloss.Left, table, formPanel)
 }
 
 func (m *Model) limitRows() []limitRow {
