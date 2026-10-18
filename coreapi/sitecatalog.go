@@ -286,6 +286,56 @@ func domainOf(text string) string {
 	return strings.Trim(candidate, ".")
 }
 
+// CollapseURLTitle reduces a title that is really a URL to just its host.
+// While a page loads, browsers expose the raw address in the window title, so
+// redirect stubs like "bing.com/ck/a?!&p=..." would otherwise reach the stats
+// as page names. Only text with no spaces that both contains a URL marker and
+// yields a domain-shaped host is collapsed; ordinary titles pass through.
+func CollapseURLTitle(title string) string {
+	if strings.ContainsAny(title, " \t") {
+		return title
+	}
+	if !strings.ContainsAny(title, "/?#") {
+		return title
+	}
+	host := domainOf(title)
+	if !isDomainShaped(host) {
+		return title
+	}
+	return host
+}
+
+// isDomainShaped reports whether host looks like a real domain: at least two
+// labels, dot-separated alphanumerics with hyphens, and a letters-only final
+// label. Path fragments, version numbers, and IP addresses are rejected and
+// better left in the title than mistaken for a site.
+func isDomainShaped(host string) bool {
+	if host == "" || len(host) > 253 || !strings.Contains(host, ".") {
+		return false
+	}
+	labels := strings.Split(host, ".")
+	for _, label := range labels {
+		if label == "" || len(label) > 63 {
+			return false
+		}
+		for _, r := range label {
+			if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+				return false
+			}
+		}
+	}
+	tld := labels[len(labels)-1]
+	if len(tld) < 2 {
+		return false
+	}
+	for _, r := range tld {
+		if r < 'a' || r > 'z' {
+			return false
+		}
+	}
+	return true
+}
+
 // domainMatchesHost reports whether host is the rule domain or a subdomain of
 // it. A plain suffix test would let "notyoutube.com" match "youtube.com".
 func domainMatchesHost(host, domain string) bool {

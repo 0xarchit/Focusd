@@ -133,6 +133,29 @@ func TestCleanWindowTitleEdgeZeroWidth(t *testing.T) {
 	}
 }
 
+// TestCleanWindowTitleCollapsesURLTitles proves a loading or redirecting tab
+// is recorded as its host, not as the raw tracking link.
+func TestCleanWindowTitleCollapsesURLTitles(t *testing.T) {
+	tests := []struct {
+		in   string
+		exe  string
+		want string
+	}{
+		{"bing.com/ck/a?!&&p=f7e19469 - Microsoft Edge", "msedge.exe", "bing.com"},
+		{"https://www.bing.com/search?q=focusd - Google Chrome", "chrome.exe", "www.bing.com"},
+		{"Docs / Home - Microsoft Edge", "msedge.exe", "Docs / Home"},
+		{"about:blank - Microsoft Edge", "msedge.exe", "about:blank"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			if got := cleanWindowTitle(tc.in, tc.exe); got != tc.want {
+				t.Errorf("cleanWindowTitle(%q, %q) = %q; want %q", tc.in, tc.exe, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIsKnownBrowserSuffixAnchored(t *testing.T) {
 	shouldMatch := []string{"google chrome", "chrome", "firefox", "edge", "brave", "opera", "vivaldi"}
 	for _, s := range shouldMatch {

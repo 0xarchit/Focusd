@@ -131,6 +131,33 @@ func TestDomainOf(t *testing.T) {
 	}
 }
 
+func TestCollapseURLTitle(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"bing.com/ck/a?!&&p=f7e19469", "bing.com"},
+		{"https://www.bing.com/search?q=focusd", "www.bing.com"},
+		{"github.com/0xarchit/focusd", "github.com"},
+		{"mail.google.com/mail/u/0/#inbox", "mail.google.com"},
+		{"Example Domain", "Example Domain"},
+		{"Docs / Home", "Docs / Home"},
+		{"about:blank", "about:blank"},
+		{"localhost:3000/dashboard", "localhost:3000/dashboard"},
+		{"192.168.1.1/admin", "192.168.1.1/admin"},
+		{"TCP/IP", "TCP/IP"},
+		{"", ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			if got := CollapseURLTitle(tc.in); got != tc.want {
+				t.Errorf("CollapseURLTitle(%q) = %q; want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSiteOverride(t *testing.T) {
 	ClearSiteOverrides()
 	t.Cleanup(ClearSiteOverrides)

@@ -44,7 +44,7 @@ func groupBrowserStats(stats []storage.AppDailyStat) []groupedBrowserStat {
 	var order []string
 
 	for _, stat := range stats {
-		title := stat.AppName
+		title := CollapseURLTitle(stat.AppName)
 		duration := stat.TotalDurationSecs
 
 		category := extractAppCategory(title)

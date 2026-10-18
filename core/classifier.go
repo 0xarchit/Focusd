@@ -1,6 +1,7 @@
 package core
 
 import (
+	"focusd/coreapi"
 	"regexp"
 	"strings"
 	"unicode"
@@ -103,6 +104,7 @@ func cleanWindowTitle(rawTitle, exeName string) string {
 	clean = stripDecorations(clean)
 	clean = strings.Trim(clean, "-–—|· \t")
 	clean = strings.TrimSpace(clean)
+	clean = coreapi.CollapseURLTitle(clean)
 
 	if clean == "" {
 		return "New Tab / Other"

@@ -445,10 +445,10 @@ func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, e
 	}
 	combined := map[string]storage.AppDailyStat{}
 	for _, s := range stats {
-		key := s.AppName
+		key := coreapi.CollapseURLTitle(s.AppName)
 		item := combined[key]
 		if item.AppName == "" {
-			item.AppName = s.AppName
+			item.AppName = key
 			item.ExeName = s.ExeName
 		}
 		item.TotalDurationSecs += s.TotalDurationSecs
