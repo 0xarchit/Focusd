@@ -212,7 +212,9 @@ func (m *Model) dueForRefreshForTest(now time.Time) bool {
 
 func checkDaemon() tea.Cmd {
 	return func() tea.Msg {
-		return statusMsg(system.GetProcessCount(system.DaemonProcessName) >= 1)
+		// Scoped to this user's install so another user's daemon on a shared
+		// machine is not reported as ours.
+		return statusMsg(system.CountInstancesInDir(system.DaemonProcessName, system.GetInstallDir()) >= 1)
 	}
 }
 
@@ -230,8 +232,9 @@ func loadDashboard() tea.Cmd {
 		// A timer started while the daemon was stopped would otherwise never
 		// finish; the periodic refresh completes it from the TUI. While the
 		// daemon runs it announces completion itself, so check only when it
-		// is stopped and the toast cannot go out twice.
-		if system.GetProcessCount(system.DaemonProcessName) < 1 {
+		// is stopped and the toast cannot go out twice. Scoped to this user's
+		// install so another user's daemon cannot mask a stopped one.
+		if system.CountInstancesInDir(system.DaemonProcessName, system.GetInstallDir()) < 1 {
 			core.CheckPomodoroCompletion()
 		}
 		today := storage.Today()

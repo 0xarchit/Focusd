@@ -20,14 +20,16 @@ func runStatus() {
 
 	coreapi.SendIPCCmd("flush")
 
+	// Count only this user's daemon: a system-wide process count could see
+	// another user's focusd_daemon.exe and mask a stopped daemon.
 	isRunning := false
-	if system.GetProcessCount(system.DaemonProcessName) >= 1 {
+	if system.CountInstancesInDir(system.DaemonProcessName, system.GetInstallDir()) >= 1 {
 		isRunning = true
 	}
 
-	// Finish an expired timer only while the daemon is stopped: a running
-	// daemon announces completion itself, so checking here too could toast
-	// the same timer twice.
+	// Finish an expired timer only while this user's daemon is stopped: a
+	// running daemon announces completion itself, so checking here too
+	// could toast the same timer twice.
 	if !isRunning {
 		core.CheckPomodoroCompletion()
 	}
