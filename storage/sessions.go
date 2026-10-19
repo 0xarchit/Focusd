@@ -209,8 +209,8 @@ func GetAppUsageTodaySecondsForConfig(configKey string) int {
 	var secs int
 	err := db.QueryRow(`
 		SELECT COALESCE(SUM(total_duration_secs), 0) FROM apps_daily
-		WHERE date = ? AND (app_id = ? OR substr(app_id, 1, ?) = ?)
-	`, today, base, len(base)+1, base+"|").Scan(&secs)
+		WHERE date = ?1 AND (app_id = ?2 OR substr(app_id, 1, length(?3)) = ?3)
+	`, today, base, base+"|").Scan(&secs)
 	if err != nil {
 		log.Printf("WARN: GetAppUsageTodaySecondsForConfig query failed for %s: %v", configKey, err)
 	}
@@ -255,28 +255,35 @@ func GetAppUsageTodayMinutesMap() (map[string]int, error) {
 	}
 	defer rows.Close()
 
-	res := make(map[string]int)
+	// Accumulate seconds and floor once at the end: flooring the stored and
+	// live sources separately drops a minute the combined usage has reached.
+	secs := make(map[string]int)
 	for rows.Next() {
 		var appID string
-		var secs int
-		if err := rows.Scan(&appID, &secs); err != nil {
+		var stored int
+		if err := rows.Scan(&appID, &stored); err != nil {
 			return nil, err
 		}
-		res[appID] = secs / 60
+		secs[appID] += stored
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	active, aerr := GetActiveSession()
 	if aerr != nil {
 		log.Printf("WARN: GetActiveSession failed: %v", aerr)
-		return res, rows.Err()
-	}
-	if active != nil {
+	} else if active != nil {
 		if elapsed := liveElapsedToday(active.StartTime, time.Now()); elapsed > 0 {
-			res[active.AppID] += elapsed / 60
+			secs[active.AppID] += elapsed
 		}
 	}
 
-	return res, rows.Err()
+	res := make(map[string]int, len(secs))
+	for appID, s := range secs {
+		res[appID] = s / 60
+	}
+	return res, nil
 }
 
 func GetSessionsPaginated(limit, offset int, startDate, endDate string) ([]Session, error) {
@@ -405,10 +412,11 @@ func GetBrowserStatsInRange(startDate, endDate string) ([]AppDailyStat, error) {
 	var stats []AppDailyStat
 	err := withBusyRetry(func() error {
 		rows, err := db.Query(`
-			SELECT date, site_name, app_id, total_duration_secs, open_count
+			SELECT date, site_name, '' AS app_id, SUM(total_duration_secs), SUM(open_count)
 			FROM browsing_daily
 			WHERE date >= ? AND date <= ?
-			ORDER BY date DESC, total_duration_secs DESC
+			GROUP BY date, site_name
+			ORDER BY date DESC, SUM(total_duration_secs) DESC
 		`, startDate, endDate)
 		if err != nil {
 			return err

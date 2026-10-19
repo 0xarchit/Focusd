@@ -99,6 +99,83 @@ func TestLiveElapsedTodayClipsAtMidnight(t *testing.T) {
 	}
 }
 
+// TestGetAppUsageTodayMinutesMapFloorsOnce pins that stored and live seconds
+// are summed before the minute conversion: flooring them separately can drop a
+// minute the combined usage has crossed.
+func TestGetAppUsageTodayMinutesMapFloorsOnce(t *testing.T) {
+	setupStorageEnv(t)
+
+	if _, err := db.Exec(`
+		INSERT INTO apps_daily (date, app_name, exe_name, app_id, total_duration_secs, open_count)
+		VALUES (?, 'Code', 'code.exe', 'code|aaaa1111', 90, 1)
+	`, Today()); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	if err := SaveActiveSession(&ActiveSessionRecord{
+		AppName:   "Code",
+		ExeName:   "code.exe",
+		AppID:     "code|aaaa1111",
+		StartTime: time.Now().Add(-30 * time.Second),
+		LastSeen:  time.Now(),
+		Date:      Today(),
+	}); err != nil {
+		t.Fatalf("SaveActiveSession failed: %v", err)
+	}
+
+	got, err := GetAppUsageTodayMinutesMap()
+	if err != nil {
+		t.Fatalf("GetAppUsageTodayMinutesMap failed: %v", err)
+	}
+	// 90 stored + 30 live = 120s: two whole minutes, where 90/60 + 30/60
+	// floors to one.
+	if got["code|aaaa1111"] != 2 {
+		t.Errorf("minutes = %d; want 2 (floor once on the combined seconds)", got["code|aaaa1111"])
+	}
+}
+
+// TestGetAppUsageTodaySecondsForConfigMultibyteBase pins that the bare-name
+// prefix match counts characters, not bytes: a CJK base name is longer in
+// bytes than in characters, and a byte-counted substr misses every install.
+func TestGetAppUsageTodaySecondsForConfigMultibyteBase(t *testing.T) {
+	setupStorageEnv(t)
+
+	if _, err := db.Exec(`
+		INSERT INTO apps_daily (date, app_name, exe_name, app_id, total_duration_secs, open_count)
+		VALUES (?, '记事本', '记事本.exe', '记事本|aaaa1111', 600, 1)
+	`, Today()); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	if got := GetAppUsageTodaySecondsForConfig("记事本.exe"); got != 600 {
+		t.Errorf("multibyte base usage = %d; want 600", got)
+	}
+}
+
+// TestGetBrowserStatsInRangeAggregatesSameSite pins that the same site from two
+// browser installs becomes one row per day instead of two.
+func TestGetBrowserStatsInRangeAggregatesSameSite(t *testing.T) {
+	setupStorageEnv(t)
+
+	if _, err := db.Exec(`
+		INSERT INTO browsing_daily (date, app_id, site_name, total_duration_secs, open_count)
+		VALUES (?, 'firefox|aaaa1111', 'GitHub', 600, 2), (?, 'chrome|bbbb2222', 'GitHub', 300, 1)
+	`, Today(), Today()); err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	stats, err := GetBrowserStatsInRange(Today(), Today())
+	if err != nil {
+		t.Fatalf("GetBrowserStatsInRange failed: %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("rows = %d; want 1 merged per date and site", len(stats))
+	}
+	if stats[0].AppName != "GitHub" || stats[0].TotalDurationSecs != 900 || stats[0].OpenCount != 3 {
+		t.Errorf("stat = %+v; want GitHub with 900s across 3 opens", stats[0])
+	}
+}
+
 // TestSessionExistsMatchesIdentityAndStart pins the recovery de-dup lookup:
 // only the same app identity at the same start second counts as a duplicate.
 func TestSessionExistsMatchesIdentityAndStart(t *testing.T) {
