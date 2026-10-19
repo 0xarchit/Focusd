@@ -105,6 +105,16 @@ func TestLiveElapsedTodayClipsAtMidnight(t *testing.T) {
 func TestGetAppUsageTodayMinutesMapFloorsOnce(t *testing.T) {
 	setupStorageEnv(t)
 
+	// Near local midnight the live 30 seconds can be clipped or land in the
+	// previous day, which would flake the assertion for reasons unrelated to
+	// flooring.
+	now := time.Now()
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+	if now.Sub(midnight) < 2*time.Minute || nextMidnight.Sub(now) < 2*time.Minute {
+		t.Skip("too close to local midnight; live elapsed time is clipped")
+	}
+
 	if _, err := db.Exec(`
 		INSERT INTO apps_daily (date, app_name, exe_name, app_id, total_duration_secs, open_count)
 		VALUES (?, 'Code', 'code.exe', 'code|aaaa1111', 90, 1)
