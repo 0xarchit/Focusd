@@ -14,6 +14,11 @@ Name "Focusd"
 OutFile "focusd_setup.exe"
 InstallDir "$APPDATA\focusd"
 
+; Holds the PowerShell executable used by the process-filter fallbacks. The
+; 32-bit installer must reach the 64-bit PowerShell (via Sysnative) to read
+; executable paths of the 64-bit focusd processes.
+Var PsExe
+
 ; Registry key for uninstall info
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Focusd"
 
@@ -40,12 +45,23 @@ Section "Install"
   SetOutPath "$INSTDIR"
   
   ; Stop the daemon and any running TUI before overwriting the binaries.
+  ; Only processes running from this install directory are stopped, so a
+  ; copy running from elsewhere keeps working. The path travels through
+  ; the environment, which keeps quotes or wildcard characters in it from
+  ; breaking the PowerShell filter.
   DetailPrint "Stopping existing daemon if active..."
   IfFileExists "$INSTDIR\focusd.exe" 0 +3
     ExecWait '"$INSTDIR\focusd.exe" stop'
     Sleep 1000
-  ExecWait `powershell.exe -NoProfile -Command "Get-Process focusd_daemon -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like '$INSTDIR\*' } | Stop-Process -Force"`
-  ExecWait `powershell.exe -NoProfile -Command "Get-Process focusd -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like '$INSTDIR\*' } | Stop-Process -Force"`
+  ; A plain "powershell.exe" would run the 32-bit PowerShell under WOW64,
+  ; which cannot read the executable path of a 64-bit focusd process, so
+  ; the filter would never match. Sysnative selects the 64-bit PowerShell.
+  StrCpy $PsExe "powershell.exe"
+  IfFileExists "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
+    StrCpy $PsExe "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  System::Call 'kernel32::SetEnvironmentVariable(t "FOCUSD_INSTDIR", t "$INSTDIR")'
+  ExecWait `"$PsExe" -NoProfile -Command "Get-Process focusd_daemon -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ne $$null -and $$_.Path.StartsWith($$env:FOCUSD_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
+  ExecWait `"$PsExe" -NoProfile -Command "Get-Process focusd -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ne $$null -and $$_.Path.StartsWith($$env:FOCUSD_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
   Sleep 500
 
   File "focusd.exe"
@@ -89,9 +105,18 @@ Section "Uninstall"
     ExecWait '"$INSTDIR\focusd.exe" stop'
     Sleep 1000
 
-  ; Force kill if still running to release file locks
-  ExecWait `powershell.exe -NoProfile -Command "Get-Process focusd_daemon -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like '$INSTDIR\*' } | Stop-Process -Force"`
-  ExecWait `powershell.exe -NoProfile -Command "Get-Process focusd -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like '$INSTDIR\*' } | Stop-Process -Force"`
+  ; Force kill if still running to release file locks. Scoped to this
+  ; directory like the install section; a copy running from elsewhere is
+  ; left alone.
+  ; A plain "powershell.exe" would run the 32-bit PowerShell under WOW64,
+  ; which cannot read the executable path of a 64-bit focusd process, so
+  ; the filter would never match. Sysnative selects the 64-bit PowerShell.
+  StrCpy $PsExe "powershell.exe"
+  IfFileExists "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
+    StrCpy $PsExe "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  System::Call 'kernel32::SetEnvironmentVariable(t "FOCUSD_INSTDIR", t "$INSTDIR")'
+  ExecWait `"$PsExe" -NoProfile -Command "Get-Process focusd_daemon -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ne $$null -and $$_.Path.StartsWith($$env:FOCUSD_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
+  ExecWait `"$PsExe" -NoProfile -Command "Get-Process focusd -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ne $$null -and $$_.Path.StartsWith($$env:FOCUSD_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
   Sleep 500
 
   ; Remove from user PATH while the exe still exists. focusd.exe owns the
