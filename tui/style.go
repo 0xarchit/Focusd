@@ -220,14 +220,28 @@ func center(s string, width int) string {
 	return strings.Repeat(" ", left) + s + strings.Repeat(" ", width-lipgloss.Width(s)-left)
 }
 
+// truncate returns the longest prefix of s that fits in limit cells, adding an
+// ellipsis when content had to be dropped. The ellipsis is part of the budget:
+// callers pad to exact widths afterwards, so the result must never exceed limit.
 func truncate(s string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	out, truncated := takeCells(s, limit)
+	if !truncated {
+		return out
+	}
+	out, _ = takeCells(s, limit-1)
+	return out + "…" + "\x1b[0m"
+}
+
+// takeCells consumes runes while their display width fits in limit, passing
+// ANSI escape sequences through untouched. It reports whether s was cut short.
+func takeCells(s string, limit int) (string, bool) {
 	var sb strings.Builder
 	printed := 0
 	inEsc := false
-	runes := []rune(s)
-	truncated := false
-	for i := 0; i < len(runes); i++ {
-		r := runes[i]
+	for _, r := range s {
 		if r == '\x1b' {
 			inEsc = true
 			sb.WriteRune(r)
@@ -242,15 +256,10 @@ func truncate(s string, limit int) string {
 		}
 		w := runewidth.RuneWidth(r)
 		if printed+w > limit {
-			truncated = true
-			break
+			return sb.String(), true
 		}
 		sb.WriteRune(r)
 		printed += w
 	}
-	if truncated {
-		sb.WriteString("…")
-		sb.WriteString("\x1b[0m")
-	}
-	return sb.String()
+	return sb.String(), false
 }

@@ -427,7 +427,9 @@ func (m *Model) renderUsageBreakdown(width, visibleRows int) string {
 func (m *Model) renderBrowserUsage(width, visibleRows int) string {
 	var lines []string
 	titleW := max(8, width-16)
-	lines = append(lines, boldStyle.Render(fitLine(padRight("Tab Title", titleW)+padLeft("Time", 10), width-4)), mutedStyle.Render(strings.Repeat("─", max(0, width-4))))
+	// Rows start with the "▶ " marker, so the header is indented by the same
+	// two cells to keep "Time" above the right-aligned durations.
+	lines = append(lines, boldStyle.Render(fitLine("  "+padRight("Tab Title", titleW)+padLeft("Time", 10), width-4)), mutedStyle.Render(strings.Repeat("─", max(0, width-4))))
 
 	if len(m.stats.Browsers) > 0 {
 		start := m.statsBrowserOffset
