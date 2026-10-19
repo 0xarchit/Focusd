@@ -280,9 +280,11 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 		log.Printf("WARN: failed to load app stats: %v", err)
 	}
 	for _, s := range apps {
-		name := s.ExeName
+		// Prefer the resolved display label; the exe name is only the
+		// fallback for rows that predate identity.
+		name := s.AppName
 		if name == "" {
-			name = s.AppName
+			name = s.ExeName
 		}
 		data.Apps = append(data.Apps, appUsage{
 			Name:     name,
