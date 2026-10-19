@@ -3,6 +3,7 @@ package system
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -120,11 +121,14 @@ func assertNoStrayFiles(t *testing.T, dir, base string) {
 		t.Fatalf("read dir failed: %v", err)
 	}
 	for _, e := range entries {
-		if e.Name() == base {
+		name := e.Name()
+		if name == base {
 			continue
 		}
-		if filepath.Ext(e.Name()) == ".old" || filepath.Ext(e.Name()) == ".new" {
-			t.Errorf("stray file left behind: %s", e.Name())
+		// Staging files are named base+".new-<random>"; a bare extension check
+		// misses them because ".new-123" is the whole extension.
+		if filepath.Ext(name) == ".old" || filepath.Ext(name) == ".new" || strings.Contains(name, ".new-") {
+			t.Errorf("stray file left behind: %s", name)
 		}
 	}
 }

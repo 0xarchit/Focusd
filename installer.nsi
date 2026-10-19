@@ -24,7 +24,8 @@ InstallDir "$APPDATA\focusd"
 
 ; Pages
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_DIRECTORY
+; No install-directory page: everything is pinned to $APPDATA\focusd. A custom
+; directory produced duplicate binaries and a mismatched PATH entry (issue #18).
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
@@ -62,7 +63,9 @@ Section "Install"
   ; install and uninstall overwrote or cleared the user's PATH.
   DetailPrint "Adding focusd to your user PATH..."
   IfFileExists "$INSTDIR\focusd.exe" 0 skip_path_enable
-    ExecWait '"$INSTDIR\focusd.exe" path enable'
+    ExecWait '"$INSTDIR\focusd.exe" path enable' $0
+    StrCmp $0 "0" +2
+      DetailPrint "WARNING: could not add focusd to PATH (exit code $0). Run 'focusd path enable' manually."
   skip_path_enable:
 
   ; Write registry keys for Windows Add/Remove Programs (uninstaller)
@@ -94,7 +97,9 @@ Section "Uninstall"
   ; Remove from user PATH while the exe still exists. focusd.exe owns the
   ; logic; see the install section.
   IfFileExists "$INSTDIR\focusd.exe" 0 skip_path_disable
-    ExecWait '"$INSTDIR\focusd.exe" path disable'
+    ExecWait '"$INSTDIR\focusd.exe" path disable' $0
+    StrCmp $0 "0" +2
+      DetailPrint "WARNING: could not remove focusd from PATH (exit code $0). Run 'focusd path disable' manually."
   skip_path_disable:
 
   Delete "$INSTDIR\focusd.exe"
