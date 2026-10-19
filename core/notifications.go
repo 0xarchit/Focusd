@@ -92,6 +92,9 @@ type toastProcess struct {
 	stderr *strings.Builder
 	done   chan struct{}
 	runErr error
+	// started reports whether the script process actually launched, so
+	// callers can tell "toast shown" from "PowerShell could not start".
+	started bool
 }
 
 // powershellExe resolves Windows PowerShell by absolute path. exec.LookPath
@@ -135,6 +138,7 @@ func startToast(ctx context.Context, script string, env []string) *toastProcess 
 		close(tp.done)
 		return tp
 	}
+	tp.started = true
 	go func() {
 		tp.runErr = cmd.Wait()
 		close(tp.done)
@@ -211,6 +215,9 @@ func showNotification(ctx context.Context, title, message string) bool {
 	m := truncateRunes(message, 200)
 
 	tp := startToast(ctx, plainToastScript, toastEnv(t, m, toastXMLTemplate))
+	if !tp.started {
+		return false
+	}
 	go tp.wait(ctx)
 	return true
 }
@@ -225,6 +232,9 @@ func showNotificationWithAction(ctx context.Context, title, message string, call
 	m := truncateRunes(message, 200)
 
 	tp := startToast(ctx, actionToastScript, toastEnv(t, m, actionToastXMLTemplate))
+	if !tp.started {
+		return false
+	}
 	go func() {
 		choice := strings.TrimSpace(string(tp.wait(ctx)))
 		if choice == "disable" && callback != nil {
