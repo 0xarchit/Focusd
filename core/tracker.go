@@ -431,25 +431,32 @@ func (t *Tracker) writeActiveSession(force bool) {
 	t.persistWrites++
 }
 
-// isIdle reports whether the user has been inactive long enough that time
-// should stop accruing.
-func (t *Tracker) isIdle() bool {
+// readIdleSeconds is a seam over the Win32 idle clock so session accounting
+// can be tested without real keyboard state.
+var readIdleSeconds = system.GetIdleSeconds
+
+// idleFor reports whether the user has been away long enough that time should
+// stop accruing, and for how long they have been idle.
+func (t *Tracker) idleFor() (bool, time.Duration) {
 	if system.GetTrackWhileIdle() {
-		return false
+		return false, 0
 	}
 
 	threshold := system.GetIdleThresholdMinutes()
 	if threshold <= 0 {
-		return false
+		return false, 0
 	}
 
-	idleSeconds, err := system.GetIdleSeconds()
+	idleSeconds, err := readIdleSeconds()
 	if err != nil {
 		// If the input state cannot be read, keep tracking rather than
 		// silently dropping time.
-		return false
+		return false, 0
 	}
-	return idleSeconds >= threshold*60
+	if idleSeconds < threshold*60 {
+		return false, 0
+	}
+	return true, time.Duration(idleSeconds) * time.Second
 }
 
 // detectWallClockGap closes the running session when the wall clock jumped much
@@ -464,15 +471,18 @@ func (t *Tracker) detectWallClockGap() {
 		return
 	}
 
-	gap := now.Sub(t.lastPollAt)
+	prev := t.lastPollAt
+	gap := now.Sub(prev)
 	t.lastPollAt = now
 
 	if t.currentSession == nil {
 		return
 	}
 	if gap > gapFactor*t.pollInterval {
+		// End the session at the last poll, not at now: the sleep interval
+		// itself is not time the user spent in the app.
 		log.Printf("WARN: wall clock gap of %s detected, closing session", gap)
-		t.closeCurrentSession()
+		t.closeCurrentSessionAt(prev)
 	}
 }
 
@@ -488,9 +498,13 @@ type pollObservation struct {
 func (t *Tracker) poll() {
 	t.detectWallClockGap()
 
-	// An idle cutoff pauses accrual but keeps the session alive, so returning
-	// to the same window does not manufacture a new session.
-	if t.isIdle() {
+	// Idle time must not accrue: close the session at the moment the user
+	// stopped interacting, so the away stretch is never billed. Returning to
+	// any window then starts a fresh session.
+	if idle, idleFor := t.idleFor(); idle {
+		t.mu.Lock()
+		t.closeCurrentSessionAt(time.Now().Add(-idleFor))
+		t.mu.Unlock()
 		return
 	}
 
@@ -588,12 +602,22 @@ func privateWindowLabel(exeName string) string {
 }
 
 func (t *Tracker) closeCurrentSession() {
+	t.closeCurrentSessionAt(time.Now())
+}
+
+// closeCurrentSessionAt ends the running session at end rather than at the wall
+// clock, so callers can exclude time that was not real use: an idle stretch or
+// a sleep gap. Caller holds t.mu.
+func (t *Tracker) closeCurrentSessionAt(end time.Time) {
 	if t.currentSession == nil {
 		return
 	}
-
-	now := time.Now()
-	slices := splitSessionAtMidnight(t.currentSession, now)
+	if end.Before(t.currentSession.StartTime) {
+		// Never bill negative time; an idle clock that predates the session
+		// start must not drop the session entirely.
+		end = t.currentSession.StartTime
+	}
+	slices := splitSessionAtMidnight(t.currentSession, end)
 	t.pendingSessions = append(t.pendingSessions, slices...)
 	t.currentSession = nil
 }

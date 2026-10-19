@@ -150,6 +150,102 @@ func TestCloseCurrentSession(t *testing.T) {
 	}
 }
 
+// TestWallClockGapClosesAtPreviousPoll pins the sleep/hibernate accounting: the
+// session must end at the last poll before the gap, not at wake-up, or the
+// whole sleep interval is billed to the foreground app.
+func TestWallClockGapClosesAtPreviousPoll(t *testing.T) {
+	tracker := &Tracker{pollInterval: time.Second}
+
+	start := time.Now().Add(-time.Hour)
+	lastPoll := start.Add(30 * time.Second)
+	tracker.currentSession = &activeSession{
+		AppName:     "TestApp",
+		ExeName:     "test.exe",
+		AppID:       "test|abcd1234",
+		WindowTitle: "Window",
+		StartTime:   start,
+		Date:        dateStr(start),
+	}
+	tracker.lastPollAt = lastPoll
+
+	tracker.detectWallClockGap()
+
+	if tracker.currentSession != nil {
+		t.Fatal("a wall clock gap should close the session")
+	}
+	if len(tracker.pendingSessions) != 1 {
+		t.Fatalf("expected 1 flushed session, got %d", len(tracker.pendingSessions))
+	}
+	s := tracker.pendingSessions[0]
+	if s.DurationSecs != 30 {
+		t.Errorf("billed duration = %d; want 30 (the sleep gap must not count)", s.DurationSecs)
+	}
+	if !s.EndTime.Equal(lastPoll) {
+		t.Errorf("session end = %v; want the last poll at %v", s.EndTime, lastPoll)
+	}
+}
+
+// TestIdlePollExcludesIdleTime pins the idle cutoff: an idle poll closes the
+// session at the moment the user stopped interacting, so the away stretch is
+// never billed.
+func TestIdlePollExcludesIdleTime(t *testing.T) {
+	setupTestDB(t)
+
+	original := readIdleSeconds
+	readIdleSeconds = func() (int, error) { return 300, nil }
+	t.Cleanup(func() { readIdleSeconds = original })
+
+	tracker := &Tracker{pollInterval: time.Second}
+	start := time.Now().Add(-time.Hour)
+	tracker.currentSession = &activeSession{
+		AppName:     "TestApp",
+		ExeName:     "test.exe",
+		AppID:       "test|abcd1234",
+		WindowTitle: "Window",
+		StartTime:   start,
+		Date:        dateStr(start),
+	}
+
+	tracker.poll()
+
+	if tracker.currentSession != nil {
+		t.Fatal("an idle poll should close the session")
+	}
+	if len(tracker.pendingSessions) != 1 {
+		t.Fatalf("expected 1 flushed session, got %d", len(tracker.pendingSessions))
+	}
+	s := tracker.pendingSessions[0]
+	// 3600s of session minus the 300s idle tail, allowing timer slack.
+	if s.DurationSecs < 3290 || s.DurationSecs > 3310 {
+		t.Errorf("billed duration = %d; want ~3300 (idle tail excluded)", s.DurationSecs)
+	}
+}
+
+// TestCloseCurrentSessionAtNeverGoesNegative keeps the clamp pinned: an end
+// that predates the session start must drop the session, not bill negative
+// time or resurrect a zero-length one.
+func TestCloseCurrentSessionAtNeverGoesNegative(t *testing.T) {
+	tracker := &Tracker{pollInterval: time.Second}
+	start := time.Now().Add(-time.Minute)
+	tracker.currentSession = &activeSession{
+		AppName:     "TestApp",
+		ExeName:     "test.exe",
+		AppID:       "test|abcd1234",
+		WindowTitle: "Window",
+		StartTime:   start,
+		Date:        dateStr(start),
+	}
+
+	tracker.closeCurrentSessionAt(start.Add(-time.Hour))
+
+	if tracker.currentSession != nil {
+		t.Fatal("the session should be closed")
+	}
+	if len(tracker.pendingSessions) != 0 {
+		t.Errorf("a clamped zero-length session should be dropped, got %d", len(tracker.pendingSessions))
+	}
+}
+
 func TestFlushPendingSessions(t *testing.T) {
 	setupTestDB(t)
 
