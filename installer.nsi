@@ -44,8 +44,8 @@ Section "Install"
   IfFileExists "$INSTDIR\focusd.exe" 0 +3
     ExecWait '"$INSTDIR\focusd.exe" stop'
     Sleep 1000
-  ExecWait 'taskkill.exe /F /IM focusd_daemon.exe'
-  ExecWait 'taskkill.exe /F /IM focusd.exe'
+  ExecWait `powershell.exe -NoProfile -Command "Get-Process focusd_daemon -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like '$INSTDIR\*' } | Stop-Process -Force"`
+  ExecWait `powershell.exe -NoProfile -Command "Get-Process focusd -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like '$INSTDIR\*' } | Stop-Process -Force"`
   Sleep 500
 
   File "focusd.exe"
@@ -90,8 +90,8 @@ Section "Uninstall"
     Sleep 1000
 
   ; Force kill if still running to release file locks
-  ExecWait 'taskkill.exe /F /IM focusd_daemon.exe'
-  ExecWait 'taskkill.exe /F /IM focusd.exe'
+  ExecWait `powershell.exe -NoProfile -Command "Get-Process focusd_daemon -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like '$INSTDIR\*' } | Stop-Process -Force"`
+  ExecWait `powershell.exe -NoProfile -Command "Get-Process focusd -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like '$INSTDIR\*' } | Stop-Process -Force"`
   Sleep 500
 
   ; Remove from user PATH while the exe still exists. focusd.exe owns the
