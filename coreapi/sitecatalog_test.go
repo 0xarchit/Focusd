@@ -58,6 +58,34 @@ func TestSiteNameForDomains(t *testing.T) {
 	}
 }
 
+// TestSiteNameForPrefersTheMostSpecificDomain pins the domain-first pass:
+// amazon.com must stay Amazon while its consoles keep their own names, and a
+// title match from an earlier rule must not steal a longer domain match from a
+// later rule.
+func TestSiteNameForPrefersTheMostSpecificDomain(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"https://www.amazon.com/dp/B0CHX1W1XY", "Amazon"},
+		{"primevideo.com", "Prime Video"},
+		{"Prime Video", "Prime Video"},
+		{"aws.amazon.com", "AWS"},
+		{"console.aws.amazon.com", "AWS"},
+		{"cloud.google.com", "Google Cloud"},
+		{"console.cloud.google.com", "Google Cloud"},
+		{"youtube.github.io", "GitHub"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			if got := SiteNameFor(tc.in); got != tc.want {
+				t.Errorf("SiteNameFor(%q) = %q; want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestSiteNameForNoFalsePositives checks that ordinary English words do not
 // resolve to a site.
 func TestSiteNameForNoFalsePositives(t *testing.T) {
@@ -177,6 +205,27 @@ func TestSiteOverride(t *testing.T) {
 		t.Errorf("uncatalogued override not applied: got %q", got)
 	}
 
+	SetSiteOverride("GitHub", "")
+	if got := SiteNameFor("GitHub"); got != "GitHub" {
+		t.Errorf("override removal failed: got %q", got)
+	}
+}
+
+// TestSiteOverrideNormalizesKey pins that an override key is matched
+// case-insensitively and whitespace-insensitively, because the lookup lowercases
+// the site name.
+func TestSiteOverrideNormalizesKey(t *testing.T) {
+	ClearSiteOverrides()
+	t.Cleanup(ClearSiteOverrides)
+
+	SetSiteOverride("  GitHub ", "Work GitHub")
+	for _, in := range []string{"GitHub", "github", "GITHUB", "  github  "} {
+		if got := SiteNameFor(in); got != "Work GitHub" {
+			t.Errorf("SiteNameFor(%q) = %q; want the override", in, got)
+		}
+	}
+
+	// Removal uses the same normalized key.
 	SetSiteOverride("GitHub", "")
 	if got := SiteNameFor("GitHub"); got != "GitHub" {
 		t.Errorf("override removal failed: got %q", got)

@@ -24,8 +24,9 @@ func titlePattern(expr string) *regexp.Regexp {
 	return regexp.MustCompile(expr)
 }
 
-// siteCatalog is ordered from most specific to least, because the first match
-// wins and a specific rule must beat a generic one.
+// siteCatalog is ordered from most specific to least, because title patterns are
+// checked in order and a specific rule must beat a generic one. Domain matches
+// are decided separately: the longest matching suffix wins regardless of order.
 var siteCatalog = []siteRule{
 	{Name: "YouTube", Domains: []string{"youtube.com", "youtu.be"}, Titles: []*regexp.Regexp{
 		titlePattern(`(?i)\byoutube\b`),
@@ -71,7 +72,7 @@ var siteCatalog = []siteRule{
 	{Name: "Netflix", Domains: []string{"netflix.com"}, Titles: []*regexp.Regexp{
 		titlePattern(`(?i)\bnetflix\b`),
 	}},
-	{Name: "Prime Video", Domains: []string{"primevideo.com", "amazon.com"}, Titles: []*regexp.Regexp{
+	{Name: "Prime Video", Domains: []string{"primevideo.com"}, Titles: []*regexp.Regexp{
 		titlePattern(`(?i)\bprime\s*video\b`),
 	}},
 	{Name: "Hotstar", Exact: true, Domains: []string{"hotstar.com"}, Titles: []*regexp.Regexp{
@@ -206,10 +207,10 @@ var siteCatalog = []siteRule{
 	{Name: "Netlify", Exact: true, Domains: []string{"netlify.com"}, Titles: []*regexp.Regexp{
 		titlePattern(`(?i)\bnetlify\b`),
 	}},
-	{Name: "AWS", Exact: true, Domains: []string{"aws.amazon.com", "console.aws"}, Titles: []*regexp.Regexp{
+	{Name: "AWS", Exact: true, Domains: []string{"aws.amazon.com", "console.aws.amazon.com"}, Titles: []*regexp.Regexp{
 		titlePattern(`(?i)\baws\b`),
 	}},
-	{Name: "Google Cloud", Domains: []string{"console.cloud.google"}, Titles: []*regexp.Regexp{
+	{Name: "Google Cloud", Domains: []string{"console.cloud.google.com", "cloud.google.com"}, Titles: []*regexp.Regexp{
 		titlePattern(`(?i)\bgoogle cloud\b`),
 	}},
 	{Name: "Azure", Exact: true, Domains: []string{"portal.azure.com"}, Titles: []*regexp.Regexp{
@@ -258,6 +259,7 @@ var siteOverrides = map[string]string{}
 
 // SetSiteOverride records a user label for a site key. An empty name removes it.
 func SetSiteOverride(key, name string) {
+	key = strings.ToLower(strings.TrimSpace(key))
 	if strings.TrimSpace(name) == "" {
 		delete(siteOverrides, key)
 		return
@@ -359,27 +361,33 @@ func SiteNameFor(titleOrDomain string) string {
 	if override, ok := siteOverrides[strings.ToLower(text)]; ok {
 		return override
 	}
-	if override, ok := siteOverrides[text]; ok {
-		return override
-	}
 
 	host := domainOf(text)
 
-	for i := range siteCatalog {
-		rule := &siteCatalog[i]
-
-		if host != "" {
+	// Domain pass: the most specific (longest) matching domain wins, so a
+	// title pattern from an earlier rule cannot steal a later rule's domain.
+	if host != "" {
+		best, bestLen := "", 0
+		for i := range siteCatalog {
+			rule := &siteCatalog[i]
 			for _, d := range rule.Domains {
-				if domainMatchesHost(host, d) {
-					return rule.Name
+				if domainMatchesHost(host, d) && len(d) > bestLen {
+					best, bestLen = rule.Name, len(d)
 				}
 			}
 			for _, h := range rule.Hosts {
-				if host == h {
-					return rule.Name
+				if host == h && len(h) > bestLen {
+					best, bestLen = rule.Name, len(h)
 				}
 			}
 		}
+		if best != "" {
+			return best
+		}
+	}
+
+	for i := range siteCatalog {
+		rule := &siteCatalog[i]
 
 		if rule.Exact {
 			if sameSiteName(text, rule.Name) {
