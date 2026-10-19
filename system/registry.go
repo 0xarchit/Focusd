@@ -261,13 +261,20 @@ func DisablePath() error {
 
 	key, err := registry.OpenKey(registry.CURRENT_USER, envKeyPath, registry.QUERY_VALUE|registry.SET_VALUE)
 	if err != nil {
-		return nil
+		if err == registry.ErrNotExist {
+			// No Environment key means PATH cannot contain focusd.
+			return nil
+		}
+		return fmt.Errorf("failed to open registry key: %w", err)
 	}
 	defer key.Close()
 
 	originalPath, valtype, err := readUserPath(key)
 	if err != nil {
-		return nil
+		// readUserPath already treats a missing PATH value as empty, so any
+		// error here is real and must surface: the uninstaller checks the exit
+		// code before it deletes the binary.
+		return err
 	}
 
 	if !pathContains(originalPath, exeDir) {
