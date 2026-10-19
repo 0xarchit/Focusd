@@ -9,6 +9,8 @@ func activeSessionBetween(start time.Time) *activeSession {
 	return &activeSession{
 		AppName:     "TestApp",
 		ExeName:     "test.exe",
+		ExePath:     `C:\Apps\test.exe`,
+		AppID:       "test|abcd1234",
 		WindowTitle: "Window",
 		StartTime:   start,
 		Date:        dateStr(start),
@@ -34,6 +36,12 @@ func TestSplitSessionWithinOneDay(t *testing.T) {
 	}
 	if !s.StartTime.Equal(start) || !s.EndTime.Equal(end) {
 		t.Errorf("times = %v..%v; want %v..%v", s.StartTime, s.EndTime, start, end)
+	}
+	if s.AppID != "test|abcd1234" {
+		t.Errorf("app id = %q; want test|abcd1234", s.AppID)
+	}
+	if s.ExePath != `C:\Apps\test.exe` {
+		t.Errorf("exe path = %q; want C:\\Apps\\test.exe", s.ExePath)
 	}
 }
 

@@ -16,7 +16,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unicode/utf8"
 )
 
 type activeSession struct {
@@ -540,6 +539,14 @@ func (t *Tracker) poll() {
 
 // applyPoll updates session state from one observation. Caller holds t.mu.
 func (t *Tracker) applyPoll(obs *pollObservation) {
+	// Compute the stored form once: the comparison below must see the same
+	// text that gets persisted, or a private or redacted title looks changed
+	// on every poll and splits the session.
+	stored := storableTitle(obs.title)
+	if stored == "" && IsPrivateWindowTitle(obs.title) {
+		stored = privateWindowLabel(obs.exeName)
+	}
+
 	if t.currentSession != nil {
 		// Identity, not the exe base name, decides whether this is the same
 		// app. Firefox and Firefox Nightly share a base name.
@@ -557,10 +564,10 @@ func (t *Tracker) applyPoll(obs *pollObservation) {
 
 		// Browsers compare on the cleaned title: a raw title ticks with notification
 		// counts and tab-group noise, which would split the session repeatedly.
-		isSameTitle := t.currentSession.WindowTitle == obs.title
+		isSameTitle := t.currentSession.WindowTitle == stored
 		if isBrowser && isSameApp {
 			isSameTitle = cleanWindowTitle(t.currentSession.WindowTitle, obs.exeName) ==
-				cleanWindowTitle(obs.title, obs.exeName)
+				cleanWindowTitle(stored, obs.exeName)
 		}
 
 		if isSameApp && (!isBrowser || isSameTitle) {
@@ -569,20 +576,16 @@ func (t *Tracker) applyPoll(obs *pollObservation) {
 		t.closeCurrentSession()
 	}
 
-	if obs.title == "" {
+	if stored == "" {
 		// No previous session to attach to and nothing to record a title for.
 		return
 	}
 
-	// Private browsing titles are never persisted. The session still counts
-	// toward time, only the text is withheld.
-	stored := storableTitle(obs.title)
-	if stored == "" && IsPrivateWindowTitle(obs.title) {
-		stored = privateWindowLabel(obs.exeName)
-	}
+	identity := system.ResolveIdentity(obs.exeName, obs.exePath)
+	displayName := system.ResolveDisplayName(identity.AppID, identity.ExeName, identity.DisplayName)
 
 	t.currentSession = &activeSession{
-		AppName:     getAppName(obs.exeName),
+		AppName:     displayName,
 		ExeName:     obs.exeName,
 		ExePath:     obs.exePath,
 		AppID:       obs.appID,
@@ -642,6 +645,8 @@ func splitSessionAtMidnight(s *activeSession, now time.Time) []*storage.Session 
 			out = append(out, &storage.Session{
 				AppName:      s.AppName,
 				ExeName:      s.ExeName,
+				ExePath:      s.ExePath,
+				AppID:        s.AppID,
 				WindowTitle:  s.WindowTitle,
 				StartTime:    cursor,
 				EndTime:      midnight,
@@ -656,6 +661,8 @@ func splitSessionAtMidnight(s *activeSession, now time.Time) []*storage.Session 
 		out = append(out, &storage.Session{
 			AppName:      s.AppName,
 			ExeName:      s.ExeName,
+			ExePath:      s.ExePath,
+			AppID:        s.AppID,
 			WindowTitle:  s.WindowTitle,
 			StartTime:    cursor,
 			EndTime:      now,
@@ -747,54 +754,6 @@ func (t *Tracker) flushPendingSessions() {
 func (t *Tracker) flushForRead() {
 	t.flushPendingSessions()
 	t.persistActiveSession()
-}
-
-var nameMap = map[string]string{
-	"code":            "VS Code",
-	"devenv":          "Visual Studio",
-	"idea64":          "IntelliJ IDEA",
-	"pycharm64":       "PyCharm",
-	"webstorm64":      "WebStorm",
-	"goland64":        "GoLand",
-	"rider64":         "Rider",
-	"notepad++":       "Notepad++",
-	"sublime_text":    "Sublime Text",
-	"atom":            "Atom",
-	"explorer":        "File Explorer",
-	"slack":           "Slack",
-	"teams":           "Microsoft Teams",
-	"winword":         "Microsoft Word",
-	"excel":           "Microsoft Excel",
-	"powerpnt":        "PowerPoint",
-	"outlook":         "Outlook",
-	"terminal":        "Windows Terminal",
-	"windowsterminal": "Windows Terminal",
-	"cmd":             "Command Prompt",
-	"powershell":      "PowerShell",
-	"pwsh":            "PowerShell",
-	"wt":              "Windows Terminal",
-}
-
-func getAppName(exeName string) string {
-	name := strings.TrimSuffix(exeName, ".exe")
-	name = strings.TrimSuffix(name, ".EXE")
-
-	if mapped, ok := nameMap[strings.ToLower(name)]; ok {
-		return mapped
-	}
-
-	if name != "" {
-		// Case the first rune, not the first byte: byte slicing splits a
-		// multi-byte character and produces mojibake.
-		r, size := utf8.DecodeRuneInString(name)
-		first := strings.ToUpper(string(r))
-		if size < len(name) {
-			return first + name[size:]
-		}
-		return first
-	}
-
-	return exeName
 }
 
 func (t *Tracker) startIPCOnPort(listener net.Listener) {

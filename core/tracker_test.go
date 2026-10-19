@@ -43,28 +43,6 @@ func setupTestDB(t *testing.T) string {
 	return tempDir
 }
 
-func TestGetAppName(t *testing.T) {
-	tests := []struct {
-		exe      string
-		expected string
-	}{
-		{"code.exe", "VS Code"},
-		{"explorer.exe", "File Explorer"},
-		{"notepad++.exe", "Notepad++"},
-		{"cmd.EXE", "Command Prompt"},
-		{"unknownapp.exe", "Unknownapp"},
-		{"CapitalEXE.EXE", "CapitalEXE"},
-		{"über.exe", "Über"},
-	}
-
-	for _, tc := range tests {
-		got := getAppName(tc.exe)
-		if got != tc.expected {
-			t.Errorf("getAppName(%q) = %q; want %q", tc.exe, got, tc.expected)
-		}
-	}
-}
-
 // TestPollRetainsSessionOnBlankTitle covers the case where a child window with
 // an empty caption takes focus. The session must continue rather than split.
 func TestPollRetainsSessionOnBlankTitle(t *testing.T) {

@@ -141,6 +141,7 @@ func TestNonBrowserSwitchesOnDifferentExe(t *testing.T) {
 // TestDifferentInstallsAlwaysSplit covers issue #17: the same exe name from two
 // installs must not continue one session.
 func TestDifferentInstallsAlwaysSplit(t *testing.T) {
+	setupTestDB(t)
 	tracker := &Tracker{pollInterval: time.Second}
 
 	tracker.currentSession = newSession("firefox|11111111", "firefox.exe", "Page — Mozilla Firefox")
