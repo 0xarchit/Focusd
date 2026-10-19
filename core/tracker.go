@@ -113,7 +113,8 @@ func (t *Tracker) Start() error {
 	var stateMu sync.Mutex
 	var continuousUseStart time.Time
 	var breakSnoozedUntil time.Time
-	prevSessionApp := ""
+	prevSessionApp := "" // limit key whose alert has already fired
+	prevSessionExe := "" // executable active when that alert fired
 	disabledLimitApps := make(map[string]time.Time)
 	appLimitDate := ""
 
@@ -217,8 +218,9 @@ func (t *Tracker) Start() error {
 			}
 			t.mu.Unlock()
 
-			if sessionExe != prevSessionApp {
+			if sessionExe != prevSessionExe {
 				prevSessionApp = ""
+				prevSessionExe = ""
 			}
 
 			if len(limits) > 0 && sessionExe != "" {
@@ -233,14 +235,17 @@ func (t *Tracker) Start() error {
 					disabledLimitApps[limitKey] = time.Time{}
 					if prevSessionApp == limitKey {
 						prevSessionApp = ""
+						prevSessionExe = ""
 					}
 					appSnoozed = false
 				}
 				stateMu.Unlock()
 
 				if limit, ok := limits[limitKey]; ok && hasLimit && !appSnoozed && prevSessionApp != limitKey {
-					// GetAppUsageTodaySeconds already includes the live active session elapsed time
-					todayUsageSeconds := storage.GetAppUsageTodaySeconds(sessionAppID)
+					// GetAppUsageTodaySecondsForConfig already includes the live
+					// active session elapsed time and counts every install the
+					// limit key covers, matching the wildcard used to match it.
+					todayUsageSeconds := storage.GetAppUsageTodaySecondsForConfig(limitKey)
 					todayUsage := todayUsageSeconds / 60
 					if todayUsage >= limit {
 						keyCopy := limitKey
@@ -257,6 +262,7 @@ func (t *Tracker) Start() error {
 								}
 							}) {
 							prevSessionApp = limitKey
+							prevSessionExe = sessionExe
 						}
 					}
 				}
