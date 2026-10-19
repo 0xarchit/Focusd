@@ -228,8 +228,12 @@ func stopDaemonCmd() tea.Cmd {
 func loadDashboard() tea.Cmd {
 	return func() tea.Msg {
 		// A timer started while the daemon was stopped would otherwise never
-		// finish; the periodic refresh completes it from the TUI.
-		core.CheckPomodoroCompletion()
+		// finish; the periodic refresh completes it from the TUI. While the
+		// daemon runs it announces completion itself, so check only when it
+		// is stopped and the toast cannot go out twice.
+		if system.GetProcessCount(system.DaemonProcessName) < 1 {
+			core.CheckPomodoroCompletion()
+		}
 		today := storage.Today()
 		return dashboardLoadedMsg(readTUIData(today, today, 7, true))
 	}

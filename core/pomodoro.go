@@ -10,9 +10,9 @@ var pomodoroNotify = func(title, msg string) bool {
 }
 
 // CheckPomodoroCompletion finishes an expired pomodoro and notifies through
-// the toast channel. The daemon calls it on every tick; the CLI (status read)
-// and the TUI (periodic refresh) also call it, so a timer started while the
-// daemon is stopped still completes instead of waiting forever.
+// the toast channel. The daemon calls it on every tick. The CLI (status read)
+// and the TUI (periodic refresh) call it only while the daemon is stopped, so
+// a timer still completes without waiting forever and the alert goes out once.
 func CheckPomodoroCompletion() {
 	coreapi.CheckPomodoroAndNotify(pomodoroNotify)
 }

@@ -20,15 +20,19 @@ func runStatus() {
 
 	coreapi.SendIPCCmd("flush")
 
-	// Finish an expired timer even when the daemon is stopped.
-	core.CheckPomodoroCompletion()
-
-	ui.PrintHeader()
-
 	isRunning := false
 	if system.GetProcessCount(system.DaemonProcessName) >= 1 {
 		isRunning = true
 	}
+
+	// Finish an expired timer only while the daemon is stopped: a running
+	// daemon announces completion itself, so checking here too could toast
+	// the same timer twice.
+	if !isRunning {
+		core.CheckPomodoroCompletion()
+	}
+
+	ui.PrintHeader()
 
 	if isRunning {
 		ui.PrintOK("Daemon: RUNNING")
