@@ -64,6 +64,20 @@ func EnsureIPCToken() (string, error) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+
+	// A crash between the exclusive create and the write leaves an empty file
+	// behind. It must be replaced, or every future call fails: the read never
+	// succeeds and the exclusive create can never win.
+	if data, readErr := os.ReadFile(path); readErr == nil && strings.TrimSpace(string(data)) == "" {
+		if rmErr := os.Remove(path); rmErr == nil || os.IsNotExist(rmErr) {
+			if createErr := createIPCToken(path, token); createErr == nil {
+				return token, nil
+			}
+			if existing, readErr := readIPCToken(path); readErr == nil {
+				return existing, nil
+			}
+		}
+	}
 	return "", fmt.Errorf("failed to read the existing IPC token: %w", err)
 }
 

@@ -169,6 +169,38 @@ func TestEnsureIPCTokenDistinctPerInstall(t *testing.T) {
 	}
 }
 
+// TestEnsureIPCTokenRecoversFromEmptyFile pins the crash-recovery path: an
+// empty token file (create landed, write never did) used to make every
+// EnsureIPCToken call fail forever.
+func TestEnsureIPCTokenRecoversFromEmptyFile(t *testing.T) {
+	dir := setupTempAppData(t)
+
+	path := filepath.Join(dir, "focusd", ipcTokenFile)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	if err := os.WriteFile(path, nil, 0600); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	token, err := EnsureIPCToken()
+	if err != nil {
+		t.Fatalf("EnsureIPCToken failed on an empty token file: %v", err)
+	}
+	if token == "" {
+		t.Fatal("expected a regenerated token")
+	}
+
+	// The recovered token stays the stable one.
+	again, err := EnsureIPCToken()
+	if err != nil {
+		t.Fatalf("second EnsureIPCToken failed: %v", err)
+	}
+	if again != token {
+		t.Errorf("token changed after recovery: %q vs %q", again, token)
+	}
+}
+
 // TestCreateIPCTokenNeverReplacesExisting pins the exclusive create that
 // closes the daemon start-up race - the loser must adopt the winner's file
 // instead of overwriting the token the already-running daemon expects.
