@@ -15,7 +15,6 @@ func (m *Model) handleFocusKey(key string) (Model, tea.Cmd) {
 	switch key {
 	case "h", "left":
 		if m.focusButton == -1 {
-			// adjust break interval
 			enabled := system.GetBreakReminderEnabled()
 			mins := max(5, system.GetBreakReminderMinutes()-5)
 			if err := system.SetBreakReminder(enabled, mins); err != nil {
@@ -123,10 +122,31 @@ func (m *Model) renderFocus(width, height int) string {
 	secs := int(remaining.Seconds()) % 60
 	timerDigits := renderBlockTimer(mins, secs)
 
+	filled := 0
+	barWidth := max(10, inner-8)
+	if total > 0 {
+		filled = elapsed * barWidth / (total * 60)
+		if filled == 0 && elapsed > 0 {
+			filled = 1
+		}
+		if filled > barWidth {
+			filled = barWidth
+		}
+	}
+	barStr := strings.Repeat("▓", filled) + strings.Repeat("░", barWidth-filled)
+	progressBar := cyanStyle.Render(barStr)
+	durationLine := fmt.Sprintf("Focus Duration: [ %02d ] min   (↑↓ to adjust)", m.focusDuration)
+
+	// The buttons sit one frame row below the body origin (the panel border
+	// row), so the row is measured from the lines rendered above them rather
+	// than guessed from a hardcoded offset.
+	bodyBeforeButtons := "\n" + lipgloss.JoinVertical(lipgloss.Left,
+		timerDigits, "", progressBar, "", durationLine, "")
+	btnRowY := m.contentTop + 1 + lipgloss.Height(bodyBeforeButtons)
+	btnStartX := 1 // the panel's left border owns column 0
+
 	buttons := []string{"▶ START", "■ STOP", "⟳ RESET"}
 	var renderedBtns []string
-	btnRowY := 5 + 3 + 5 + 2 // Panel title and margins offset
-	btnStartX := 4
 	for i, b := range buttons {
 		label := "[ " + b + " ]"
 		btnW := lipgloss.Width(label)
@@ -143,19 +163,7 @@ func (m *Model) renderFocus(width, height int) string {
 		}
 	}
 	buttonsLine := strings.Join(renderedBtns, "  ")
-	filled := 0
-	barWidth := max(10, inner-8)
-	if total > 0 {
-		filled = elapsed * barWidth / (total * 60)
-		if filled == 0 && elapsed > 0 {
-			filled = 1
-		}
-		if filled > barWidth {
-			filled = barWidth
-		}
-	}
-	barStr := strings.Repeat("▓", filled) + strings.Repeat("░", barWidth-filled)
-	progressBar := cyanStyle.Render(barStr)
+
 	breakEnabled := system.GetBreakReminderEnabled()
 	breakMins := system.GetBreakReminderMinutes()
 
@@ -178,16 +186,19 @@ func (m *Model) renderFocus(width, height int) string {
 		"",
 		progressBar,
 		"",
-		fmt.Sprintf("Focus Duration: [ %02d ] min   (↑↓ to adjust)", m.focusDuration),
+		durationLine,
 		"",
 		buttonsLine,
 		"",
 		breakRow,
 	)
+	panel := panelWithHover("FOCUS TIMER", status, inner, "\n"+timerBody+"\n", true, m.hoveredPanel == 0)
+	// The panel region spans exactly what the panel rendered; the border row
+	// is the body origin, so the two share one coordinate frame.
 	m.clickableRegions = append(m.clickableRegions, clickableRegion{
-		X1: 1, Y1: 5, X2: width - 1, Y2: height - 1,
+		X1: 0, Y1: m.contentTop, X2: lipgloss.Width(panel), Y2: m.clampBodyBottom(m.contentTop+lipgloss.Height(panel), height),
 		ID: "panel-0", Kind: "panel",
 	})
 
-	return panelWithHover("FOCUS TIMER", status, inner, "\n"+timerBody+"\n", true, m.hoveredPanel == 0)
+	return panel
 }

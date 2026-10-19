@@ -89,7 +89,6 @@ func main() {
 func getCommitData() []string {
 	var commitData []string
 
-	// 1. Get tags
 	cmdTags := exec.Command("git", "tag", "--sort=-creatordate")
 	outTags, err := cmdTags.Output()
 	if err != nil {

@@ -3,6 +3,7 @@ package system
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -28,11 +29,77 @@ type processentry32w struct {
 }
 
 var (
-	procCreateToolhelp32 = kernel32.NewProc("CreateToolhelp32Snapshot")
-	procProcess32FirstW  = kernel32.NewProc("Process32FirstW")
-	procProcess32NextW   = kernel32.NewProc("Process32NextW")
-	procTerminateProcess = kernel32.NewProc("TerminateProcess")
+	procCreateToolhelp32    = kernel32.NewProc("CreateToolhelp32Snapshot")
+	procProcess32FirstW     = kernel32.NewProc("Process32FirstW")
+	procProcess32NextW      = kernel32.NewProc("Process32NextW")
+	procTerminateProcess    = kernel32.NewProc("TerminateProcess")
+	procQueryFullProcessImg = kernel32.NewProc("QueryFullProcessImageNameW")
 )
+
+const (
+	// Fewer rights than PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, so it resolves
+	// for more processes.
+	processQueryLimitedInformation = 0x1000
+)
+
+// getProcessPath returns the full image path for a pid, or an empty string for
+// elevated and protected processes that cannot be opened.
+func getProcessPath(pid uint32) (string, error) {
+	handle, _, err := procOpenProcess.Call(
+		processQueryLimitedInformation,
+		0,
+		uintptr(pid),
+	)
+	if handle == 0 {
+		return "", err
+	}
+	defer procCloseHandle.Call(handle)
+
+	return queryProcessPath(handle)
+}
+
+// queryProcessPath resolves the image path of an already-open process handle.
+func queryProcessPath(handle uintptr) (string, error) {
+	// Windows caps this at 32767 characters including the terminator.
+	buf := make([]uint16, 32768)
+	size := uint32(len(buf))
+	ret, _, err := procQueryFullProcessImg.Call(
+		handle,
+		0,
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(unsafe.Pointer(&size)),
+	)
+	if ret == 0 {
+		return "", err
+	}
+	return syscall.UTF16ToString(buf[:size]), nil
+}
+
+// openProcessForKill opens one handle with both query and terminate rights, so
+// a path can be verified and the process terminated through the same handle.
+// Reopening by pid between the two steps races pid reuse and can terminate an
+// unrelated process.
+func openProcessForKill(pid uint32) (uintptr, error) {
+	handle, _, err := procOpenProcess.Call(
+		uintptr(processQueryLimitedInformation|processTerminate),
+		0,
+		uintptr(pid),
+	)
+	if handle == 0 {
+		return 0, err
+	}
+	return handle, nil
+}
+
+// sameDir reports whether an executable path sits in dir. Kept separate from
+// the termination loop so the matching rule can be tested without spawning or
+// killing processes.
+func sameDir(exePath, dir string) bool {
+	if exePath == "" {
+		return false
+	}
+	return normalizeDir(filepath.Dir(exePath)) == normalizeDir(dir)
+}
 
 func getProcessSnapshot() (syscall.Handle, error) {
 	ret, _, err := procCreateToolhelp32.Call(uintptr(th32cs_snapprocess), 0)
@@ -91,6 +158,12 @@ func terminateProcessByPID(pid uint32) error {
 	}
 	defer procCloseHandle.Call(handle)
 
+	return terminateHandle(handle, pid)
+}
+
+// terminateHandle terminates an already-open process handle. The caller owns
+// the handle.
+func terminateHandle(handle uintptr, pid uint32) error {
 	ret, _, _ := procTerminateProcess.Call(handle, 1)
 	if ret == 0 {
 		return fmt.Errorf("failed to terminate process %d", pid)
@@ -123,4 +196,80 @@ func KillOtherInstances(name string) error {
 		return true
 	})
 	return lastErr
+}
+
+// KillInstancesInDir terminates instances of name running from dir. Matching on
+// the name alone would also terminate an unrelated copy elsewhere on disk.
+// Processes whose path cannot be read are left alone.
+func KillInstancesInDir(name, dir string) error {
+	target := normalizeDir(dir)
+	if target == "" {
+		return fmt.Errorf("target directory not available")
+	}
+
+	myPID := uint32(os.Getpid())
+	var lastErr error
+	iterateProcesses(func(pe *processentry32w) bool {
+		if pe.ProcessID == myPID || !strings.EqualFold(processName(pe), name) {
+			return true
+		}
+
+		// Verify and terminate through a single handle: reopening the pid
+		// between the two calls races pid reuse, and the kill could then land
+		// on an unrelated process.
+		handle, oerr := openProcessForKill(pe.ProcessID)
+		if oerr != nil {
+			return true
+		}
+		defer procCloseHandle.Call(handle)
+
+		exePath, qerr := queryProcessPath(handle)
+		if qerr != nil || exePath == "" {
+			// Cannot confirm the location, so leave it alone rather than
+			// terminate a process that may not be ours.
+			return true
+		}
+		if !sameDir(exePath, target) {
+			return true
+		}
+
+		if err := terminateHandle(handle, pe.ProcessID); err != nil {
+			lastErr = err
+		}
+		return true
+	})
+	return lastErr
+}
+
+// normalizeDir puts a directory into a comparable form: separators unified,
+// trailing separators dropped, case lowered.
+func normalizeDir(dir string) string {
+	trimmed := strings.TrimSpace(dir)
+	trimmed = strings.ReplaceAll(trimmed, "/", `\`)
+	trimmed = strings.TrimRight(trimmed, `\`)
+	return strings.ToLower(trimmed)
+}
+
+// CountInstancesInDir reports how many processes with this name run from dir.
+func CountInstancesInDir(name, dir string) int {
+	target := normalizeDir(dir)
+	if target == "" {
+		return 0
+	}
+
+	count := 0
+	iterateProcesses(func(pe *processentry32w) bool {
+		if !strings.EqualFold(processName(pe), name) {
+			return true
+		}
+		exePath, err := getProcessPath(pe.ProcessID)
+		if err != nil || exePath == "" {
+			return true
+		}
+		if sameDir(exePath, target) {
+			count++
+		}
+		return true
+	})
+	return count
 }

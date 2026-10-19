@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"focusd/core"
 	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
@@ -19,12 +20,21 @@ func runStatus() {
 
 	coreapi.SendIPCCmd("flush")
 
-	ui.PrintHeader()
-
+	// Count only this user's daemon: a system-wide process count could see
+	// another user's focusd_daemon.exe and mask a stopped daemon.
 	isRunning := false
-	if system.GetProcessCount(system.DaemonProcessName) >= 1 {
+	if system.CountInstancesInDir(system.DaemonProcessName, system.GetInstallDir()) >= 1 {
 		isRunning = true
 	}
+
+	// Finish an expired timer only while this user's daemon is stopped: a
+	// running daemon announces completion itself, so checking here too
+	// could toast the same timer twice.
+	if !isRunning {
+		core.CheckPomodoroCompletion()
+	}
+
+	ui.PrintHeader()
 
 	if isRunning {
 		ui.PrintOK("Daemon: RUNNING")
@@ -45,7 +55,7 @@ func runStatus() {
 
 	summary, err := coreapi.GetDailySummary(storage.Today())
 	if err != nil {
-		ui.PrintWarn("No data for today yet")
+		ui.PrintWarn(fmt.Sprintf("Could not read today's stats: %v", err))
 		return
 	}
 

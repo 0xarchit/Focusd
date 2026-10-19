@@ -41,8 +41,8 @@ On a typical Windows install that resolves to
 
 | File | Contents |
 |---|---|
-| `focusd.db` | A SQLite database holding your usage history — the app you used, how long you used it, and the window title it had |
-| `config.json` | Your settings: daily limits, whitelisted apps, retention period, display and site name overrides |
+| `focusd.db` | A SQLite database holding your usage history — the app you used, how long you used it, and the window title it had — plus the retention period |
+| `config.json` | Your settings: daily limits, whitelisted apps, display and site name overrides, and the title-redaction switch |
 | `ipc.key` | A random key used to authenticate commands between the Focusd command line and the Focusd daemon, both running on your machine |
 
 ### About window titles
@@ -55,8 +55,9 @@ Focusd takes two specific steps to reduce this:
 - **Private and incognito windows are detected and their titles are discarded**
   before anything is written to the database. The time spent is still counted;
   only the title text is dropped.
-- **Title redaction can be switched on**, in which case no window text is stored
-  at all — only which app was used and for how long.
+- **Title redaction can be switched on** (set `"redact_titles": true` in
+  `config.json`; off by default), in which case no window text is stored at
+  all — only which app was used and for how long.
 
 Both are documented in the source. Neither replaces your own judgement: if a
 title is sensitive to you, use redaction.

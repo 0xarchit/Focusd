@@ -3,15 +3,23 @@ package cli
 import (
 	"fmt"
 	"focusd/coreapi"
+	"focusd/storage"
 	"focusd/ui"
+	"os"
 	"strconv"
 )
 
 func runFocus(args []string) {
+	if err := storage.Init(); err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
+		os.Exit(1)
+	}
+	defer storage.Close()
+
 	minutes := 25
 	if len(args) > 2 {
 		if m, err := strconv.Atoi(args[2]); err == nil && m > 0 {
-			minutes = m
+			minutes = min(m, coreapi.MaxPomodoroMinutes)
 		}
 	}
 
@@ -22,10 +30,16 @@ func runFocus(args []string) {
 
 	ui.PrintHeader()
 	ui.PrintOK(fmt.Sprintf("Focus timer started for %d minutes.", minutes))
-	fmt.Println("You will be notified when it completes.")
+	fmt.Println("You will be notified when it completes; run 'focusd status' if the daemon is stopped.")
 }
 
 func runStopTimer() {
+	if err := storage.Init(); err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
+		os.Exit(1)
+	}
+	defer storage.Close()
+
 	if err := coreapi.StopPomodoro(); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to stop timer: %v", err))
 		return

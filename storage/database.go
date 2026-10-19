@@ -6,9 +6,17 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
+)
+
+const (
+	// busyRetryAttempts and busyRetryDelay bound the retry budget for a read
+	// that races the daemon's writer.
+	busyRetryAttempts = 4
+	busyRetryDelay    = 20 * time.Millisecond
 )
 
 var db *sql.DB
@@ -86,11 +94,20 @@ func initDB() error {
 		return fmt.Errorf("failed to ping database: %w", pingErr)
 	}
 
+	// One connection serialises access within a process and avoids self
+	// contention on the WAL writer. Cross-process contention is handled by
+	// busy_timeout plus withBusyRetry.
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := createSchema(); err != nil {
+		db.Close()
+		db = nil
+		return err
+	}
+
+	if err := Migrate(); err != nil {
 		db.Close()
 		db = nil
 		return err
@@ -110,6 +127,8 @@ func createSchema() error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		app_name TEXT NOT NULL,
 		exe_name TEXT NOT NULL,
+		exe_path TEXT,
+		app_id TEXT,
 		window_title TEXT,
 		start_time INTEGER NOT NULL,
 		end_time INTEGER,
@@ -122,15 +141,19 @@ func createSchema() error {
 		date TEXT NOT NULL,
 		app_name TEXT NOT NULL,
 		exe_name TEXT NOT NULL,
+		exe_path TEXT,
+		app_id TEXT,
 		total_duration_secs INTEGER DEFAULT 0,
 		open_count INTEGER DEFAULT 0,
-		UNIQUE(date, exe_name)
+		UNIQUE(date, app_id)
 	);
 
 	CREATE TABLE IF NOT EXISTS active_session (
 		id INTEGER PRIMARY KEY CHECK (id = 1),
 		app_name TEXT NOT NULL,
 		exe_name TEXT NOT NULL,
+		exe_path TEXT,
+		app_id TEXT,
 		window_title TEXT,
 		start_time INTEGER NOT NULL,
 		last_seen INTEGER NOT NULL,
@@ -140,20 +163,51 @@ func createSchema() error {
 	CREATE TABLE IF NOT EXISTS browsing_daily (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		date TEXT NOT NULL,
-		domain_or_title TEXT NOT NULL,
+		app_id TEXT,
+		site_name TEXT NOT NULL,
 		total_duration_secs INTEGER DEFAULT 0,
 		open_count INTEGER DEFAULT 0,
-		UNIQUE(date, domain_or_title)
+		UNIQUE(date, app_id, site_name)
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date);
 	CREATE INDEX IF NOT EXISTS idx_sessions_start ON sessions(start_time);
-	CREATE INDEX IF NOT EXISTS idx_apps_daily_date ON apps_daily(date);
 
 	`
 
 	_, err := db.Exec(schema)
 	return err
+}
+
+// withBusyRetry retries an operation that hit SQLITE_BUSY. The daemon and the
+// CLI hold separate handles to the same file, so a read can lose a race with the
+// daemon's writer despite busy_timeout. The budget is kept short because this
+// runs on the UI's read path.
+func withBusyRetry(operation func() error) error {
+	var lastErr error
+	for attempt := 0; attempt < busyRetryAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * busyRetryDelay)
+		}
+		lastErr = operation()
+		if lastErr == nil {
+			return nil
+		}
+		if !isBusyError(lastErr) {
+			return lastErr
+		}
+	}
+	return lastErr
+}
+
+func isBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "database table is locked") ||
+		strings.Contains(msg, "sqlite_busy")
 }
 
 func Close() error {

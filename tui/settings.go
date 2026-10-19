@@ -3,10 +3,9 @@ package tui
 import (
 	"encoding/csv"
 	"encoding/json"
-	"focusd/coreapi"
+	"fmt"
 	"focusd/storage"
 	"focusd/system"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
@@ -122,19 +122,14 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 		switch m.settingsSelected {
 		case 0:
 			if m.daemonActive {
-				if coreapi.SendIPCCmd("stop") {
-					m.addToast("Daemon stopped gracefully", toastSuccess)
-				} else {
-					m.addToast("Failed to stop daemon gracefully", toastError)
-				}
+				return *m, stopDaemonCmd()
+			}
+			pid, err := system.StartDaemon()
+			if err != nil {
+				m.addToast("Failed to start daemon: "+err.Error(), toastError)
 			} else {
-				pid, err := system.StartDaemon()
-				if err != nil {
-					m.addToast("Failed to start daemon: "+err.Error(), toastError)
-				} else {
-					m.addToast(fmt.Sprintf("Daemon started (PID %d)", pid), toastSuccess)
-					m.daemonActive = true
-				}
+				m.addToast(fmt.Sprintf("Daemon started (PID %d)", pid), toastSuccess)
+				m.daemonActive = true
 			}
 		case 1:
 			enabled, _, err := system.GetAutoStartEnabled()
@@ -322,12 +317,13 @@ func (m *Model) renderSettings(width, height int) string {
 		bodyLines = window
 	}
 
+	panel := panelWithHover("SETTINGS", "", width-2, "\n"+strings.Join(bodyLines, "\n")+"\n", true, m.hoveredPanel == 0)
 	m.clickableRegions = append(m.clickableRegions, clickableRegion{
-		X1: 1, Y1: 5, X2: width - 1, Y2: height - 1,
+		X1: 0, Y1: m.contentTop, X2: lipgloss.Width(panel), Y2: m.clampBodyBottom(m.contentTop+lipgloss.Height(panel), height),
 		ID: "panel-0", Kind: "panel",
 	})
 
-	return panelWithHover("SETTINGS", "", width-2, "\n"+strings.Join(bodyLines, "\n")+"\n", true, m.hoveredPanel == 0)
+	return panel
 }
 
 func (m *Model) settingRow(index, selected int, label, value string, width int) string {
@@ -434,5 +430,3 @@ func renderExportButtons(active bool, selectedButton int) string {
 	}
 	return s[0] + "   " + s[1]
 }
-
-

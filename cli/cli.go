@@ -92,9 +92,6 @@ func Run(args []string) {
 	}
 }
 
-// Switch-based command dispatching is preferred here over map-based lookup
-// to keep argument index parsing simple, static, and extremely transparent
-// without needing extra struct wrapping or interface reflection.
 func handleRetention(args []string) {
 	if len(args) < 3 {
 		runRetentionStatus()

@@ -1,8 +1,11 @@
 package storage
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -47,7 +50,7 @@ func CompareAndSwapConfig(key, oldValue, newValue string) (bool, error) {
 	if db == nil {
 		return false, fmt.Errorf("database not initialized")
 	}
-	
+
 	// If the row doesn't exist yet, try to insert it if oldValue is empty
 	if oldValue == "" {
 		res, err := db.Exec(`
@@ -81,16 +84,34 @@ func CompareAndSwapConfig(key, oldValue, newValue string) (bool, error) {
 	return rows > 0, nil
 }
 
+// GetRetentionDays returns the configured retention window for display. A
+// failed read falls back to the default; enforcement must use
+// resolveRetentionDays instead, so a transient failure never prunes history
+// down to the default window.
 func GetRetentionDays() int {
-	value, err := GetConfig(configKeyRetentionDays)
+	days, err := resolveRetentionDays()
 	if err != nil {
 		return DefaultRetentionDays
 	}
-	days, err := strconv.Atoi(value)
-	if err != nil || days < MinRetentionDays || days > MaxRetentionDays {
-		return DefaultRetentionDays
-	}
 	return days
+}
+
+// resolveRetentionDays reads the retention window and distinguishes "not set"
+// from "read failed". A missing row (or an unreadable value) means the
+// default; a failed read returns an error and callers must skip enforcement.
+func resolveRetentionDays() (int, error) {
+	value, err := GetConfig(configKeyRetentionDays)
+	if errors.Is(err, sql.ErrNoRows) {
+		return DefaultRetentionDays, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	days, perr := strconv.Atoi(strings.TrimSpace(value))
+	if perr != nil || days < MinRetentionDays || days > MaxRetentionDays {
+		return DefaultRetentionDays, nil
+	}
+	return days, nil
 }
 
 func SetRetentionDays(days int) error {

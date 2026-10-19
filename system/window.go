@@ -1,6 +1,7 @@
 package system
 
 import (
+	"path/filepath"
 	"syscall"
 	"unsafe"
 )
@@ -26,6 +27,8 @@ const (
 type WindowInfo struct {
 	Title   string
 	ExeName string
+	ExePath string
+	AppID   string
 }
 
 func GetForegroundWindowInfo() (*WindowInfo, error) {
@@ -34,22 +37,36 @@ func GetForegroundWindowInfo() (*WindowInfo, error) {
 		return nil, nil
 	}
 
-	title := getWindowText(hwnd)
-	if title == "" {
-		return nil, nil
-	}
-
 	var pid uint32
 	procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&pid)))
 
+	// Modal dialogs, toolbars, and splash screens surface with an empty caption, so
+	// resolve the process before treating a blank title as a switch away.
+	title := getWindowText(hwnd)
+
 	exeName := ""
+	exePath := ""
 	if pid != 0 {
-		exeName = getProcessName(pid)
+		// The full image path is what distinguishes one install from another.
+		exePath, _ = getProcessPath(pid)
+		if exePath != "" {
+			exeName = filepath.Base(exePath)
+		} else {
+			exeName = getProcessName(pid)
+		}
 	}
+
+	if title == "" && exeName == "" {
+		return nil, nil
+	}
+
+	id := ResolveIdentity(exeName, exePath)
 
 	return &WindowInfo{
 		Title:   title,
 		ExeName: exeName,
+		ExePath: exePath,
+		AppID:   id.AppID,
 	}, nil
 }
 
@@ -65,11 +82,17 @@ func getWindowText(hwnd uintptr) string {
 }
 
 func getProcessName(pid uint32) string {
-	handle, _, _ := procOpenProcess.Call(
-		processQueryInformation|processVMRead,
-		0,
-		uintptr(pid),
-	)
+	// Limited query rights are granted where full query plus VM read are not
+	// (elevated and packaged processes), so try the limited handle first and
+	// widen only as a fallback.
+	handle, _, _ := procOpenProcess.Call(processQueryLimitedInformation, 0, uintptr(pid))
+	if handle == 0 {
+		handle, _, _ = procOpenProcess.Call(
+			processQueryInformation|processVMRead,
+			0,
+			uintptr(pid),
+		)
+	}
 	if handle == 0 {
 		return ""
 	}
@@ -83,6 +106,11 @@ func getProcessName(pid uint32) string {
 		260,
 	)
 	if ret == 0 {
+		// Module enumeration needs VM read; the image path still resolves
+		// with only limited query rights.
+		if path, err := getProcessPath(pid); err == nil && path != "" {
+			return filepath.Base(path)
+		}
 		return ""
 	}
 	return syscall.UTF16ToString(buf)

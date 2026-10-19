@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"focusd/core"
 	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
@@ -28,6 +29,7 @@ var tabNames = []string{"DASHBOARD", "STATS", "FOCUS", "LIMITS", "SETTINGS"}
 
 type appUsage struct {
 	Name     string
+	ExeName  string
 	Duration int
 	Opens    int
 }
@@ -63,6 +65,7 @@ type secondTickMsg time.Time
 type splashDoneMsg struct{}
 type flushDoneMsg struct{}
 type statusMsg bool
+type daemonStopMsg bool
 type toastKind int
 
 const (
@@ -123,19 +126,19 @@ type Model struct {
 	statsUsageOffset     int
 	statsBrowserOffset   int
 
-	dashSelected            int
-	statsSelected           int
-	browserSelected         int
-	limitsSelected          int
-	settingsSelected        int
-	settingsBrowserSelected int
-	settingsExportSelected  int
-	focusButton             int
-	focusDuration           int
-	settingsAddingBrowser    bool
-	settingsBrowserInput     string
-	settingsAddingWhitelist  bool
-	settingsWhitelistInput   string
+	dashSelected              int
+	statsSelected             int
+	browserSelected           int
+	limitsSelected            int
+	settingsSelected          int
+	settingsBrowserSelected   int
+	settingsExportSelected    int
+	focusButton               int
+	focusDuration             int
+	settingsAddingBrowser     bool
+	settingsBrowserInput      string
+	settingsAddingWhitelist   bool
+	settingsWhitelistInput    string
 	settingsWhitelistSelected int
 
 	limitForm limitForm
@@ -145,6 +148,14 @@ type Model struct {
 	hoveredElement   string
 	hoveredPanel     int
 	clickableRegions []clickableRegion
+
+	// contentTop is the frame row where the active tab's body starts. View
+	// sets it from the header and tab bar before rendering the body; the
+	// clickable regions share bubbletea's zero-based screen coordinates, so
+	// they must be anchored to the same origin the body is drawn at.
+	contentTop int
+
+	lastRefreshAt time.Time
 
 	sortedAppsCache    []appUsage
 	sortedAppsCacheKey string
@@ -193,14 +204,39 @@ func flushCmd() tea.Cmd {
 	}
 }
 
+// dueForRefreshForTest exposes the refresh gate for tests. It must take a
+// pointer receiver, otherwise the updated timestamp is discarded on the copy.
+func (m *Model) dueForRefreshForTest(now time.Time) bool {
+	return m.dueForRefresh(now)
+}
+
 func checkDaemon() tea.Cmd {
 	return func() tea.Msg {
-		return statusMsg(system.GetProcessCount(system.DaemonProcessName) >= 1)
+		// Scoped to this user's install so another user's daemon on a shared
+		// machine is not reported as ours.
+		return statusMsg(system.CountInstancesInDir(system.DaemonProcessName, system.GetInstallDir()) >= 1)
+	}
+}
+
+// stopDaemonCmd stops the daemon without blocking the render loop: the IPC
+// round trip has multi-second dial and read deadlines, and running it inline
+// froze the TUI for up to that long.
+func stopDaemonCmd() tea.Cmd {
+	return func() tea.Msg {
+		return daemonStopMsg(coreapi.SendIPCCmd("stop"))
 	}
 }
 
 func loadDashboard() tea.Cmd {
 	return func() tea.Msg {
+		// A timer started while the daemon was stopped would otherwise never
+		// finish; the periodic refresh completes it from the TUI. While the
+		// daemon runs it announces completion itself, so check only when it
+		// is stopped and the toast cannot go out twice. Scoped to this user's
+		// install so another user's daemon cannot mask a stopped one.
+		if system.CountInstancesInDir(system.DaemonProcessName, system.GetInstallDir()) < 1 {
+			core.CheckPomodoroCompletion()
+		}
 		today := storage.Today()
 		return dashboardLoadedMsg(readTUIData(today, today, 7, true))
 	}
@@ -251,11 +287,18 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 		log.Printf("WARN: failed to load app stats: %v", err)
 	}
 	for _, s := range apps {
-		name := s.ExeName
+		// Prefer the resolved display label; the exe name is only the
+		// fallback for rows that predate identity.
+		name := s.AppName
 		if name == "" {
-			name = s.AppName
+			name = s.ExeName
 		}
-		data.Apps = append(data.Apps, appUsage{Name: name, Duration: s.TotalDurationSecs, Opens: s.OpenCount})
+		data.Apps = append(data.Apps, appUsage{
+			Name:     name,
+			ExeName:  s.ExeName,
+			Duration: s.TotalDurationSecs,
+			Opens:    s.OpenCount,
+		})
 		data.Total += s.TotalDurationSecs
 	}
 	data.ActiveApps = len(data.Apps)
@@ -265,7 +308,12 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 		log.Printf("WARN: failed to load browser stats: %v", err)
 	}
 	for _, s := range browsers {
-		data.Browsers = append(data.Browsers, appUsage{Name: s.AppName, Duration: s.TotalDurationSecs, Opens: s.OpenCount})
+		data.Browsers = append(data.Browsers, appUsage{
+			Name:     s.AppName,
+			ExeName:  s.ExeName,
+			Duration: s.TotalDurationSecs,
+			Opens:    s.OpenCount,
+		})
 	}
 
 	limits := system.GetAppTimeLimits()
@@ -273,7 +321,7 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 		usageMap, err := storage.GetAppUsageTodayMinutesMap()
 		if err == nil {
 			for app, mins := range limits {
-				if usageMap[app] >= mins {
+				if limitUsageTodayMinutes(usageMap, app) >= mins {
 					data.LimitsHit++
 				}
 			}
@@ -281,14 +329,13 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	}
 
 	if includeHourly {
-		sessions, err := storage.GetSessionsPaginated(500, 0, today, today)
-		if err == nil {
-			for _, s := range sessions {
-				h := s.StartTime.Hour()
-				if h < 24 {
-					data.Hourly[h] += s.DurationSecs
-				}
+		// Computed in SQL so a busy day is counted in full.
+		if buckets, err := storage.GetHourlyUsageToday(today); err == nil {
+			for hour, secs := range buckets {
+				data.Hourly[hour] = secs
 			}
+		} else {
+			log.Printf("WARN: failed to load hourly usage: %v", err)
 		}
 	}
 
@@ -365,7 +412,10 @@ func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error
 	}
 	combined := map[string]storage.AppDailyStat{}
 	for _, s := range stats {
-		key := s.ExeName
+		key := s.AppID
+		if key == "" {
+			key = s.ExeName
+		}
 		if key == "" {
 			key = s.AppName
 		}
@@ -373,6 +423,7 @@ func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error
 		if item.AppName == "" {
 			item.AppName = s.AppName
 			item.ExeName = s.ExeName
+			item.AppID = s.AppID
 		}
 		item.TotalDurationSecs += s.TotalDurationSecs
 		item.OpenCount += s.OpenCount
@@ -383,7 +434,15 @@ func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error
 		out = append(out, item)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].TotalDurationSecs > out[j].TotalDurationSecs
+		if out[i].TotalDurationSecs != out[j].TotalDurationSecs {
+			return out[i].TotalDurationSecs > out[j].TotalDurationSecs
+		}
+		// Equal totals must not fall back to the randomized map order, or the
+		// list reshuffles between refreshes.
+		if out[i].AppName != out[j].AppName {
+			return out[i].AppName < out[j].AppName
+		}
+		return out[i].AppID < out[j].AppID
 	})
 	return out, nil
 }
@@ -395,10 +454,10 @@ func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, e
 	}
 	combined := map[string]storage.AppDailyStat{}
 	for _, s := range stats {
-		key := s.AppName
+		key := coreapi.CollapseURLTitle(s.AppName)
 		item := combined[key]
 		if item.AppName == "" {
-			item.AppName = s.AppName
+			item.AppName = key
 			item.ExeName = s.ExeName
 		}
 		item.TotalDurationSecs += s.TotalDurationSecs
@@ -410,9 +469,41 @@ func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, e
 		out = append(out, item)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].TotalDurationSecs > out[j].TotalDurationSecs
+		if out[i].TotalDurationSecs != out[j].TotalDurationSecs {
+			return out[i].TotalDurationSecs > out[j].TotalDurationSecs
+		}
+		// Equal totals must not fall back to the randomized map order, or the
+		// list reshuffles between refreshes. AppName is the map key, so it
+		// already breaks ties uniquely.
+		if out[i].AppName != out[j].AppName {
+			return out[i].AppName < out[j].AppName
+		}
+		return false
 	})
 	return out, nil
+}
+
+// refreshInterval is the shortest gap between background reloads.
+const refreshInterval = 15 * time.Second
+
+// dueForRefresh reports whether enough wall-clock time has passed since the
+// last reload.
+func (m *Model) dueForRefresh(now time.Time) bool {
+	if m.lastRefreshAt.IsZero() {
+		m.lastRefreshAt = now
+		return false
+	}
+	if now.Sub(m.lastRefreshAt) < refreshInterval {
+		return false
+	}
+	m.lastRefreshAt = now
+	return true
+}
+
+// noteRefresh records that a manual reload just happened, so the automatic one
+// does not immediately follow it.
+func (m *Model) noteRefresh() {
+	m.lastRefreshAt = time.Now()
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -424,13 +515,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case splashDoneMsg:
 		m.splash = false
 	case flushDoneMsg:
+		m.noteRefresh()
 		cmds = append(cmds, m.loadStatsCmd(), loadDashboard())
 	case secondTickMsg:
 		m.clock = time.Time(msg)
 		m.splashFrame++
 		m.pruneToasts()
 		cmds = append(cmds, secondTick(), checkDaemon())
-		if m.clock.Second()%5 == 0 {
+
+		// Reload on elapsed time rather than Second()%N, which fires on every multiple
+		// of N within a minute.
+		if m.dueForRefresh(time.Time(msg)) {
 			isEditing := m.limitForm.Visible || m.settingsAddingBrowser || m.settingsAddingWhitelist
 			if !isEditing {
 				m.refreshing = true
@@ -439,6 +534,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case statusMsg:
 		m.daemonActive = bool(msg)
+	case daemonStopMsg:
+		if bool(msg) {
+			m.addToast("Daemon stopped gracefully", toastSuccess)
+		} else {
+			m.addToast("Failed to stop daemon gracefully", toastError)
+		}
+		cmds = append(cmds, checkDaemon())
 	case dashboardLoadedMsg:
 		m.dashboard = tuiData(msg)
 		m.dashSelected = min(m.dashSelected, max(0, len(m.dashboard.Apps)-1))
@@ -476,6 +578,13 @@ func (m Model) contentHeight() int {
 		return 1
 	}
 	return contentHeight
+}
+
+// clampBodyBottom limits a measured region bottom to the visible body area,
+// so a panel taller than the terminal cannot claim rows that belong to the
+// footer. height is the content height the view was rendered with.
+func (m Model) clampBodyBottom(y, height int) int {
+	return min(y, m.contentTop+height)
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
@@ -539,6 +648,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		// so we only trigger a database flush/refresh on other tabs.
 		if m.activeTab != tabFocus {
 			m.refreshing = true
+			m.noteRefresh()
 			return m, flushCmd()
 		}
 	}
@@ -665,6 +775,10 @@ func (m *Model) View() string {
 
 	contentHeight := m.contentHeight()
 
+	// The body renders below the header and tab bar; regions use raw mouse
+	// coordinates, so they are anchored to the measured body origin.
+	m.contentTop = lipgloss.Height(header) + lipgloss.Height(nav)
+
 	var body string
 	switch m.activeTab {
 	case tabDashboard:
@@ -760,7 +874,7 @@ func (m *Model) renderTabs() string {
 	labelLine := strings.Join(labels, mutedStyle.Render(separator))
 	underlineLine := strings.Join(underlines, "   ")
 	tabWidth := lipgloss.Width(labelLine)
-	
+
 	inner := m.width - 4
 	leftMargin := (inner - tabWidth) / 2
 	if leftMargin < 0 {
@@ -823,7 +937,6 @@ func (m *Model) renderFooter() string {
 	}
 	return mutedStyle.Render(strings.Repeat("─", max(0, m.width))) + "\n  " + mutedStyle.Render(truncate(hint, m.width-2))
 }
-
 
 func (m Model) renderModal() string {
 	if m.modal.Title == "CUSTOM RANGE" {

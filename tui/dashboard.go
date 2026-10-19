@@ -18,7 +18,7 @@ func (m Model) handleDashboardKey(key string) (Model, tea.Cmd) {
 	case "n":
 		m.activeTab = tabLimits
 		m.limitForm = limitForm{Visible: true}
-		m.panelFocus = 1 // Focus form panel
+		m.panelFocus = 1
 		return m, nil
 	case "p":
 		paused := storage.IsPaused()
@@ -60,36 +60,49 @@ func (m *Model) renderDashboard(width, height int) string {
 	weeklyW := (inner * 70) / 100
 	quickW := inner - weeklyW - 1
 
-	var bottomPart string
+	var weeklyPanel, quickPanel string
 	if width < 100 {
-		weeklyPanel := m.renderWeeklyPanel(inner, weeklyH)
-		quickPanel := m.renderQuickActionsPanel(inner, quickH)
-		bottomPart = lipgloss.JoinVertical(lipgloss.Left, weeklyPanel, "", quickPanel)
+		weeklyPanel = m.renderWeeklyPanel(inner, weeklyH)
+		quickPanel = m.renderQuickActionsPanel(inner, quickH)
 	} else {
-		weeklyPanel := m.renderWeeklyPanel(weeklyW, bottomHeight)
-		quickPanel := m.renderQuickActionsPanel(quickW, bottomHeight)
-		bottomPart = lipgloss.JoinHorizontal(lipgloss.Top, weeklyPanel, " ", quickPanel)
-	}
-
-	topY := 5
-	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: topY, X2: leftW, Y2: topY + topHeight, ID: "panel-0", Kind: "panel"})
-	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: leftW + 2, Y1: topY, X2: leftW + 2 + midW, Y2: topY + topHeight, ID: "panel-1", Kind: "panel"})
-	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: leftW + midW + 4, Y1: topY, X2: width - 1, Y2: topY + topHeight, ID: "panel-2", Kind: "panel"})
-
-	bottomY := topY + topHeight + 1
-	if width < 100 {
-		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: bottomY, X2: width - 1, Y2: bottomY + weeklyH, ID: "panel-3", Kind: "panel"})
-		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: bottomY + weeklyH + 1, X2: width - 1, Y2: bottomY + weeklyH + 1 + quickH, ID: "panel-4", Kind: "panel"})
-	} else {
-		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 1, Y1: bottomY, X2: weeklyW, Y2: bottomY + bottomHeight, ID: "panel-3", Kind: "panel"})
-		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: weeklyW + 2, Y1: bottomY, X2: width - 1, Y2: bottomY + bottomHeight, ID: "panel-4", Kind: "panel"})
+		weeklyPanel = m.renderWeeklyPanel(weeklyW, bottomHeight)
+		quickPanel = m.renderQuickActionsPanel(quickW, bottomHeight)
 	}
 
 	todayPanel := m.renderTodayPanel(leftW, topHeight)
 	topAppsPanel := m.renderTopAppsPanel(midW, topHeight)
 	hourlyPanel := m.renderHourlyPanel(rightW, topHeight)
 
+	var bottomPart string
+	if width < 100 {
+		bottomPart = lipgloss.JoinVertical(lipgloss.Left, weeklyPanel, "", quickPanel)
+	} else {
+		bottomPart = lipgloss.JoinHorizontal(lipgloss.Top, weeklyPanel, " ", quickPanel)
+	}
 	topPart := lipgloss.JoinHorizontal(lipgloss.Top, todayPanel, " ", topAppsPanel, " ", hourlyPanel)
+
+	// Regions derive from the heights the panels actually rendered at; the
+	// body origin is the only frame offset involved, and bottoms are clamped
+	// to the visible body so clipped panels cannot claim footer rows.
+	topY := m.contentTop
+	topH := max(lipgloss.Height(todayPanel), lipgloss.Height(topAppsPanel), lipgloss.Height(hourlyPanel))
+	topEnd := m.clampBodyBottom(topY+topH, height)
+	todayW := lipgloss.Width(todayPanel)
+	appsW := lipgloss.Width(topAppsPanel)
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 0, Y1: topY, X2: todayW, Y2: topEnd, ID: "panel-0", Kind: "panel"})
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: todayW + 1, Y1: topY, X2: todayW + 1 + appsW, Y2: topEnd, ID: "panel-1", Kind: "panel"})
+	m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: todayW + appsW + 2, Y1: topY, X2: todayW + appsW + 2 + lipgloss.Width(hourlyPanel), Y2: topEnd, ID: "panel-2", Kind: "panel"})
+
+	bottomY := topY + topH + 1
+	if width < 100 {
+		weeklyBottom := bottomY + lipgloss.Height(weeklyPanel)
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 0, Y1: bottomY, X2: lipgloss.Width(weeklyPanel), Y2: m.clampBodyBottom(weeklyBottom, height), ID: "panel-3", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 0, Y1: weeklyBottom + 1, X2: lipgloss.Width(quickPanel), Y2: m.clampBodyBottom(weeklyBottom+1+lipgloss.Height(quickPanel), height), ID: "panel-4", Kind: "panel"})
+	} else {
+		weeklyPanelW := lipgloss.Width(weeklyPanel)
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 0, Y1: bottomY, X2: weeklyPanelW, Y2: m.clampBodyBottom(bottomY+lipgloss.Height(weeklyPanel), height), ID: "panel-3", Kind: "panel"})
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: weeklyPanelW + 1, Y1: bottomY, X2: weeklyPanelW + 1 + lipgloss.Width(quickPanel), Y2: m.clampBodyBottom(bottomY+lipgloss.Height(quickPanel), height), ID: "panel-4", Kind: "panel"})
+	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, topPart, " ", bottomPart)
 }
@@ -135,6 +148,10 @@ func (m *Model) renderTopAppsPanel(width, height int) string {
 		maxDuration = max(maxDuration, a.Duration)
 	}
 	limits := system.GetAppTimeLimits()
+	limitedApps := make(map[string]bool, len(limits))
+	for key := range limits {
+		limitedApps[system.NormalizeConfigName(key)] = true
+	}
 	var lines []string
 
 	maxRows := max(1, height-4)
@@ -153,7 +170,7 @@ func (m *Model) renderTopAppsPanel(width, height int) string {
 		for idx := start; idx < end; idx++ {
 			a := m.dashboard.Apps[idx]
 			warn := "  "
-			if _, ok := limits[a.Name]; ok {
+			if limitedApps[system.NormalizeConfigName(a.ExeName)] || limitedApps[system.NormalizeConfigName(a.Name)] {
 				warn = amberStyle.Render("⚠ ")
 			}
 			nameW := max(10, width-24)
@@ -230,7 +247,6 @@ func (m *Model) renderHourlyPanel(width, height int) string {
 	}
 	lines = append(lines, "   "+mutedStyle.Render(hoursText))
 
-	// Add legend for usability, splitting into 2 lines on narrow panels
 	if width >= 52 {
 		legend := "Legend: " + mutedStyle.Render("·") + " 0m  " +
 			cyanStyle.Render("░") + " <15m  " +
@@ -266,7 +282,7 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 		}
 	}
 
-	maxRows := max(1, height-4-2) // Subtract 2 for headers
+	maxRows := max(1, height-4-2)
 	visibleDays := m.dashboard.Days
 	if len(visibleDays) > maxRows {
 		visibleDays = visibleDays[len(visibleDays)-maxRows:]
@@ -275,7 +291,6 @@ func (m *Model) renderWeeklyPanel(width, height int) string {
 	if len(visibleDays) == 0 {
 		lines = append(lines, mutedStyle.Render("No historical weekly trends yet."))
 	} else {
-		// Aligned Headers
 		barWidth := max(5, width-29)
 		headerLine := boldStyle.Render(padRight("DAY", 6) + padRight("DATE", 12) + padRight("WEEKLY TREND", barWidth) + " " + padLeft("DURATION", 8))
 		lines = append(lines, headerLine)

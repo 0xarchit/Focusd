@@ -26,6 +26,10 @@
 .DS_Store
 Thumbs.db
 
+# Secrets
+*.pfx
+*.p12
+
 # Project specific
 working.md
 focusd.log

@@ -2,22 +2,32 @@ package cli
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"focusd/system"
-	"focusd/ui"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"focusd/coreapi"
+	"focusd/system"
+	"focusd/ui"
+
 	"golang.org/x/sys/windows"
 )
 
-var httpClient = &http.Client{Timeout: 15 * time.Second}
+// metaClient has a short timeout for small API calls. The download client
+// needs its own, longer budget so a slow connection does not abort a transfer.
+var (
+	metaClient     = &http.Client{Timeout: 20 * time.Second}
+	downloadClient = &http.Client{Timeout: 10 * time.Minute}
+)
 
 func runUpdate() {
 	ui.PrintHeader()
@@ -30,8 +40,12 @@ func runUpdate() {
 		return
 	}
 
-	if latestVer == system.Version {
+	switch compareVersions(latestVer, system.Version) {
+	case 0:
 		ui.PrintOK("You are on the latest version.")
+		return
+	case -1:
+		ui.PrintInfo(fmt.Sprintf("Running a newer version than the latest release (%s).", system.Version))
 		return
 	}
 
@@ -49,17 +63,24 @@ func runUpdate() {
 		return
 	}
 
-	daemonWasRunning := system.GetProcessCount(system.DaemonProcessName) >= 1
+	// Ask the daemon to stop over IPC first so buffered sessions are written
+	// out. Hard-killing it dropped up to five minutes of tracked time.
+	daemonWasRunning := system.CountInstancesInDir(system.DaemonProcessName, system.GetInstallDir()) >= 1
 	if daemonWasRunning {
 		ui.PrintStatus("Stopping focusd daemon...", "", false)
-		if err := system.KillOtherInstances(system.DaemonProcessName); err != nil {
-			ui.PrintWarn(fmt.Sprintf("Could not stop daemon: %v", err))
+		if !coreapi.SendIPCCmd("stop") {
+			ui.PrintWarn("Daemon did not acknowledge the stop request.")
+			if err := system.KillInstancesInDir(system.DaemonProcessName, system.GetInstallDir()); err != nil {
+				ui.PrintWarn(fmt.Sprintf("Could not stop daemon: %v", err))
+			}
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 
 	ui.PrintStatus("Closing other focusd instances...", "", false)
-	if err := system.KillOtherInstances("focusd.exe"); err != nil {
+	// Scoped to the install directory so an unrelated focusd.exe elsewhere on
+	// the machine is not terminated.
+	if err := system.KillInstancesInDir("focusd.exe", system.GetInstallDir()); err != nil {
 		log.Printf("WARN: could not close other focusd instances: %v", err)
 	}
 	time.Sleep(500 * time.Millisecond)
@@ -78,13 +99,148 @@ func runUpdate() {
 	os.Exit(0)
 }
 
+// parseVersion splits a dotted version into comparable numeric parts. A
+// pre-release suffix ("-rc1") is returned separately because it sorts before
+// the release it leads to; build metadata ("+build") is ignored.
+func parseVersion(v string) ([]int, string) {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+
+	pre := ""
+	if i := strings.IndexByte(v, '-'); i >= 0 {
+		pre = v[i:]
+		v = v[:i]
+	}
+	if i := strings.IndexByte(v, '+'); i >= 0 {
+		v = v[:i]
+	}
+
+	parts := strings.Split(v, ".")
+	out := make([]int, 0, len(parts))
+	for _, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			break
+		}
+		out = append(out, n)
+	}
+	return out, pre
+}
+
+// compareVersions returns 1 when a is newer than b, -1 when older, 0 when equal.
+// String equality was used before, so "2.13" and "2.13.0" looked different.
+// When the numbers match, the release outranks its pre-releases: "2.13.0" is
+// newer than "2.13.0-rc1".
+func compareVersions(a, b string) int {
+	pa, preA := parseVersion(a)
+	pb, preB := parseVersion(b)
+	for i := 0; i < len(pa) || i < len(pb); i++ {
+		var x, y int
+		if i < len(pa) {
+			x = pa[i]
+		}
+		if i < len(pb) {
+			y = pb[i]
+		}
+		if x != y {
+			if x > y {
+				return 1
+			}
+			return -1
+		}
+	}
+	if preA == preB {
+		return 0
+	}
+	if preA == "" {
+		return 1
+	}
+	if preB == "" {
+		return -1
+	}
+	if preA < preB {
+		return -1
+	}
+	return 1
+}
+
+// checksumsURL is published alongside the installer in every release.
+func checksumsURL(version string) string {
+	return fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s/checksums.txt",
+		system.RepoOwner, system.RepoName, version)
+}
+
+func installerURL(version string) string {
+	return fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s/focusd_setup.exe",
+		system.RepoOwner, system.RepoName, version)
+}
+
+// fetchExpectedSHA256 reads the published checksum for the installer. An empty
+// result means the release has no usable checksum and the caller must refuse to
+// run the download.
+func fetchExpectedSHA256(version string) (string, error) {
+	resp, err := metaClient.Get(checksumsURL(version))
+	if err != nil {
+		return "", fmt.Errorf("could not fetch checksums: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("checksum fetch returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if err != nil {
+		return "", err
+	}
+
+	sum, err := parseChecksumFor(string(body), installerAssetName)
+	if err != nil {
+		return "", err
+	}
+	return sum, nil
+}
+
+const installerAssetName = "focusd_setup.exe"
+
+// parseChecksumFor pulls the SHA-256 for one asset out of a sha256sum-style
+// manifest. It returns an error rather than an empty string so a caller can
+// refuse to install when the release publishes nothing verifiable.
+func parseChecksumFor(manifest, asset string) (string, error) {
+	for _, line := range strings.Split(manifest, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		if !strings.EqualFold(fields[1], asset) {
+			continue
+		}
+		sum := strings.ToLower(fields[0])
+		if len(sum) != 64 || !isHex(sum) {
+			return "", fmt.Errorf("published checksum for %s is malformed", asset)
+		}
+		return sum, nil
+	}
+	return "", fmt.Errorf("no checksum published for %s", asset)
+}
+
+func isHex(s string) bool {
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'f', r >= 'A' && r <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func fetchLatestVersion() (string, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", system.RepoOwner, system.RepoName), nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("User-Agent", "focusd-updater")
-	resp, err := httpClient.Do(req)
+	resp, err := metaClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -105,10 +261,12 @@ func fetchLatestVersion() (string, error) {
 }
 
 func performUpdate(version string) (err error) {
-	ui.PrintStatus("Downloading update...", "0%", false)
+	expectedHash, err := fetchExpectedSHA256(version)
+	if err != nil {
+		return fmt.Errorf("refusing to update without a verified checksum: %w", err)
+	}
 
-	downloadURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/v%s/focusd_setup.exe",
-		system.RepoOwner, system.RepoName, version)
+	ui.PrintStatus("Downloading update...", "0%", false)
 
 	tmpFile, err := os.CreateTemp("", "focusd-setup-*.exe")
 	if err != nil {
@@ -123,7 +281,7 @@ func performUpdate(version string) (err error) {
 		}
 	}()
 
-	resp, err := httpClient.Get(downloadURL)
+	resp, err := downloadClient.Get(installerURL(version))
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
@@ -133,17 +291,23 @@ func performUpdate(version string) (err error) {
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	if _, err = io.Copy(tmpFile, resp.Body); err != nil {
+	hasher := sha256.New()
+	if _, err = io.Copy(io.MultiWriter(tmpFile, hasher), resp.Body); err != nil {
 		return fmt.Errorf("write failed: %w", err)
 	}
-	tmpFile.Close()
+	if err = tmpFile.Close(); err != nil {
+		return err
+	}
+
+	// The installer runs unelevated from here on. Verifying first means a
+	// tampered or truncated download never reaches ShellExecute.
+	actual := hex.EncodeToString(hasher.Sum(nil))
+	if !strings.EqualFold(actual, expectedHash) {
+		return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actual)
+	}
 
 	ui.PrintStatus("Installing...", "", false)
 
-	verbPtr, err := syscall.UTF16PtrFromString("runas")
-	if err != nil {
-		return err
-	}
 	pathPtr, err := syscall.UTF16PtrFromString(tmpPath)
 	if err != nil {
 		return err
@@ -153,9 +317,16 @@ func performUpdate(version string) (err error) {
 		return err
 	}
 
-	err = windows.ShellExecute(0, verbPtr, pathPtr, argsPtr, nil, windows.SW_HIDE)
+	// No "runas" verb: focusd installs per-user under %APPDATA% and writes
+	// HKCU, so elevation is unnecessary. It also wrote to the wrong profile
+	// when an over-the-shoulder token was used.
+	verbPtr, err := syscall.UTF16PtrFromString("open")
 	if err != nil {
-		return fmt.Errorf("failed to start installer with elevation: %w", err)
+		return err
+	}
+
+	if err = windows.ShellExecute(0, verbPtr, pathPtr, argsPtr, nil, windows.SW_HIDE); err != nil {
+		return fmt.Errorf("failed to start installer: %w", err)
 	}
 
 	ui.PrintOK("Installer started silently. focusd will now close to complete the update.")

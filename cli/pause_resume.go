@@ -4,9 +4,16 @@ import (
 	"fmt"
 	"focusd/storage"
 	"focusd/ui"
+	"os"
 )
 
 func runPause() {
+	if err := storage.Init(); err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
+		os.Exit(1)
+	}
+	defer storage.Close()
+
 	if storage.IsPaused() {
 		ui.PrintInfo("Tracking is already paused.")
 		return
@@ -22,6 +29,12 @@ func runPause() {
 }
 
 func runResume() {
+	if err := storage.Init(); err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to initialize: %v", err))
+		os.Exit(1)
+	}
+	defer storage.Close()
+
 	if !storage.IsPaused() {
 		ui.PrintInfo("Tracking is already active.")
 		return

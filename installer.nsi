@@ -1,14 +1,23 @@
-!ifndef VERSION
+﻿!ifndef VERSION
   !define VERSION "0.0.0"
 !endif
 
 !include "MUI2.nsh"
 !include "WinMessages.nsh"
 
+; Everything focusd touches is per-user: the install dir under %APPDATA%, HKCU
+; registry, and the user PATH. No elevation is needed or wanted.
+RequestExecutionLevel user
+
 
 Name "Focusd"
 OutFile "focusd_setup.exe"
 InstallDir "$APPDATA\focusd"
+
+; Holds the PowerShell executable used by the process-filter fallbacks. The
+; 32-bit installer must reach the 64-bit PowerShell (via Sysnative) to read
+; executable paths of the 64-bit focusd processes.
+Var PsExe
 
 ; Registry key for uninstall info
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Focusd"
@@ -20,7 +29,8 @@ InstallDir "$APPDATA\focusd"
 
 ; Pages
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_DIRECTORY
+; No install-directory page: everything is pinned to $APPDATA\focusd. A custom
+; directory produced duplicate binaries and a mismatched PATH entry (issue #18).
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
@@ -34,12 +44,24 @@ InstallDir "$APPDATA\focusd"
 Section "Install"
   SetOutPath "$INSTDIR"
   
-  ; Stop existing daemon if running
+  ; Stop the daemon and any running TUI before overwriting the binaries.
+  ; Only processes running from this install directory are stopped, so a
+  ; copy running from elsewhere keeps working. The path travels through
+  ; the environment, which keeps quotes or wildcard characters in it from
+  ; breaking the PowerShell filter.
   DetailPrint "Stopping existing daemon if active..."
   IfFileExists "$INSTDIR\focusd.exe" 0 +3
     ExecWait '"$INSTDIR\focusd.exe" stop'
     Sleep 1000
-  ExecWait 'taskkill.exe /F /IM focusd_daemon.exe'
+  ; A plain "powershell.exe" would run the 32-bit PowerShell under WOW64,
+  ; which cannot read the executable path of a 64-bit focusd process, so
+  ; the filter would never match. Sysnative selects the 64-bit PowerShell.
+  StrCpy $PsExe "powershell.exe"
+  IfFileExists "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
+    StrCpy $PsExe "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  System::Call 'kernel32::SetEnvironmentVariable(t "FOCUSD_INSTDIR", t "$INSTDIR")'
+  ExecWait `"$PsExe" -NoProfile -Command "Get-Process focusd_daemon -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ne $$null -and $$_.Path.StartsWith($$env:FOCUSD_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
+  ExecWait `"$PsExe" -NoProfile -Command "Get-Process focusd -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ne $$null -and $$_.Path.StartsWith($$env:FOCUSD_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
   Sleep 500
 
   File "focusd.exe"
@@ -51,22 +73,16 @@ Section "Install"
   ; Add to user Autostart registry run key
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "focusd" '"$INSTDIR\focusd_daemon.exe"'
 
-  ; Add to user PATH environment variable via registry
-  ReadRegStr $0 HKCU "Environment" "Path"
-  Push $0
-  Push "$INSTDIR"
-  Call ContainsPath
-  Pop $1
-  IntCmp $1 1 path_done
-    StrCmp $0 "" 0 +3
-      StrCpy $2 "$INSTDIR"
-      Goto write_path
-    StrCpy $2 "$0;$INSTDIR"
-    write_path:
-      WriteRegExpandStr HKCU "Environment" "Path" "$2"
-      ; Broadcast environment change to windows shell
-      SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
-  path_done:
+  ; Add to user PATH environment variable.
+  ; PATH is owned solely by "focusd.exe path enable" so there is one
+  ; implementation. Two independent implementations caused issue #18, where
+  ; install and uninstall overwrote or cleared the user's PATH.
+  DetailPrint "Adding focusd to your user PATH..."
+  IfFileExists "$INSTDIR\focusd.exe" 0 skip_path_enable
+    ExecWait '"$INSTDIR\focusd.exe" path enable' $0
+    StrCmp $0 "0" +2
+      DetailPrint "WARNING: could not add focusd to PATH (exit code $0). Run 'focusd path enable' manually."
+  skip_path_enable:
 
   ; Write registry keys for Windows Add/Remove Programs (uninstaller)
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "Focusd Screen Time Tracker"
@@ -89,9 +105,27 @@ Section "Uninstall"
     ExecWait '"$INSTDIR\focusd.exe" stop'
     Sleep 1000
 
-  ; Force kill if still running to release file locks
-  ExecWait 'taskkill.exe /F /IM focusd_daemon.exe'
+  ; Force kill if still running to release file locks. Scoped to this
+  ; directory like the install section; a copy running from elsewhere is
+  ; left alone.
+  ; A plain "powershell.exe" would run the 32-bit PowerShell under WOW64,
+  ; which cannot read the executable path of a 64-bit focusd process, so
+  ; the filter would never match. Sysnative selects the 64-bit PowerShell.
+  StrCpy $PsExe "powershell.exe"
+  IfFileExists "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
+    StrCpy $PsExe "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  System::Call 'kernel32::SetEnvironmentVariable(t "FOCUSD_INSTDIR", t "$INSTDIR")'
+  ExecWait `"$PsExe" -NoProfile -Command "Get-Process focusd_daemon -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ne $$null -and $$_.Path.StartsWith($$env:FOCUSD_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
+  ExecWait `"$PsExe" -NoProfile -Command "Get-Process focusd -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ne $$null -and $$_.Path.StartsWith($$env:FOCUSD_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
   Sleep 500
+
+  ; Remove from user PATH while the exe still exists. focusd.exe owns the
+  ; logic; see the install section.
+  IfFileExists "$INSTDIR\focusd.exe" 0 skip_path_disable
+    ExecWait '"$INSTDIR\focusd.exe" path disable' $0
+    StrCmp $0 "0" +2
+      DetailPrint "WARNING: could not remove focusd from PATH (exit code $0). Run 'focusd path disable' manually."
+  skip_path_disable:
 
   Delete "$INSTDIR\focusd.exe"
   Delete "$INSTDIR\focusd_daemon.exe"
@@ -100,99 +134,12 @@ Section "Uninstall"
   Delete "$SMSTARTUP\Focus Daemon.lnk"
   Delete "$INSTDIR\uninstall.exe"
 
-  ; Remove from user PATH
-  ReadRegStr $0 HKCU "Environment" "Path"
-  Push $0
-  Push "$INSTDIR"
-  Call un.RemovePath
-  Pop $1
-  WriteRegExpandStr HKCU "Environment" "Path" "$1"
-  SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
-
   ; Remove registry uninstall keys
   DeleteRegKey HKCU "${UNINST_KEY}"
 
+  ; $INSTDIR also holds focusd.db and config.json, which is the user's tracking
+  ; history. It is deliberately not removed, so uninstall and reinstall keep the
+  ; data. The directory is only removable once it is empty anyway.
   RMDir "$INSTDIR"
 SectionEnd
 
-; Helper functions for PATH manipulation
-
-Function ContainsPath
-  Exch $R0 ; path to search for
-  Exch
-  Exch $R1 ; full path env var
-  Push $R2
-  Push $R3
-  Push $R4
-  Push $R5
-
-  StrLen $R2 $R0
-  StrLen $R3 $R1
-  StrCpy $R4 0
-
-  loop:
-    StrCpy $R5 $R1 $R2 $R4
-    StrCmp $R5 $R0 found
-    IntOp $R4 $R4 + 1
-    IntCmp $R4 $R3 loop loop
-    StrCpy $R0 0
-    Goto done
-
-  found:
-    StrCpy $R0 1
-
-  done:
-    Pop $R5
-    Pop $R4
-    Pop $R3
-    Pop $R2
-    Pop $R1
-    Exch $R0
-FunctionEnd
-
-Function un.RemovePath
-  Exch $R0 ; path to remove
-  Exch
-  Exch $R1 ; full path env var
-  Push $R2
-  Push $R3
-  Push $R4
-  Push $R5
-
-  StrLen $R2 $R0
-  StrCpy $R3 ""
-  
-  loop:
-    StrCpy $R4 0
-  find_semi:
-    StrCpy $R5 $R1 1 $R4
-    StrCmp $R5 "" end_split
-    StrCmp $R5 ";" end_split
-    IntOp $R4 $R4 + 1
-    Goto find_semi
-
-  end_split:
-    StrCpy $R5 $R1 $R4
-    StrCmp $R5 $R0 skip
-    StrCmp $R5 "" skip
-    StrCmp $R3 "" first
-    StrCpy $R3 "$R3;$R5"
-    Goto skip
-  first:
-    StrCpy $R3 "$R5"
-  skip:
-    IntOp $R4 $R4 + 1
-    StrCpy $R1 $R1 "" $R4
-    StrCmp $R1 "" done
-    Goto loop
-
-  done:
-    StrCpy $R0 $R3
-
-  Pop $R5
-  Pop $R4
-  Pop $R3
-  Pop $R2
-  Pop $R1
-  Exch $R0
-FunctionEnd

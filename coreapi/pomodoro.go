@@ -2,8 +2,8 @@ package coreapi
 
 import (
 	"encoding/json"
-	"focusd/storage"
 	"fmt"
+	"focusd/storage"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,6 +11,11 @@ import (
 )
 
 const defaultPomodoroMinutes = 25
+
+// MaxPomodoroMinutes bounds the timer. Larger values can overflow
+// time.Duration(minutes)*time.Minute into the negative, which made the timer
+// read as already complete the moment it started.
+const MaxPomodoroMinutes = 1440
 
 type PomodoroState struct {
 	Active    bool      `json:"active"`
@@ -78,6 +83,9 @@ func StartPomodoro(minutes int) error {
 		if minutes <= 0 {
 			minutes = defaultPomodoroMinutes
 		}
+		if minutes > MaxPomodoroMinutes {
+			minutes = MaxPomodoroMinutes
+		}
 
 		state := &PomodoroState{
 			Active:    true,
@@ -136,6 +144,11 @@ func GetPomodoroStatus() (active bool, remaining time.Duration, total int) {
 	return true, remaining, state.Duration
 }
 
+// CheckPomodoroAndNotify completes an expired timer. The completion is
+// announced before the state is committed: a throttled toast must not mark the
+// timer notified, or the single completion alert would be lost. A lost CAS can
+// at worst re-announce, and any writer that beats it either marks the timer
+// notified itself or starts a new one.
 func CheckPomodoroAndNotify(notifyFn func(title, msg string) bool) {
 	for i := 0; i < 5; i++ {
 		state, raw := LoadPomodoroStateRaw()
@@ -146,18 +159,24 @@ func CheckPomodoroAndNotify(notifyFn func(title, msg string) bool) {
 		elapsed := time.Since(state.StartTime)
 		totalDuration := time.Duration(state.Duration) * time.Minute
 
-		if elapsed >= totalDuration {
-			_ = notifyFn("Pomodoro Complete!", "Great work! Take a break.")
-			state.Notified = true
-			state.Active = false
-			ok, err := SavePomodoroStateCAS(raw, state)
-			if err != nil {
-				log.Printf("ERROR: failed to save pomodoro state: %v", err)
-				return
-			}
-			if ok {
-				return
-			}
+		if elapsed < totalDuration {
+			return
+		}
+
+		if notifyFn != nil && !notifyFn("Pomodoro Complete!", "Great work! Take a break.") {
+			// The toast was throttled; leave the timer un-notified so the next
+			// check retries instead of dropping the only completion alert.
+			return
+		}
+
+		state.Notified = true
+		state.Active = false
+		ok, err := SavePomodoroStateCAS(raw, state)
+		if err != nil {
+			log.Printf("ERROR: failed to save pomodoro state: %v", err)
+			return
+		}
+		if !ok {
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
