@@ -41,8 +41,8 @@ On a typical Windows install that resolves to
 
 | File | Contents |
 |---|---|
-| `focusd.db` | A SQLite database holding your usage history — the app you used, how long you used it, and the window title it had |
-| `config.json` | Your settings: daily limits, whitelisted apps, retention period, display and site name overrides, and the title-redaction switch |
+| `focusd.db` | A SQLite database holding your usage history — the app you used, how long you used it, and the window title it had — plus the retention period |
+| `config.json` | Your settings: daily limits, whitelisted apps, display and site name overrides, and the title-redaction switch |
 | `ipc.key` | A random key used to authenticate commands between the Focusd command line and the Focusd daemon, both running on your machine |
 
 ### About window titles
