@@ -473,11 +473,12 @@ func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, e
 			return out[i].TotalDurationSecs > out[j].TotalDurationSecs
 		}
 		// Equal totals must not fall back to the randomized map order, or the
-		// list reshuffles between refreshes.
+		// list reshuffles between refreshes. AppName is the map key, so it
+		// already breaks ties uniquely.
 		if out[i].AppName != out[j].AppName {
 			return out[i].AppName < out[j].AppName
 		}
-		return out[i].AppID < out[j].AppID
+		return false
 	})
 	return out, nil
 }
