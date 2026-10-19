@@ -221,3 +221,46 @@ func TestConfigFileWithoutIdleFieldsKeepsDefaults(t *testing.T) {
 		t.Errorf("pomodoro minutes = %d; want 50 to survive", got)
 	}
 }
+
+// TestReloadDropsRemovedOverrides pins that overrides are replaced, not merged:
+// the file omits empty override maps, and a stale in-memory copy used to
+// resurrect an override another process had deleted.
+func TestReloadDropsRemovedOverrides(t *testing.T) {
+	dir := setupConfigEnv(t)
+
+	if err := SetDisplayOverride("firefox|abc12345", "Work Firefox"); err != nil {
+		t.Fatalf("SetDisplayOverride failed: %v", err)
+	}
+	if got := GetDisplayOverride("firefox|abc12345"); got != "Work Firefox" {
+		t.Fatalf("override = %q; want Work Firefox", got)
+	}
+
+	// Another process removes the override. The file now carries no
+	// display_overrides key at all.
+	configPath := filepath.Join(dir, "focusd", "config.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+	delete(raw, "display_overrides")
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent failed: %v", err)
+	}
+	if err := os.WriteFile(configPath, out, 0600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	// A setter forces a fresh read-modify-write starting from disk.
+	if err := SetPomodoroMinutes(30); err != nil {
+		t.Fatalf("SetPomodoroMinutes failed: %v", err)
+	}
+
+	if got := GetDisplayOverride("firefox|abc12345"); got != "" {
+		t.Errorf("override = %q; a deleted override must not be resurrected", got)
+	}
+}

@@ -144,12 +144,12 @@ func reloadFromDiskLocked(force bool) {
 				userConfig.TrackWhileIdle = *temp.TrackWhileIdle
 			}
 			userConfig.RedactTitles = temp.RedactTitles
-			if temp.DisplayOverrides != nil {
-				userConfig.DisplayOverrides = temp.DisplayOverrides
-			}
-			if temp.SiteOverrides != nil {
-				userConfig.SiteOverrides = temp.SiteOverrides
-			}
+			// Overrides are replaced wholesale, never merged. The file omits
+			// them when they are empty, and a nil-check merge resurrected
+			// entries the file no longer had, so deleting an override in
+			// another process never took effect here.
+			userConfig.DisplayOverrides = temp.DisplayOverrides
+			userConfig.SiteOverrides = temp.SiteOverrides
 		} else {
 			log.Printf("WARN: failed to parse user config %s: %v", configPath, err)
 		}
