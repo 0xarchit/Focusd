@@ -47,6 +47,10 @@ var (
 	morePages = regexp.MustCompile(`\s+and\s+\d+\s+more\s+pages?\s*$`)
 	// A trailing profile or person segment such as "- Person 2 -".
 	trailingPerson = regexp.MustCompile(`\s*-\s*Person\s+\d+\s*-\s*$`)
+	// Splits "Page - Profile 3" into its page and trailing segments. Both are
+	// captured: checking the page text against the profile vocabulary would
+	// strip a page that merely starts with "Work".
+	profileSegment = regexp.MustCompile(`^(.*?)\s+-\s+([^-]{1,32})$`)
 )
 
 // stripDecorations removes notification counters and, once the browser suffix
@@ -117,11 +121,6 @@ func cleanWindowTitle(rawTitle, exeName string) string {
 // Edge" loses the browser first and then the profile segment.
 func stripBrowserSuffix(title, exeName string) string {
 	base := baseExeName(exeName)
-
-	// Splits "Page - Profile 3" into its page and trailing segments. Both are
-	// captured: checking the page text against the profile vocabulary would
-	// strip a page that merely starts with "Work".
-	profileSegment := regexp.MustCompile(`^(.*?)\s+-\s+([^-]{1,32})$`)
 
 	for range 4 {
 		before := title
