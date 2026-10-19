@@ -114,3 +114,23 @@ func TestExpandVersionKey(t *testing.T) {
 		t.Errorf("expandVersionKey() = %q; want %q", got, want)
 	}
 }
+
+// TestTranslationPairsOnRealExecutable probes the VarFileInfo reader against a
+// binary that ships localized resources.
+func TestTranslationPairsOnRealExecutable(t *testing.T) {
+	path := filepath.Join(os.Getenv("SystemRoot"), "System32", "notepad.exe")
+	buf := loadVersionBuffer(path)
+	if buf == nil {
+		t.Skip("no version resource available to probe")
+	}
+
+	pairs := translationPairs(buf)
+	if len(pairs) == 0 {
+		t.Fatal("expected notepad.exe to declare at least one translation pair")
+	}
+	for _, p := range pairs {
+		if p[0] == 0 && p[1] == 0 {
+			t.Errorf("translation pair should not be all zeroes: %v", pairs)
+		}
+	}
+}

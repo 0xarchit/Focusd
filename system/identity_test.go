@@ -40,20 +40,38 @@ func TestBuildAppIDSeparatesInstalls(t *testing.T) {
 }
 
 // TestBuildAppIDSurvivesVersionBump guards the other requirement: identity must
-// stay stable for the same install across upgrades, so the key must depend on
-// the directory and never on a versioned subdirectory name.
+// stay stable for the same install across upgrades, so versioned install
+// folders must not change the key.
 func TestBuildAppIDSurvivesVersionBump(t *testing.T) {
-	before := buildAppID("chrome.exe", `C:\Program Files\Google\Chrome\Application\chrome.exe`)
-	after := buildAppID("chrome.exe", `C:\Program Files\Google\Chrome\Application\chrome.exe`)
+	// Squirrel-style installs put the version in the directory name.
+	before := buildAppID("discord.exe", `C:\Users\me\AppData\Local\Discord\app-1.0.9001\discord.exe`)
+	after := buildAppID("discord.exe", `C:\Users\me\AppData\Local\Discord\app-1.0.9002\discord.exe`)
 
 	if before != after {
-		t.Errorf("the same path must produce a stable key: %q vs %q", before, after)
+		t.Errorf("a version bump must not change the identity: %q vs %q", before, after)
 	}
 
 	// A channel installed elsewhere is a different app.
 	canary := buildAppID("chrome.exe", `C:\Users\me\AppData\Local\Google\Chrome SxS\Application\chrome.exe`)
-	if canary == before {
+	if canary == buildAppID("chrome.exe", `C:\Program Files\Google\Chrome\Application\chrome.exe`) {
 		t.Error("a different install directory should produce a different key")
+	}
+}
+
+// TestBuildAppIDSurvivesMsixVersionBump is the MSIX counterpart: package folders
+// carry the version as a _x.y.z_ segment inside the folder name.
+func TestBuildAppIDSurvivesMsixVersionBump(t *testing.T) {
+	before := buildAppID("wt.exe", `C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_1.18.3181.0_x64__8wekyb3d8bbwe\wt.exe`)
+	after := buildAppID("wt.exe", `C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_1.19.10302.0_x64__8wekyb3d8bbwe\wt.exe`)
+
+	if before != after {
+		t.Errorf("an MSIX package update must not change the identity: %q vs %q", before, after)
+	}
+
+	// A different package remains a different app.
+	other := buildAppID("wt.exe", `C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.0.0.0_x64__8wekyb3d8bbwe\wt.exe`)
+	if other == before {
+		t.Error("a different MSIX package should produce a different key")
 	}
 }
 
@@ -105,34 +123,6 @@ func TestLegacyAndFallbackAppIDs(t *testing.T) {
 	}
 }
 
-// TestSameAppKeyKeepsInstallsSeparate checks the config-wildcard rule: a bare
-// exe name matches anything, but two distinct installs must never match.
-func TestSameAppKeyKeepsInstallsSeparate(t *testing.T) {
-	live := buildAppID("firefox.exe", `C:\Program Files\Mozilla Firefox\firefox.exe`)
-	nightly := buildAppID("firefox.exe", `C:\Program Files\Firefox Nightly\firefox.exe`)
-	legacy := legacyAppID("firefox.exe")
-	fallback := fallbackAppID("firefox.exe")
-
-	if sameAppKey(live, nightly) {
-		t.Error("Firefox and Nightly must not match for config purposes")
-	}
-	if sameAppKey(live, legacy) {
-		t.Error("two hashed keys must not match")
-	}
-
-	// A bare config key is a wildcard.
-	if !sameAppKey("firefox", live) || !sameAppKey("firefox", nightly) ||
-		!sameAppKey("firefox", legacy) || !sameAppKey("firefox", fallback) {
-		t.Error("a bare exe name should match every install")
-	}
-	if !sameAppKey("firefox.exe", live) {
-		t.Error("a bare name with the .exe suffix should also match")
-	}
-	if sameAppKey("firefox", "chrome") {
-		t.Error("different apps must not match")
-	}
-}
-
 // TestStoredAppMatchesIsStrict covers the migration rule: a row recorded before
 // paths existed keeps its own bucket. Folding it into a live install would
 // re-merge Firefox and Firefox Nightly.
@@ -179,6 +169,24 @@ func TestConfigMatchesApp(t *testing.T) {
 		t.Error("a full app key must not cover another install")
 	}
 
+	// A bare config key is a wildcard across legacy and fallback buckets too:
+	// entries written before app identity must keep firing.
+	legacy := legacyAppID("firefox.exe")
+	fallback := fallbackAppID("firefox.exe")
+	for _, key := range []string{nightly, legacy, fallback} {
+		if !ConfigMatchesApp("firefox", key) {
+			t.Errorf("a bare config key should match %q", key)
+		}
+	}
+
+	// Distinct hashed keys never match, in either direction.
+	if ConfigMatchesApp(live, legacy) || ConfigMatchesApp(legacy, live) {
+		t.Error("a full app key and a legacy bucket must not match")
+	}
+	if ConfigMatchesApp(live, fallback) {
+		t.Error("a full app key and a fallback bucket must not match")
+	}
+
 	if ConfigMatchesApp("chrome", live) {
 		t.Error("an unrelated config key should not match")
 	}
@@ -206,22 +214,6 @@ func TestNormalizeConfigKey(t *testing.T) {
 				t.Errorf("normalizeConfigKey(%q) = %q; want %q", tc.in, got, tc.want)
 			}
 		})
-	}
-}
-
-func TestSameAppKeyBareExeMatchesEverything(t *testing.T) {
-	// A config entry written before this feature is just the exe name. It must
-	// act as a wildcard so nobody's limits silently stop firing.
-	bare := "firefox"
-	for _, key := range []string{
-		buildAppID("firefox.exe", `C:\Program Files\Mozilla Firefox\firefox.exe`),
-		buildAppID("firefox.exe", `C:\Program Files\Firefox Nightly\firefox.exe`),
-		legacyAppID("firefox.exe"),
-		fallbackAppID("firefox.exe"),
-	} {
-		if !sameAppKey(bare, key) {
-			t.Errorf("bare config key %q should match %q", bare, key)
-		}
 	}
 }
 

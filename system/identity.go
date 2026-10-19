@@ -3,6 +3,7 @@ package system
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"regexp"
 	"strings"
 )
 
@@ -58,6 +59,20 @@ func dirHash(dir string) string {
 	return hex.EncodeToString(sum[:])[:8]
 }
 
+// Install paths embed components that change on every update: Squirrel uses an
+// app-x.y.z folder and MSIX package folders carry a _x.y.z_ segment. They are
+// stripped before hashing so one install keeps one identity across upgrades.
+var (
+	squirrelVersionDir = regexp.MustCompile(`(?i)[\\/]app-\d+(?:\.\d+)*$`)
+	msixVersionDir     = regexp.MustCompile(`(?i)([\\/]windowsapps[\\/][^\\/]+?)_\d+(?:\.\d+)+_`)
+)
+
+// stableInstallDir removes version components that change on update.
+func stableInstallDir(dir string) string {
+	dir = squirrelVersionDir.ReplaceAllString(dir, "")
+	return msixVersionDir.ReplaceAllString(dir, "${1}_")
+}
+
 // buildAppID derives the identity key. The directory alone is hashed, never the
 // file name, because browsers update their versioned subdirectories in place.
 func buildAppID(exeName, exePath string) string {
@@ -70,7 +85,7 @@ func buildAppID(exeName, exePath string) string {
 	if dir == "" {
 		return base + keySeparator + systemSuffix
 	}
-	return base + keySeparator + dirHash(dir)
+	return base + keySeparator + dirHash(stableInstallDir(dir))
 }
 
 // IsLegacyAppID reports whether a key came from a migrated row.
@@ -115,24 +130,6 @@ func normalizeConfigKey(key string) string {
 // Firefox and Firefox Nightly again.
 func StoredAppMatches(storedKey, liveKey string) bool {
 	return storedKey == liveKey
-}
-
-// sameAppKey compares keys for config lookup. A bare exe name acts as a
-// wildcard so limits written before this feature keep applying to every install;
-// two different hashed keys never match.
-func sameAppKey(a, b string) bool {
-	if a == b {
-		return true
-	}
-
-	baseA, hashA := splitAppKey(a)
-	baseB, hashB := splitAppKey(b)
-	if baseA != baseB {
-		return false
-	}
-
-	// A bare exe name is a wildcard across every install.
-	return hashA == "" || hashB == ""
 }
 
 // splitAppKey separates an app key into its exe name and its install hash. The
