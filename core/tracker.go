@@ -203,6 +203,10 @@ func (t *Tracker) Start() error {
 			stateMu.Lock()
 			if appLimitDate != today {
 				disabledLimitApps = make(map[string]time.Time)
+				// Reset the fired guard with the day so a session that stays
+				// on the same app across midnight alerts again next day.
+				prevSessionApp = ""
+				prevSessionExe = ""
 				appLimitDate = today
 			}
 			stateMu.Unlock()
