@@ -90,8 +90,8 @@ func GetAutoStartEnabled() (bool, string, error) {
 }
 
 func EnableAutoStart() error {
-	if err := installExes(); err != nil {
-		return fmt.Errorf("failed to install: %w", err)
+	if err := requireInstalledBinary(DaemonProcessName); err != nil {
+		return err
 	}
 
 	linkPath := getStartupLinkPath()
@@ -224,9 +224,8 @@ func GetPathEnabled() (bool, error) {
 }
 
 func EnablePath() error {
-
-	if err := installExes(); err != nil {
-		return fmt.Errorf("failed to install/update binary: %w", err)
+	if err := requireInstalledBinary("focusd.exe"); err != nil {
+		return err
 	}
 
 	exeDir := getInstallDir()
