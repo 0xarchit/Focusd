@@ -2,6 +2,8 @@ package system
 
 import (
 	"path/filepath"
+	"strings"
+	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -17,6 +19,8 @@ var (
 	procOpenProcess              = kernel32.NewProc("OpenProcess")
 	procCloseHandle              = kernel32.NewProc("CloseHandle")
 	procGetModuleBaseNameW       = psapi.NewProc("GetModuleBaseNameW")
+	procEnumChildWindows         = user32.NewProc("EnumChildWindows")
+	procGetClassNameW            = user32.NewProc("GetClassNameW")
 )
 
 const (
@@ -32,6 +36,10 @@ type WindowInfo struct {
 }
 
 func GetForegroundWindowInfo() (*WindowInfo, error) {
+	state, err := ReadSessionState()
+	if err != nil || !state.Active() {
+		return nil, err
+	}
 	hwnd, _, _ := procGetForegroundWindow.Call()
 	if hwnd == 0 {
 		return nil, nil
@@ -55,6 +63,17 @@ func GetForegroundWindowInfo() (*WindowInfo, error) {
 			exeName = getProcessName(pid)
 		}
 	}
+	if isSessionScreenExecutable(exeName) {
+		return nil, nil
+	}
+	if strings.EqualFold(exeName, "ApplicationFrameHost.exe") {
+		appPID := resolveFrameApplicationPID(hwnd, pid)
+		if appPID != pid {
+			if path, err := getProcessPath(appPID); err == nil && path != "" {
+				exePath, exeName = path, filepath.Base(path)
+			}
+		}
+	}
 
 	if title == "" && exeName == "" {
 		return nil, nil
@@ -68,6 +87,63 @@ func GetForegroundWindowInfo() (*WindowInfo, error) {
 		ExePath: exePath,
 		AppID:   id.AppID,
 	}, nil
+}
+
+func isSessionScreenExecutable(exeName string) bool {
+	return strings.EqualFold(exeName, "LockApp.exe") || strings.EqualFold(exeName, "LogonUI.exe")
+}
+
+type frameChild struct {
+	PID   uint32
+	Class string
+}
+
+var (
+	frameEnumerationMu       sync.Mutex
+	frameEnumerationChildren []frameChild
+	frameEnumerationCallback = syscall.NewCallback(collectFrameChild)
+)
+
+func collectFrameChild(child, _ uintptr) uintptr {
+	var pid uint32
+	procGetWindowThreadProcessId.Call(child, uintptr(unsafe.Pointer(&pid)))
+	var name [256]uint16
+	length, _, _ := procGetClassNameW.Call(child, uintptr(unsafe.Pointer(&name[0])), uintptr(len(name)))
+	if length > 0 && length < uintptr(len(name)) {
+		frameEnumerationChildren = append(frameEnumerationChildren, frameChild{PID: pid, Class: syscall.UTF16ToString(name[:length])})
+	}
+	return 1
+}
+
+func frameApplicationPID(hostPID uint32, children []frameChild, readable func(uint32) bool) uint32 {
+	var appPID uint32
+	for _, child := range children {
+		if child.PID == 0 || child.PID == hostPID || child.Class != "Windows.UI.Core.CoreWindow" || !readable(child.PID) {
+			continue
+		}
+		if appPID != 0 && appPID != child.PID {
+			return hostPID
+		}
+		appPID = child.PID
+	}
+	if appPID == 0 {
+		return hostPID
+	}
+	return appPID
+}
+
+func resolveFrameApplicationPID(hwnd uintptr, hostPID uint32) uint32 {
+	// NewCallback allocations are permanent; reuse one synchronous callback.
+	frameEnumerationMu.Lock()
+	frameEnumerationChildren = nil
+	procEnumChildWindows.Call(hwnd, frameEnumerationCallback, 0)
+	children := frameEnumerationChildren
+	frameEnumerationChildren = nil
+	frameEnumerationMu.Unlock()
+	return frameApplicationPID(hostPID, children, func(pid uint32) bool {
+		path, err := getProcessPath(pid)
+		return err == nil && path != "" && !strings.EqualFold(filepath.Base(path), "ApplicationFrameHost.exe")
+	})
 }
 
 func getWindowText(hwnd uintptr) string {
