@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -125,6 +126,11 @@ func createSchema() error {
 
 	CREATE TABLE IF NOT EXISTS sessions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		session_id TEXT NOT NULL DEFAULT '',
+		slice_id TEXT NOT NULL DEFAULT '',
+		site_name TEXT NOT NULL DEFAULT '',
+		site_known INTEGER NOT NULL DEFAULT 0,
+		generation INTEGER NOT NULL DEFAULT 0,
 		app_name TEXT NOT NULL,
 		exe_name TEXT NOT NULL,
 		exe_path TEXT,
@@ -150,6 +156,11 @@ func createSchema() error {
 
 	CREATE TABLE IF NOT EXISTS active_session (
 		id INTEGER PRIMARY KEY CHECK (id = 1),
+		session_id TEXT NOT NULL DEFAULT '',
+		slice_id TEXT NOT NULL DEFAULT '',
+		site_name TEXT NOT NULL DEFAULT '',
+		site_known INTEGER NOT NULL DEFAULT 0,
+		generation INTEGER NOT NULL DEFAULT 0,
 		app_name TEXT NOT NULL,
 		exe_name TEXT NOT NULL,
 		exe_path TEXT,
@@ -220,5 +231,10 @@ func Close() error {
 }
 
 func Today() string {
-	return time.Now().Format("2006-01-02")
+	date, err := calendarDate(calendarNow())
+	if err != nil {
+		log.Printf("WARN: current calendar date unavailable: %v", err)
+		return "0000-00-00"
+	}
+	return date
 }

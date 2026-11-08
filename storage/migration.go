@@ -1,11 +1,15 @@
 package storage
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +17,7 @@ import (
 
 // schemaVersion is the current data layout. A fresh database is created at this
 // version directly; an older one is migrated.
-const schemaVersion = 3
+const schemaVersion = 4
 
 const schemaVersionKey = "schema_version"
 
@@ -92,36 +96,73 @@ func backupDatabaseFile() (string, error) {
 		return "", err
 	}
 
-	stamp := time.Now().Format("20060102-150405")
-	dest := dbPath + "." + stamp + migrationBackupSuffix
-
-	// Fold the WAL tail into the main file first; an unclean shutdown can leave
-	// committed frames only in focusd.db-wal. Not fatal when it fails (for
-	// example another process is connected): the WAL is copied alongside below.
-	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
-		log.Printf("WARN: pre-migration checkpoint failed: %v", err)
+	id, err := backupID()
+	if err != nil {
+		return "", err
 	}
+	return snapshotDatabase(dbPath + "." + id + migrationBackupSuffix)
+}
 
-	if err := copyFile(dbPath, dest); err != nil {
+func backupID() (string, error) {
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(id[:]), nil
+}
+
+// BackupTrackingDatabase returns a verified snapshot before a history reset.
+func BackupTrackingDatabase() (string, error) {
+	dir, err := getDataDir()
+	if err != nil {
+		return "", err
+	}
+	dir = filepath.Join(dir, "backups")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", err
+	}
+	id, err := backupID()
+	if err != nil {
+		return "", err
+	}
+	return snapshotDatabase(filepath.Join(dir, "focusd-"+id+".db"))
+}
+
+func snapshotDatabase(dest string) (string, error) {
+	if _, err := db.Exec(`VACUUM INTO ?`, dest); err != nil {
+		return "", fmt.Errorf("database snapshot: %w", err)
+	}
+	f, err := os.OpenFile(dest, os.O_RDWR, 0600)
+	if err == nil {
+		err = f.Sync()
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+	}
+	if err != nil {
 		os.Remove(dest)
 		return "", err
 	}
-
-	// A restore must replay every committed frame, so a WAL that survives the
-	// checkpoint is copied with the main file.
-	if err := copyFileIfExists(dbPath+"-wal", dest+"-wal"); err != nil {
+	backupPath := filepath.ToSlash(dest)
+	if len(backupPath) >= 2 && backupPath[1] == ':' {
+		backupPath = "/" + backupPath
+	}
+	uri := &url.URL{Scheme: "file", Path: backupPath, RawQuery: "mode=ro"}
+	backup, err := sql.Open("sqlite", uri.String())
+	if err == nil {
+		var check string
+		err = backup.QueryRow(`PRAGMA integrity_check`).Scan(&check)
+		if err == nil && check != "ok" {
+			err = fmt.Errorf("backup integrity check: %s", check)
+		}
+		if closeErr := backup.Close(); err == nil {
+			err = closeErr
+		}
+	}
+	if err != nil {
 		os.Remove(dest)
-		os.Remove(dest + "-wal")
 		return "", err
 	}
-
-	info, err := os.Stat(dest)
-	if err != nil || info.Size() == 0 {
-		os.Remove(dest)
-		os.Remove(dest + "-wal")
-		return "", fmt.Errorf("backup verification failed")
-	}
-
 	return dest, nil
 }
 
@@ -185,10 +226,7 @@ func Migrate() error {
 	// tables rebuilt, and a database the old data-counting gate stamped v3
 	// without rebuilding is repaired here.
 	if !legacy {
-		if version >= schemaVersion {
-			return nil
-		}
-		return setSchemaVersion(schemaVersion)
+		return migrateCheckpointSchema(version)
 	}
 
 	backupPath, err := backupDatabaseFile()
@@ -204,7 +242,71 @@ func Migrate() error {
 	}
 
 	log.Printf("INFO: migrated database to schema v%d (backup: %s)", schemaVersion, backupPath)
-	return nil
+	return migrateCheckpointSchema(3)
+}
+
+func migrateCheckpointSchema(version int) error {
+	columns := []struct{ name, definition string }{
+		{"session_id", `TEXT NOT NULL DEFAULT ''`},
+		{"slice_id", `TEXT NOT NULL DEFAULT ''`},
+		{"site_name", `TEXT NOT NULL DEFAULT ''`},
+		{"site_known", `INTEGER NOT NULL DEFAULT 0`},
+		{"generation", `INTEGER NOT NULL DEFAULT 0`},
+	}
+	missing := make(map[string][]string)
+	for _, table := range []string{"sessions", "active_session"} {
+		rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+		if err != nil {
+			return err
+		}
+		found := make(map[string]bool)
+		for rows.Next() {
+			var cid, notNull, primaryKey int
+			var name, kind string
+			var defaultValue sql.NullString
+			if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primaryKey); err != nil {
+				rows.Close()
+				return err
+			}
+			found[name] = true
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		for _, column := range columns {
+			if !found[column.name] {
+				missing[table] = append(missing[table], column.name+" "+column.definition)
+			}
+		}
+	}
+	if len(missing) > 0 {
+		if _, err := backupDatabaseFile(); err != nil {
+			return fmt.Errorf("refusing checkpoint migration without a backup: %w", err)
+		}
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for table, columns := range missing {
+		for _, column := range columns {
+			if _, err := tx.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_session_slice ON sessions(slice_id) WHERE slice_id <> ''`); err != nil {
+		return err
+	}
+	if version <= schemaVersion {
+		if _, err := tx.Exec(`INSERT INTO config(key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, schemaVersionKey, strconv.Itoa(schemaVersion), time.Now().Unix()); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func setSchemaVersion(v int) error {
@@ -239,7 +341,7 @@ func runV3Migration() error {
 	if _, err := tx.Exec(`
 		INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-	`, schemaVersionKey, strconv.Itoa(schemaVersion), time.Now().Unix()); err != nil {
+	`, schemaVersionKey, "3", time.Now().Unix()); err != nil {
 		return err
 	}
 

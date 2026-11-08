@@ -421,8 +421,8 @@ func TestMigrateCorruptVersionKeepsV3Data(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetConfig failed: %v", err)
 	}
-	if version != "3" {
-		t.Errorf("schema_version = %q; want a re-stamp to 3", version)
+	if version != fmt.Sprint(schemaVersion) {
+		t.Errorf("schema_version = %q; want a re-stamp to %d", version, schemaVersion)
 	}
 
 	// No rebuild means no backup was taken.

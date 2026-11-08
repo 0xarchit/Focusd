@@ -16,8 +16,12 @@ func GetHourlyUsageToday(date string) ([24]int, error) {
 
 func getHourlyUsageTodayOnce(date string) ([24]int, error) {
 	var buckets [24]int
-
-	rows, err := db.Query(`
+	tx, err := db.Begin()
+	if err != nil {
+		return buckets, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.Query(`
 		SELECT start_time, COALESCE(end_time, start_time) AS end_time
 		FROM sessions
 		WHERE date = ?
@@ -32,41 +36,76 @@ func getHourlyUsageTodayOnce(date string) ([24]int, error) {
 		if err := rows.Scan(&start, &end); err != nil {
 			return buckets, err
 		}
-		for hour, secs := range splitSessionHours(start, end) {
+		split, err := splitSessionHoursCalendar(start, end)
+		if err != nil {
+			return buckets, err
+		}
+		for hour, secs := range split {
 			if hour >= 0 && hour < 24 {
 				buckets[hour] += secs
 			}
 		}
 	}
 
-	return buckets, rows.Err()
+	if err := rows.Err(); err != nil {
+		return buckets, err
+	}
+	if err := rows.Close(); err != nil {
+		return buckets, err
+	}
+	active, err := getActiveSession(tx)
+	if err != nil {
+		return buckets, err
+	}
+	if active != nil && active.LastSeen.After(active.StartTime) {
+		day, next, err := calendarBoundsForDate(date)
+		if err != nil {
+			return buckets, err
+		}
+		start, end := active.StartTime, active.LastSeen
+		if start.Before(day) {
+			start = day
+		}
+		if end.After(next) {
+			end = next
+		}
+		split, err := splitSessionHoursCalendar(start.Unix(), end.Unix())
+		if err != nil {
+			return buckets, err
+		}
+		for hour, secs := range split {
+			buckets[hour] += secs
+		}
+	}
+	return buckets, tx.Commit()
 }
 
 // splitSessionHours returns the seconds of a session that fall in each clock
 // hour, so a long session contributes to every hour it covers.
 func splitSessionHours(start, end int64) map[int]int {
+	out, _ := splitSessionHoursCalendar(start, end)
+	return out
+}
+
+func splitSessionHoursCalendar(start, end int64) (map[int]int, error) {
 	out := map[int]int{}
 	if end <= start {
 		// A zero or negative span contributes nothing rather than wrapping.
-		return out
+		return out, nil
 	}
 
 	cursor := start
 	for cursor < end {
-		ts := time.Unix(cursor, 0)
-		next := time.Date(ts.Year(), ts.Month(), ts.Day(), ts.Hour(), 0, 0, 0, ts.Location()).Add(time.Hour).Unix()
-		// The wall-clock hour start is re-resolved locally, so on a DST
-		// fall-back the second occurrence of the repeated hour maps back to
-		// its first start and the cursor would not advance. Clamp to a full
-		// hour of real time instead.
-		if next <= cursor {
-			next = cursor + 3600
+		ts, err := calendarLocalTime(time.Unix(cursor, 0))
+		if err != nil {
+			return nil, err
 		}
+		next := cursor + int64(3600-ts.Minute()*60-ts.Second())
 		if next > end {
 			next = end
 		}
 		out[ts.Hour()] += int(next - cursor)
 		cursor = next
 	}
-	return out
+	return out, nil
 }

@@ -162,9 +162,8 @@ func TestGetAppUsageTodaySecondsForConfigMultibyteBase(t *testing.T) {
 	}
 }
 
-// TestGetBrowserStatsInRangeAggregatesSameSite pins that the same site from two
-// browser installs becomes one row per day instead of two.
-func TestGetBrowserStatsInRangeAggregatesSameSite(t *testing.T) {
+// Site rows retain browser install identities even when their site names match.
+func TestGetBrowserStatsInRangePreservesInstallIdentity(t *testing.T) {
 	setupStorageEnv(t)
 
 	if _, err := db.Exec(`
@@ -178,11 +177,63 @@ func TestGetBrowserStatsInRangeAggregatesSameSite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetBrowserStatsInRange failed: %v", err)
 	}
-	if len(stats) != 1 {
-		t.Fatalf("rows = %d; want 1 merged per date and site", len(stats))
+	if len(stats) != 2 {
+		t.Fatalf("rows = %d; want one per browser install and site", len(stats))
 	}
-	if stats[0].AppName != "GitHub" || stats[0].TotalDurationSecs != 900 || stats[0].OpenCount != 3 {
-		t.Errorf("stat = %+v; want GitHub with 900s across 3 opens", stats[0])
+	want := map[string]AppDailyStat{
+		"firefox|aaaa1111": {Date: Today(), AppName: "GitHub", AppID: "firefox|aaaa1111", ExeName: "firefox.exe", TotalDurationSecs: 600, OpenCount: 2},
+		"chrome|bbbb2222":  {Date: Today(), AppName: "GitHub", AppID: "chrome|bbbb2222", ExeName: "chrome.exe", TotalDurationSecs: 300, OpenCount: 1},
+	}
+	var seconds, opens int
+	for _, stat := range stats {
+		if stat != want[stat.AppID] {
+			t.Errorf("stat = %+v; want %+v", stat, want[stat.AppID])
+		}
+		seconds += stat.TotalDurationSecs
+		opens += stat.OpenCount
+	}
+	if seconds != 900 || opens != 3 {
+		t.Errorf("combined total = %ds/%d opens; want 900s/3", seconds, opens)
+	}
+}
+
+func TestGetBrowserStatsInRangeLiveMatchesInstallAndSite(t *testing.T) {
+	setupStorageEnv(t)
+	date := "2026-06-26"
+	if _, err := db.Exec(`
+		INSERT INTO browsing_daily (date, app_id, site_name, total_duration_secs, open_count)
+		VALUES (?, 'chrome|first', 'GitHub', 600, 2), (?, 'chrome|second', 'GitHub', 300, 1),
+		       (?, 'chrome|first', 'YouTube', 120, 1)
+	`, date, date, date); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO apps_daily (date, app_name, exe_name, app_id)
+		VALUES (?, 'Chrome', 'Chrome.exe', 'chrome|first')`, date); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 6, 26, 12, 0, 0, 0, time.Local)
+	if err := SaveActiveSession(&ActiveSessionRecord{
+		AppName: "Chrome", ExeName: "Chrome.exe", AppID: "chrome|first", SiteKnown: true, SiteName: "GitHub",
+		StartTime: start, LastSeen: start.Add(time.Minute), Date: date,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stats, err := GetBrowserStatsInRange(date, date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats) != 3 {
+		t.Fatalf("rows = %d; want three distinct install/site pairs: %+v", len(stats), stats)
+	}
+	want := map[string]AppDailyStat{
+		"chrome|first/GitHub":  {Date: date, AppName: "GitHub", ExeName: "Chrome.exe", AppID: "chrome|first", TotalDurationSecs: 660, OpenCount: 3},
+		"chrome|second/GitHub": {Date: date, AppName: "GitHub", ExeName: "chrome.exe", AppID: "chrome|second", TotalDurationSecs: 300, OpenCount: 1},
+		"chrome|first/YouTube": {Date: date, AppName: "YouTube", ExeName: "Chrome.exe", AppID: "chrome|first", TotalDurationSecs: 120, OpenCount: 1},
+	}
+	for _, stat := range stats {
+		if expected := want[stat.AppID+"/"+stat.AppName]; stat != expected {
+			t.Errorf("stat = %+v; want %+v", stat, expected)
+		}
 	}
 }
 
