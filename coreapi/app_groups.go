@@ -8,6 +8,7 @@ import (
 )
 
 type groupedBrowserStat struct {
+	AppID      string
 	Category   string
 	TotalSecs  int
 	SubEntries []subEntry
@@ -52,11 +53,12 @@ func groupBrowserStats(stats []storage.AppDailyStat) []groupedBrowserStat {
 			category = title
 		}
 
-		g, ok := groups[category]
+		key := stat.AppID + "\x00" + category
+		g, ok := groups[key]
 		if !ok {
-			g = &groupedBrowserStat{Category: category, TotalSecs: 0}
-			groups[category] = g
-			order = append(order, category)
+			g = &groupedBrowserStat{AppID: stat.AppID, Category: category, TotalSecs: 0}
+			groups[key] = g
+			order = append(order, key)
 		}
 		g.TotalSecs += duration
 
@@ -77,7 +79,10 @@ func groupBrowserStats(stats []storage.AppDailyStat) []groupedBrowserStat {
 		if result[i].TotalSecs != result[j].TotalSecs {
 			return result[i].TotalSecs > result[j].TotalSecs
 		}
-		return result[i].Category < result[j].Category
+		if result[i].Category != result[j].Category {
+			return result[i].Category < result[j].Category
+		}
+		return result[i].AppID < result[j].AppID
 	})
 
 	return result

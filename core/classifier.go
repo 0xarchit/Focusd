@@ -93,6 +93,7 @@ var browserSuffixRules = []string{
 	"waterfox",
 	"coccoc",
 	"internet explorer",
+	"tor browser",
 }
 
 // cleanWindowTitle turns a raw browser window title into a page or site name.

@@ -6,17 +6,26 @@ import (
 	"focusd/system"
 )
 
-// privateTitleMarkers identify a private or incognito window, matched
-// case-insensitively. Best effort: it errs toward keeping a title.
+// Browser suffix markers are best effort; strict redaction does not depend on them.
 var privateTitleMarkers = []string{
-	"-inprivate",
-	" inprivate",
+	"inprivate",
 	"incognito",
+	"inkognito",
+	"incógnito",
 	"private browsing",
 	"private window",
 	"private mode",
-	"-private",
+	"private",
 	"guest mode",
+	"privates fenster",
+	"privater modus",
+	"navigation privée",
+	"fenêtre privée",
+	"ventana privada",
+	"navegación privada",
+	"modo privado",
+	"janela privativa",
+	"navegação privativa",
 }
 
 // IsPrivateWindowTitle reports whether a title belongs to a private browsing
@@ -25,9 +34,36 @@ func IsPrivateWindowTitle(title string) bool {
 	if strings.TrimSpace(title) == "" {
 		return false
 	}
-	lower := strings.ToLower(title)
+	candidate := strings.ToLower(sanitizeTitle(title))
+	for range 4 {
+		idx, sepLen := lastSeparator(candidate)
+		segment := candidate
+		if idx >= 0 {
+			segment = candidate[idx+sepLen:]
+		}
+		if privateSuffixSegment(segment) {
+			return true
+		}
+		if !isKnownBrowserSuffix(strings.TrimSpace(segment)) || idx < 0 {
+			break
+		}
+		candidate = strings.TrimSpace(candidate[:idx])
+	}
+	return strings.HasSuffix(candidate, " -private") || strings.HasSuffix(candidate, " -inprivate")
+}
+
+func privateSuffixSegment(segment string) bool {
+	segment = strings.Trim(strings.TrimSpace(segment), "()[]{} ")
 	for _, marker := range privateTitleMarkers {
-		if strings.Contains(lower, marker) {
+		if segment == marker {
+			return true
+		}
+		if !strings.HasSuffix(segment, marker) {
+			continue
+		}
+		prefix := strings.TrimSpace(strings.TrimSuffix(segment, marker))
+		prefix = strings.Trim(prefix, "()[]{} -")
+		if isKnownBrowserSuffix(prefix) {
 			return true
 		}
 	}

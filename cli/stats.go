@@ -55,9 +55,10 @@ func displayStats(summary *coreapi.DailySummary) {
 			{Header: "Visits", Width: 8},
 		}
 		var rows [][]string
-		for _, app := range summary.TopApps {
+		labels := coreapi.DistinctInstallLabels(summary.TopApps)
+		for i, app := range summary.TopApps {
 			rows = append(rows, []string{
-				ui.TruncateString(app.AppName, 53),
+				ui.TruncateString(labels[i], 53),
 				ui.FormatDurationShort(app.TotalDurationSecs),
 				fmt.Sprintf("%d", app.OpenCount),
 			})
@@ -68,10 +69,15 @@ func displayStats(summary *coreapi.DailySummary) {
 
 	if len(summary.GroupedSites) > 0 {
 		ui.PrintSectionHeader("Top Browsing (Grouped)")
-		for _, group := range summary.GroupedSites {
+		groupStats := make([]storage.AppDailyStat, len(summary.GroupedSites))
+		for i, group := range summary.GroupedSites {
+			groupStats[i] = storage.AppDailyStat{AppName: group.Category, AppID: group.AppID}
+		}
+		labels := coreapi.DistinctInstallLabels(groupStats)
+		for idx, group := range summary.GroupedSites {
 			if len(group.SubEntries) > 1 {
 				fmt.Printf("  %s%-40s%s  %s%s%s\n",
-					ui.Cyan, ui.TruncateString(group.Category, 40), ui.Reset,
+					ui.Cyan, ui.TruncateString(labels[idx], 40), ui.Reset,
 					ui.Green, ui.FormatDurationShort(group.TotalSecs), ui.Reset)
 				for i, sub := range group.SubEntries {
 					prefix := "├─"
@@ -84,7 +90,7 @@ func displayStats(summary *coreapi.DailySummary) {
 				}
 			} else {
 				fmt.Printf("  %-40s  %s%s%s\n",
-					ui.TruncateString(group.Category, 40),
+					ui.TruncateString(labels[idx], 40),
 					ui.Green, ui.FormatDurationShort(group.TotalSecs), ui.Reset)
 			}
 		}
@@ -97,9 +103,10 @@ func displayStats(summary *coreapi.DailySummary) {
 			{Header: "Visits", Width: 8},
 		}
 		var rows [][]string
-		for _, site := range summary.TopSites {
+		labels := coreapi.DistinctInstallLabels(summary.TopSites)
+		for i, site := range summary.TopSites {
 			rows = append(rows, []string{
-				ui.TruncateString(site.AppName, 53),
+				ui.TruncateString(labels[i], 53),
 				ui.FormatDurationShort(site.TotalDurationSecs),
 				fmt.Sprintf("%d", site.OpenCount),
 			})

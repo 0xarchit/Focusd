@@ -25,6 +25,8 @@ func GetDailySummary(date string) (*DailySummary, error) {
 	if err != nil {
 		log.Printf("WARN: failed to load browser stats for %s: %v", date, err)
 	}
+	apps = ApplyDisplayOverrides(apps)
+	sites = ApplySiteOverrides(sites)
 
 	summary := &DailySummary{
 		Date:     date,
@@ -56,7 +58,10 @@ func GetDailySummary(date string) (*DailySummary, error) {
 		if sites[i].TotalDurationSecs != sites[j].TotalDurationSecs {
 			return sites[i].TotalDurationSecs > sites[j].TotalDurationSecs
 		}
-		return sites[i].AppName < sites[j].AppName
+		if sites[i].AppName != sites[j].AppName {
+			return sites[i].AppName < sites[j].AppName
+		}
+		return sites[i].AppID < sites[j].AppID
 	})
 	if len(sites) > 10 {
 		summary.TopSites = sites[:10]
