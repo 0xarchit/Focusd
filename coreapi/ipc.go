@@ -1,7 +1,8 @@
 package coreapi
 
 import (
-	"bufio"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"strings"
@@ -11,36 +12,61 @@ import (
 const IPCAddress = "127.0.0.1:48321"
 
 func SendIPCCmd(cmd string) bool {
+	response, err := Call(Request{Command: cmd})
+	return err == nil && response.OK
+}
+
+// Call authenticates to the current profile owner without a fixed-port fallback.
+func Call(request Request) (Response, error) {
+	var response Response
+	endpoint, err := ReadEndpoint()
+	if err != nil {
+		return response, err
+	}
 	token, err := loadIPCToken()
 	if err != nil {
-		// No token means the daemon was never started from this install, or
-		// the token was removed. Either way there is nothing to talk to.
-		return false
+		return response, err
 	}
-
-	conn, err := net.DialTimeout("tcp", IPCAddress, 5*time.Second)
+	if request.Generation != "" && request.Generation != endpoint.Generation {
+		return response, fmt.Errorf("daemon generation changed")
+	}
+	if request.Version != 0 && request.Version != ProtocolVersion {
+		return response, fmt.Errorf("unsupported IPC protocol version %d", request.Version)
+	}
+	request.Version, request.Token, request.Generation = ProtocolVersion, token, endpoint.Generation
+	if request.RequestID == "" {
+		var random [16]byte
+		if _, err := rand.Read(random[:]); err != nil {
+			return response, err
+		}
+		request.RequestID = hex.EncodeToString(random[:])
+	}
+	if err := ValidateRequest(request); err != nil {
+		return response, err
+	}
+	conn, err := net.DialTimeout("tcp", endpoint.Address, 5*time.Second)
 	if err != nil {
-		return false
+		return response, err
 	}
 	defer conn.Close()
 
 	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		return false
+		return response, err
 	}
 
-	// Commands that change state carry the token. Read-only status requests do
-	// not, so they stay usable before the first daemon start.
-	payload := cmd
-	if IPCCommandNeedsToken(cmd) {
-		payload = cmd + " " + token
+	if err := writeEnvelope(conn, request); err != nil {
+		return response, err
 	}
-
-	if _, err := conn.Write([]byte(payload + "\n")); err != nil {
-		return false
+	if err := readEnvelope(conn, &response); err != nil {
+		return response, err
 	}
-
-	response, err := bufio.NewReader(conn).ReadString('\n')
-	return err == nil && strings.TrimSpace(response) == "ok"
+	if response.Version != ProtocolVersion || response.Generation != request.Generation || response.RequestID != request.RequestID {
+		return response, fmt.Errorf("daemon response identity does not match request")
+	}
+	if !response.OK {
+		return response, &RPCError{Response: response}
+	}
+	return response, nil
 }
 
 // IPCCommandNeedsToken reports whether a command mutates daemon state and must
