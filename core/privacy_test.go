@@ -37,6 +37,30 @@ func TestIsPrivateWindowTitle(t *testing.T) {
 	}
 }
 
+func TestPrivateTitleMarkersAreAnchored(t *testing.T) {
+	for _, title := range []string{
+		"How incognito works - Google Chrome",
+		"test-private.txt - Visual Studio Code",
+		"Private browsing tutorial - Mozilla Firefox",
+		"Guest mode documentation - Google Chrome",
+	} {
+		if IsPrivateWindowTitle(title) {
+			t.Errorf("public title %q classified as private", title)
+		}
+	}
+	for _, title := range []string{
+		"Bank - Private Browsing - Mozilla Firefox",
+		"Bank - Google Chrome (Incognito)",
+		"Bank - Privates Fenster - Mozilla Firefox",
+		"Bank - Navigation privée - Mozilla Firefox",
+		"Bank - Incógnito - Google Chrome",
+	} {
+		if !IsPrivateWindowTitle(title) {
+			t.Errorf("private suffix in %q was not recognized", title)
+		}
+	}
+}
+
 func TestStorableTitleDropsPrivate(t *testing.T) {
 	setupTestDB(t)
 	if err := system.SetRedactTitles(false); err != nil {
@@ -93,8 +117,8 @@ func TestPrivateSessionStoresNoPageText(t *testing.T) {
 	if stored == "Online Banking - Private Browsing - Mozilla Firefox" {
 		t.Error("the private page title was stored verbatim")
 	}
-	if stored != privateWindowLabel("firefox.exe") {
-		t.Errorf("stored title = %q; want %q", stored, privateWindowLabel("firefox.exe"))
+	if stored != "[redacted]" || tracker.currentSession.SiteName != "" || !tracker.currentSession.SiteKnown {
+		t.Errorf("private metadata = %q/%q; want redacted title and no site", stored, tracker.currentSession.SiteName)
 	}
 }
 
@@ -154,5 +178,25 @@ func TestConsecutiveRedactedPollsDoNotSplit(t *testing.T) {
 		if len(tracker.pendingSessions) != 0 {
 			t.Fatalf("poll %d: redacted polls must not split the session", i)
 		}
+	}
+}
+
+func TestPrivacyModeChangeRotatesNonBrowserInterval(t *testing.T) {
+	setupTestDB(t)
+	if err := system.SetPrivacyMode("titles"); err != nil {
+		t.Fatal(err)
+	}
+	tracker := &Tracker{pollInterval: time.Second}
+	tracker.applyPoll(&pollObservation{exeName: "notepad.exe", appID: "notepad|test", title: "Sensitive document"})
+	tracker.currentSession.StartTime = time.Now().Add(-time.Minute)
+	if err := system.SetPrivacyMode("strict"); err != nil {
+		t.Fatal(err)
+	}
+	tracker.applyPoll(&pollObservation{exeName: "notepad.exe", appID: "notepad|test", title: ""})
+	if tracker.currentSession == nil || tracker.currentSession.WindowTitle != "[redacted]" {
+		t.Fatal("stricter policy retained raw title")
+	}
+	if len(tracker.pendingSessions) != 1 {
+		t.Fatal("prior valid interval was lost")
 	}
 }

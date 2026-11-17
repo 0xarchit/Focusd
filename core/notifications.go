@@ -158,7 +158,7 @@ func (tp *toastProcess) wait(ctx context.Context) []byte {
 	return tp.stdout.Bytes()
 }
 
-const plainToastScript = `
+const toastSetupScript = `
 $ErrorActionPreference = 'Stop'
 [void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
 [void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
@@ -167,23 +167,36 @@ $xml.LoadXml($env:FOCUS_TOAST_XML)
 $xml.GetElementsByTagName('text').Item(0).InnerText = $env:FOCUS_TITLE
 $xml.GetElementsByTagName('text').Item(1).InnerText = $env:FOCUS_MSG
 $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('` + toastAUMID + `').Show($toast)
 `
+
+const toastShowScript = `[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('` + toastAUMID + `').Show($toast)
+`
+
+const plainToastScript = toastSetupScript + toastShowScript
 
 // actionToastScript extends the plain script with a two-minute activation
 // window. Register-ObjectEvent cannot subscribe to Windows Runtime events in
 // Windows PowerShell, which used to abort the script right after the toast was
 // shown and leave the Disable button dead; add_Activated plus a message pump
 // keeps the script alive and able to answer.
-const actionToastScript = plainToastScript + `
+const actionToastScript = toastSetupScript + `
 $global:focusdChoice = ''
 $handler = [Windows.Foundation.TypedEventHandler[Windows.UI.Notifications.ToastNotification, System.Object]]{
     param($sender, $e) $global:focusdChoice = [string]$e.Arguments
 }
 $null = $toast.add_Activated($handler)
+$dismissed = [Windows.Foundation.TypedEventHandler[Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications.ToastDismissedEventArgs]]{
+    param($sender, $e) $global:focusdChoice = 'dismissed'
+}
+$failed = [Windows.Foundation.TypedEventHandler[Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications.ToastFailedEventArgs]]{
+    param($sender, $e) $global:focusdChoice = 'failed'
+}
+$null = $toast.add_Dismissed($dismissed)
+$null = $toast.add_Failed($failed)
 Add-Type -AssemblyName System.Windows.Forms
-$deadline = (Get-Date).AddSeconds(120)
-while ($global:focusdChoice -eq '' -and (Get-Date) -lt $deadline) {
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('` + toastAUMID + `').Show($toast)
+$elapsed = [System.Diagnostics.Stopwatch]::StartNew()
+while ($global:focusdChoice -eq '' -and $elapsed.Elapsed.TotalSeconds -lt 120) {
     [System.Windows.Forms.Application]::DoEvents()
     Start-Sleep -Milliseconds 200
 }
@@ -192,7 +205,7 @@ if ($global:focusdChoice -ne '') { $global:focusdChoice } else { 'timeout' }
 
 const toastXMLTemplate = `<toast><visual><binding template="ToastGeneric"><text id="1"></text><text id="2"></text></binding></visual></toast>`
 
-const actionToastXMLTemplate = `<toast><visual><binding template="ToastGeneric"><text id="1"></text><text id="2"></text></binding></visual><actions><action content="Disable this reminder" arguments="disable" activationType="background"/><action content="Just close" arguments="close" activationType="background"/></actions></toast>`
+const actionToastXMLTemplate = `<toast><visual><binding template="ToastGeneric"><text id="1"></text><text id="2"></text></binding></visual><actions><action content="Snooze" arguments="disable" activationType="background"/><action content="Dismiss" arguments="close" activationType="background"/></actions></toast>`
 
 // toastEnv passes values raw. The script assigns title and message through
 // InnerText, which escapes on its own, and LoadXml requires the template to be
