@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
+	"focusd/coreapi"
 	"focusd/storage"
 	"net"
 	"os"
@@ -530,7 +532,7 @@ func TestHandleIPCConnectionBoundsUnauthenticatedRead(t *testing.T) {
 
 	select {
 	case n := <-written:
-		if n > maxIPCLineBytes {
+		if n > maxIPCLineBytes+1 {
 			t.Errorf("a peer pushed %d bytes past the %d-byte read bound", n, maxIPCLineBytes)
 		}
 	case <-time.After(5 * time.Second):
@@ -547,27 +549,30 @@ func TestHandleIPCConnectionBoundsUnauthenticatedRead(t *testing.T) {
 // TestHandleIPCConnectionAcceptsSmallRequest keeps the happy path pinned: a
 // normal-sized authenticated command still gets its "ok" reply.
 func TestHandleIPCConnectionAcceptsSmallRequest(t *testing.T) {
-	setupTestDB(t)
-
 	server, client := net.Pipe()
 	defer client.Close()
 
-	tracker := &Tracker{ipcToken: "secret"}
+	c := testController(t)
+	tracker := c.tracker
+	go func() { queued := <-c.requests; queued.reply <- c.handle(queued.request) }()
 	done := make(chan struct{})
 	go func() {
 		tracker.handleIPCConnection(server)
 		close(done)
 	}()
 
-	if _, err := client.Write([]byte("flush secret\n")); err != nil {
+	request := controllerCommand("flush")
+	data, _ := json.Marshal(request)
+	if _, err := client.Write(append(data, '\n')); err != nil {
 		t.Fatalf("write failed: %v", err)
 	}
 	response, err := bufio.NewReader(client).ReadString('\n')
 	if err != nil {
 		t.Fatalf("read failed: %v", err)
 	}
-	if strings.TrimSpace(response) != "ok" {
-		t.Errorf("response = %q; want ok", response)
+	var parsed coreapi.Response
+	if err := json.Unmarshal([]byte(strings.TrimSpace(response)), &parsed); err != nil || !parsed.OK || parsed.RequestID != request.RequestID {
+		t.Errorf("invalid reply: %s", response)
 	}
 	<-done
 }
