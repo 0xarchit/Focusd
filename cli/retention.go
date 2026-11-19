@@ -31,7 +31,8 @@ func runRetentionSet(daysStr string) {
 
 	days, err := strconv.Atoi(daysStr)
 	if err != nil {
-		ui.PrintError("Invalid number of days. Please provide a number between 1 and 30.")
+		ui.PrintError(fmt.Sprintf("Invalid number of days. Please provide a number between %d and %d.",
+			storage.MinRetentionDays, storage.MaxRetentionDays))
 		os.Exit(1)
 	}
 
