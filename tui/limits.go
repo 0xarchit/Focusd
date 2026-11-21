@@ -47,47 +47,33 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 			}
 		case "backspace":
 			if m.limitForm.Field == 0 && len(m.limitForm.App) > 0 {
-				m.limitForm.App = m.limitForm.App[:len(m.limitForm.App)-1]
+				m.limitForm.App = deleteInputRune(m.limitForm.App)
 			} else if m.limitForm.Field == 1 {
 				m.limitForm.Hours /= 10
 			} else if m.limitForm.Field == 2 {
 				m.limitForm.Minutes /= 10
 			}
 		case "enter":
-			if m.limitForm.Field == 3 {
-				mins := m.limitForm.Hours*60 + m.limitForm.Minutes
-				if m.limitForm.App != "" && mins > 0 {
-					var originalMins int
-					var hasOriginal bool
-					if m.limitForm.Editing && m.limitForm.OriginalApp != "" && !strings.EqualFold(m.limitForm.App, m.limitForm.OriginalApp) {
-						limits := system.GetAppTimeLimits()
-						if val, ok := limits[m.limitForm.OriginalApp]; ok {
-							originalMins = val
-							hasOriginal = true
-						}
-						if err := system.SetAppTimeLimit(m.limitForm.OriginalApp, 0); err != nil {
-							m.addToast("Failed to rename limit: "+err.Error(), toastError)
-							return *m, nil
-						}
-					}
-					if err := system.SetAppTimeLimit(m.limitForm.App, mins); err != nil {
-						if hasOriginal {
-							_ = system.SetAppTimeLimit(m.limitForm.OriginalApp, originalMins)
-						}
-						m.addToast("Failed to save limit: "+err.Error(), toastError)
-						return *m, nil
-					}
-					m.addToast("Limit saved for "+m.limitForm.App, toastSuccess)
-					m.limitForm = limitForm{}
-					return *m, loadDashboard()
+			mins := m.limitForm.Hours*60 + m.limitForm.Minutes
+			if strings.TrimSpace(m.limitForm.App) != "" && mins > 0 {
+				oldKey := m.limitForm.App
+				if m.limitForm.Editing && m.limitForm.OriginalApp != "" {
+					oldKey = m.limitForm.OriginalApp
 				}
-				m.addToast("App and limit are required", toastError)
+				if err := system.RenameAppTimeLimit(oldKey, m.limitForm.App, mins); err != nil {
+					m.addToast("Failed to save limit: "+err.Error(), toastError)
+					return *m, nil
+				}
+				m.addToast("Limit saved for "+m.limitForm.App, toastSuccess)
+				m.limitForm = limitForm{}
+				return *m, loadDashboard()
 			}
+			m.addToast("App and limit are required", toastError)
 		default:
-			if len(key) == 1 {
-				if m.limitForm.Field == 0 && len(m.limitForm.App) < 32 {
-					m.limitForm.App += key
-				} else if m.limitForm.Field == 1 || m.limitForm.Field == 2 {
+			if m.limitForm.Field == 0 {
+				m.limitForm.App = appendInputRunes(m.limitForm.App, inputRunesForKey(key), 32)
+			} else if len(key) == 1 {
+				if m.limitForm.Field == 1 || m.limitForm.Field == 2 {
 					n, err := strconv.Atoi(key)
 					if err == nil {
 						if m.limitForm.Field == 1 {
@@ -104,10 +90,6 @@ func (m *Model) handleLimitsKey(key string) (Model, tea.Cmd) {
 							}
 						}
 					}
-				}
-			} else if key == "space" || key == " " {
-				if m.limitForm.Field == 0 && len(m.limitForm.App) < 32 {
-					m.limitForm.App += " "
 				}
 			}
 		}

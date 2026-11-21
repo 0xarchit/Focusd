@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"focusd/storage"
 	"sort"
 	"strconv"
 	"strings"
@@ -55,7 +56,11 @@ func (m Model) handleCustomRangeModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 			}
 		}
 	case "enter":
-		from, to, err := validateCustomRange(m.statsCustomDraftFrom, m.statsCustomDraftTo, time.Now())
+		upper := time.Now()
+		if latest, err := storage.LatestHistoryDate(); err == nil && latest > upper.Format("2006-01-02") {
+			upper, _ = time.Parse("2006-01-02", latest)
+		}
+		from, to, err := validateCustomRange(m.statsCustomDraftFrom, m.statsCustomDraftTo, upper)
 		if err != nil {
 			m.modal.Error = err.Error()
 			return m, nil
@@ -89,6 +94,9 @@ func (m Model) handleCustomRangeModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 func (m Model) handleStatsKey(key string) (Model, tea.Cmd) {
 	switch key {
+	case "e":
+		m.modal = modal{Active: true, Title: "EXPORT RANGE", Message: "Export selected Stats range: " + renderExportButtons(true, m.settingsExportSelected) + ". Enter exports; Esc cancels."}
+		return m, nil
 	case "h", "left":
 		m.statsRange = (m.statsRange + 3) % 4
 		m.refreshing = true
@@ -390,6 +398,7 @@ func (m *Model) renderUsageBreakdown(width, visibleRows int) string {
 		end := min(len(sorted), start+visibleRows)
 		for i := start; i < end; i++ {
 			a := sorted[i]
+			name := usageLabel(a, sorted)
 			color := cyanStyle
 			if i == m.statsSelected && m.panelFocus == 1 {
 				color = lipgloss.NewStyle().Foreground(cWhite)
@@ -406,7 +415,7 @@ func (m *Model) renderUsageBreakdown(width, visibleRows int) string {
 			}
 			barStr := strings.Repeat("█", filled) + strings.Repeat("░", 3-filled)
 			line := mutedStyle.Render(fmt.Sprintf("%2d. ", i+1)) +
-				color.Render(padRight(truncate(a.Name, max(8, width-36)), max(8, width-36))) +
+				color.Render(padRight(truncate(name, max(8, width-36)), max(8, width-36))) +
 				padLeft(formatDuration(a.Duration), 8) +
 				padLeft(strconv.Itoa(a.Opens), 8) + " " +
 				color.Render(barStr)
@@ -436,8 +445,9 @@ func (m *Model) renderBrowserUsage(width, visibleRows int) string {
 		end := min(len(m.stats.Browsers), start+visibleRows)
 		for i := start; i < end; i++ {
 			b := m.stats.Browsers[i]
+			name := usageLabel(b, m.stats.Browsers)
 			prefix := mutedStyle.Render("▶ ")
-			line := prefix + boldStyle.Render(padRight(truncate(b.Name, titleW), titleW)) + padLeft(formatDuration(b.Duration), 10)
+			line := prefix + boldStyle.Render(padRight(truncate(name, titleW), titleW)) + padLeft(formatDuration(b.Duration), 10)
 			if i == m.browserSelected && m.panelFocus == 2 {
 				line = selectedRowStyle.Render(padRight(line, width-4))
 			} else if m.hoveredPanel == 2 && m.browserSelected == i {
@@ -661,7 +671,10 @@ func (m *Model) sortedStatsApps() []appUsage {
 		if cmp == 0 {
 			// Equal rows fall back to the name so the list cannot reshuffle
 			// between refreshes.
-			return apps[i].Name < apps[j].Name
+			if apps[i].Name != apps[j].Name {
+				return apps[i].Name < apps[j].Name
+			}
+			return apps[i].AppID < apps[j].AppID
 		}
 		if m.statsAsc {
 			return cmp < 0
@@ -671,4 +684,21 @@ func (m *Model) sortedStatsApps() []appUsage {
 	m.sortedAppsCache = apps
 	m.sortedAppsCacheKey = key
 	return apps
+}
+
+func usageLabel(item appUsage, items []appUsage) string {
+	duplicates := 0
+	for _, other := range items {
+		if other.Name == item.Name {
+			duplicates++
+		}
+	}
+	if duplicates < 2 {
+		return item.Name
+	}
+	identity := item.AppID
+	if identity == "" {
+		identity = item.ExeName
+	}
+	return "[" + identity + "] " + item.Name
 }
