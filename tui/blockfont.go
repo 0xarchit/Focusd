@@ -1,13 +1,14 @@
 package tui
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 func renderBlockTimer(mins, secs int) string {
 	var minDigits []int
-	if mins >= 100 {
-		minDigits = []int{mins / 100, (mins / 10) % 10, mins % 10}
-	} else {
-		minDigits = []int{mins / 10, mins % 10}
+	for _, digit := range fmt.Sprintf("%02d", max(0, mins)) {
+		minDigits = append(minDigits, int(digit-'0'))
 	}
 
 	s1, s2 := secs/10, secs%10

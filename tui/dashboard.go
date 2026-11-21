@@ -46,6 +46,16 @@ func (m Model) handleDashboardKey(key string) (Model, tea.Cmd) {
 }
 
 func (m *Model) renderDashboard(width, height int) string {
+	if height < 24 && m.panelFocus >= 3 {
+		var view string
+		if m.panelFocus == 3 {
+			view = m.renderWeeklyPanel(width, height-2)
+		} else {
+			view = m.renderQuickActionsPanel(width, height-2)
+		}
+		m.clickableRegions = append(m.clickableRegions, clickableRegion{X1: 0, Y1: m.contentTop, X2: lipgloss.Width(view), Y2: m.clampBodyBottom(m.contentTop+lipgloss.Height(view), height), ID: fmt.Sprintf("panel-%d", m.panelFocus), Kind: "panel"})
+		return view
+	}
 	inner := width
 
 	topHeight := (height * 55) / 100
@@ -148,10 +158,6 @@ func (m *Model) renderTopAppsPanel(width, height int) string {
 		maxDuration = max(maxDuration, a.Duration)
 	}
 	limits := system.GetAppTimeLimits()
-	limitedApps := make(map[string]bool, len(limits))
-	for key := range limits {
-		limitedApps[system.NormalizeConfigName(key)] = true
-	}
 	var lines []string
 
 	maxRows := max(1, height-4)
@@ -169,8 +175,9 @@ func (m *Model) renderTopAppsPanel(width, height int) string {
 
 		for idx := start; idx < end; idx++ {
 			a := m.dashboard.Apps[idx]
+			name := usageLabel(a, m.dashboard.Apps)
 			warn := "  "
-			if limitedApps[system.NormalizeConfigName(a.ExeName)] || limitedApps[system.NormalizeConfigName(a.Name)] {
+			if _, limited := system.MatchLimitKey(limits, a.AppID, a.ExeName); limited {
 				warn = amberStyle.Render("⚠ ")
 			}
 			nameW := max(10, width-24)
@@ -186,7 +193,7 @@ func (m *Model) renderTopAppsPanel(width, height int) string {
 			}
 			barStr := strings.Repeat("█", filled) + strings.Repeat("░", 3-filled)
 			line := mutedStyle.Render(fmt.Sprintf("%2d. ", idx+1)) + warn +
-				padRight(truncate(a.Name, nameW), nameW) +
+				padRight(truncate(name, nameW), nameW) +
 				padLeft(formatDuration(a.Duration), 8) + "  " +
 				cyanStyle.Render(barStr)
 

@@ -1,15 +1,13 @@
 package tui
 
 import (
-	"encoding/csv"
-	"encoding/json"
 	"fmt"
+	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,15 +15,26 @@ import (
 )
 
 func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
+	if key == "+" && (m.settingsSelected == 13 || m.settingsSelected == 14) {
+		m.settingsEditor = "APP DISPLAY NAME"
+		if m.settingsSelected == 14 {
+			m.settingsEditor = "SITE DISPLAY NAME"
+		}
+		m.settingsEditorKey, m.settingsEditorValue = "", ""
+		m.settingsEditorOriginalKey = ""
+		m.settingsEditorField = 0
+		return *m, nil
+	}
+	if m.settingsSelected >= 10 && (key == "enter" || key == "space" || key == "left" || key == "right" || key == "h" || key == "l" || key == "d") {
+		return m.handleAdditionalSetting(key)
+	}
 	if m.settingsAddingWhitelist {
 		switch key {
 		case "esc":
 			m.settingsAddingWhitelist = false
 			m.settingsWhitelistInput = ""
 		case "backspace":
-			if len(m.settingsWhitelistInput) > 0 {
-				m.settingsWhitelistInput = m.settingsWhitelistInput[:len(m.settingsWhitelistInput)-1]
-			}
+			m.settingsWhitelistInput = deleteInputRune(m.settingsWhitelistInput)
 		case "enter":
 			if strings.TrimSpace(m.settingsWhitelistInput) == "" {
 				m.addToast("App name is required", toastError)
@@ -39,13 +48,7 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			m.settingsAddingWhitelist = false
 			m.settingsWhitelistInput = ""
 		default:
-			if len(key) == 1 && len(m.settingsWhitelistInput) < 32 {
-				m.settingsWhitelistInput += key
-			} else if key == "space" || key == " " {
-				if len(m.settingsWhitelistInput) < 32 {
-					m.settingsWhitelistInput += " "
-				}
-			}
+			m.settingsWhitelistInput = appendInputRunes(m.settingsWhitelistInput, inputRunesForKey(key), 32)
 		}
 		return *m, nil
 	}
@@ -56,9 +59,7 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			m.settingsAddingBrowser = false
 			m.settingsBrowserInput = ""
 		case "backspace":
-			if len(m.settingsBrowserInput) > 0 {
-				m.settingsBrowserInput = m.settingsBrowserInput[:len(m.settingsBrowserInput)-1]
-			}
+			m.settingsBrowserInput = deleteInputRune(m.settingsBrowserInput)
 		case "enter":
 			if strings.TrimSpace(m.settingsBrowserInput) == "" {
 				m.addToast("Browser name is required", toastError)
@@ -72,20 +73,14 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			m.settingsAddingBrowser = false
 			m.settingsBrowserInput = ""
 		default:
-			if len(key) == 1 && len(m.settingsBrowserInput) < 32 {
-				m.settingsBrowserInput += key
-			} else if key == "space" || key == " " {
-				if len(m.settingsBrowserInput) < 32 {
-					m.settingsBrowserInput += " "
-				}
-			}
+			m.settingsBrowserInput = appendInputRunes(m.settingsBrowserInput, inputRunesForKey(key), 32)
 		}
 		return *m, nil
 	}
 
 	switch key {
 	case "j", "down":
-		m.settingsSelected = min(m.settingsSelected+1, 9)
+		m.settingsSelected = min(m.settingsSelected+1, len(settingsRows)-1)
 	case "k", "up":
 		m.settingsSelected = max(0, m.settingsSelected-1)
 	case "h", "left":
@@ -124,12 +119,13 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 			if m.daemonActive {
 				return *m, stopDaemonCmd()
 			}
-			pid, err := system.StartDaemon()
-			if err != nil {
-				m.addToast("Failed to start daemon: "+err.Error(), toastError)
-			} else {
-				m.addToast(fmt.Sprintf("Daemon started (PID %d)", pid), toastSuccess)
-				m.daemonActive = true
+			clientID := m.clientID
+			return *m, func() tea.Msg {
+				if sample, err := system.ReadClockSample(); err == nil {
+					_ = coreapi.PublishTUIPresence(clientID, sample)
+				}
+				_, err := system.StartDaemon()
+				return daemonStartMsg{err}
 			}
 		case 1:
 			enabled, _, err := system.GetAutoStartEnabled()
@@ -181,23 +177,22 @@ func (m *Model) handleSettingsKey(key string) (Model, tea.Cmd) {
 		case 6:
 			openDBFolder()
 		case 7:
-			jsonOut := m.settingsExportSelected == 1
-			path, err := exportData(jsonOut)
-			if err != nil {
-				m.addToast("Export failed: "+err.Error(), toastError)
-			} else {
-				m.addToast("Exported to Downloads\\"+filepath.Base(path), toastSuccess)
-			}
+			return *m, m.exportCmd(true)
 		case 8:
-			if err := launchGitHubUpdate(); err != nil {
-				m.addToast("Failed to launch updater", toastError)
-			} else {
-				m.addToast("Updater opened in new window", toastSuccess)
-			}
+			m.updateRequested = true
+			return *m, tea.Quit
 		case 9:
-			m.modal = modal{
-				Active: true, Title: "WIPE DATA", Required: "DELETE",
-				Message: "This will delete all tracking data and cannot be undone.",
+			if m.operationPending || m.operationID != "" {
+				m.addToast("A tracking data operation is already running", toastWarning)
+				return *m, nil
+			}
+			m.clockRequest = coreapi.Request{Command: "reset", RequestID: newClientID(), Generation: m.daemonGeneration}
+			m.resetOffline = !m.daemonActive
+			if m.resetOffline {
+				m.modal = modal{Active: true, Title: "WIPE DATA", Required: "DELETE", Message: "Type DELETE to clear usage and timer. Settings are preserved. Requires exclusive access to the profile."}
+			} else {
+				m.operationPending = true
+				return *m, m.rpcCmd(m.clockRequest)
 			}
 		}
 	case "d":
@@ -268,7 +263,7 @@ func (m *Model) renderSettings(width, height int) string {
 		m.settingRow(1, m.settingsSelected, "Auto-start on login", toggleText(auto), inner),
 		"",
 		"TRACKING",
-		m.settingRow(2, m.settingsSelected, "Browser tracking", toggleText(!paused), inner),
+		m.settingRow(2, m.settingsSelected, "Activity tracking", toggleText(!paused), inner),
 		m.settingRow(3, m.settingsSelected, "Whitelisted apps", whitelistValue, inner),
 		m.settingRow(4, m.settingsSelected, "Tracked browsers", browserValue, inner),
 		"",
@@ -285,11 +280,15 @@ func (m *Model) renderSettings(width, height int) string {
 		m.settingRow(8, m.settingsSelected, "Update app", buttonText("Update from GitHub"), inner),
 		"",
 		"DANGER ZONE",
-		m.settingRow(9, m.settingsSelected, "Danger zone", redStyle.Bold(true).Render("[ Uninstall / Wipe All Data ]"), inner),
+		m.settingRow(9, m.settingsSelected, "Tracking history", redStyle.Bold(true).Render("[ Wipe All Tracking Data ]"), inner),
+	}
+	lines = append(lines, "", "PRIVACY & IDLE")
+	for index := 10; index < len(settingsRows); index++ {
+		lines = append(lines, m.settingRow(index, m.settingsSelected, settingsRows[index], m.additionalSettingValue(index), inner))
 	}
 	for i, line := range lines {
 		switch line {
-		case "DAEMON", "TRACKING", "DATA":
+		case "DAEMON", "TRACKING", "DATA", "PRIVACY & IDLE":
 			lines[i] = boldStyle.Render(line) + "\n" + mutedStyle.Render("────────────────────────────────────────")
 		case "DANGER ZONE":
 			lines[i] = redStyle.Bold(true).Render(line) + "\n" + redStyle.Render("────────────────────────────────────────")
@@ -371,55 +370,7 @@ func launchGitHubUpdate() error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("cmd", "/c", "start", "", exePath, "update")
-	return cmd.Start()
-}
-
-func exportData(jsonOut bool) (string, error) {
-	userProfile := os.Getenv("USERPROFILE")
-	if userProfile == "" {
-		return "", fmt.Errorf("USERPROFILE not set")
-	}
-	exportDir := filepath.Join(userProfile, "Downloads")
-	if err := os.MkdirAll(exportDir, 0755); err != nil {
-		exportDir = userProfile
-	}
-	if jsonOut {
-		path := filepath.Join(exportDir, "focusd_export.json")
-		apps, err := storage.GetAppStatsInRange("", "")
-		if err != nil {
-			return "", err
-		}
-		b, err := json.MarshalIndent(apps, "", "  ")
-		if err != nil {
-			return "", err
-		}
-		return path, os.WriteFile(path, b, 0644)
-	}
-	path := filepath.Join(exportDir, "focusd_export.csv")
-	apps, err := storage.GetAppStatsInRange("", "")
-	if err != nil {
-		return "", err
-	}
-	f, err := os.Create(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	w := csv.NewWriter(f)
-	if err := w.Write([]string{"Date", "App Name", "Executable", "Duration (seconds)", "Open Count"}); err != nil {
-		return "", err
-	}
-	for _, app := range apps {
-		if err := w.Write([]string{app.Date, app.AppName, app.ExeName, strconv.Itoa(app.TotalDurationSecs), strconv.Itoa(app.OpenCount)}); err != nil {
-			return "", err
-		}
-	}
-	w.Flush()
-	if err := w.Error(); err != nil {
-		return "", err
-	}
-	return path, nil
+	return exec.Command(exePath, "update").Run()
 }
 
 func renderExportButtons(active bool, selectedButton int) string {

@@ -28,6 +28,7 @@ const (
 var tabNames = []string{"DASHBOARD", "STATS", "FOCUS", "LIMITS", "SETTINGS"}
 
 type appUsage struct {
+	AppID    string
 	Name     string
 	ExeName  string
 	Duration int
@@ -101,8 +102,31 @@ type modal struct {
 }
 
 type Model struct {
-	width  int
-	height int
+	clientID                  string
+	daemonGeneration          string
+	statusPending             bool
+	leaseRegistered           bool
+	clockState                storage.ClockState
+	clockPrompt               bool
+	clockSelection            int
+	clockError                string
+	clockRequest              coreapi.Request
+	operationID               string
+	operationPending          bool
+	resetOffline              bool
+	updateRequested           bool
+	settingsEditor            string
+	settingsEditorKey         string
+	settingsEditorOriginalKey string
+	settingsEditorValue       string
+	settingsEditorField       int
+	settingsOverrideSelected  int
+	retentionPreview          storage.RetentionPreview
+	callIPC                   func(coreapi.Request) (coreapi.Response, error)
+	exportUsage               func(coreapi.ExportOptions) (string, error)
+	changeTimer               func(bool, int) error
+	width                     int
+	height                    int
 
 	activeTab    int
 	panelFocus   int
@@ -169,6 +193,7 @@ type clickableRegion struct {
 
 func NewModel() Model {
 	return Model{
+		clientID:               newClientID(),
 		activeTab:              tabDashboard,
 		splash:                 true,
 		clock:                  time.Now(),
@@ -187,7 +212,7 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		secondTick(),
 		tea.Tick(1500*time.Millisecond, func(time.Time) tea.Msg { return splashDoneMsg{} }),
-		checkDaemon(),
+		m.daemonStatusCmd(),
 		loadDashboard(),
 		loadStats(m.statsRange, m.statsCustomFrom, m.statsCustomTo),
 	)
@@ -212,9 +237,8 @@ func (m *Model) dueForRefreshForTest(now time.Time) bool {
 
 func checkDaemon() tea.Cmd {
 	return func() tea.Msg {
-		// Scoped to this user's install so another user's daemon on a shared
-		// machine is not reported as ours.
-		return statusMsg(system.CountInstancesInDir(system.DaemonProcessName, system.GetInstallDir()) >= 1)
+		response, err := coreapi.Call(coreapi.Request{Command: "status"})
+		return statusMsg(err == nil && response.OK)
 	}
 }
 
@@ -234,9 +258,7 @@ func loadDashboard() tea.Cmd {
 		// daemon runs it announces completion itself, so check only when it
 		// is stopped and the toast cannot go out twice. Scoped to this user's
 		// install so another user's daemon cannot mask a stopped one.
-		if system.CountInstancesInDir(system.DaemonProcessName, system.GetInstallDir()) < 1 {
-			core.CheckPomodoroCompletion()
-		}
+		core.CheckPomodoroCompletion()
 		today := storage.Today()
 		return dashboardLoadedMsg(readTUIData(today, today, 7, true))
 	}
@@ -272,7 +294,7 @@ func statsRangeDates(rangeIndex int, customFrom, customTo string, now time.Time)
 			return today, today, 1
 		}
 		days := int(toTime.Sub(fromTime).Hours()/24) + 1
-		return customFrom, customTo, min(max(days, 1), storage.MaxRetentionDays)
+		return customFrom, customTo, min(max(days, 1), 366)
 	default:
 		return today, today, 1
 	}
@@ -294,6 +316,7 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 			name = s.ExeName
 		}
 		data.Apps = append(data.Apps, appUsage{
+			AppID:    s.AppID,
 			Name:     name,
 			ExeName:  s.ExeName,
 			Duration: s.TotalDurationSecs,
@@ -309,6 +332,7 @@ func readTUIData(startDate, endDate string, historyDays int, includeHourly bool)
 	}
 	for _, s := range browsers {
 		data.Browsers = append(data.Browsers, appUsage{
+			AppID:    s.AppID,
 			Name:     s.AppName,
 			ExeName:  s.ExeName,
 			Duration: s.TotalDurationSecs,
@@ -433,6 +457,7 @@ func aggregateAppStats(startDate, endDate string) ([]storage.AppDailyStat, error
 	for _, item := range combined {
 		out = append(out, item)
 	}
+	out = coreapi.ApplyDisplayOverrides(out)
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].TotalDurationSecs != out[j].TotalDurationSecs {
 			return out[i].TotalDurationSecs > out[j].TotalDurationSecs
@@ -454,11 +479,17 @@ func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, e
 	}
 	combined := map[string]storage.AppDailyStat{}
 	for _, s := range stats {
-		key := coreapi.CollapseURLTitle(s.AppName)
+		site := coreapi.CollapseURLTitle(s.AppName)
+		identity := s.AppID
+		if identity == "" {
+			identity = s.ExeName
+		}
+		key := identity + "\x00" + site
 		item := combined[key]
 		if item.AppName == "" {
-			item.AppName = key
+			item.AppName = site
 			item.ExeName = s.ExeName
+			item.AppID = s.AppID
 		}
 		item.TotalDurationSecs += s.TotalDurationSecs
 		item.OpenCount += s.OpenCount
@@ -468,6 +499,7 @@ func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, e
 	for _, item := range combined {
 		out = append(out, item)
 	}
+	out = coreapi.ApplySiteOverrides(out)
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].TotalDurationSecs != out[j].TotalDurationSecs {
 			return out[i].TotalDurationSecs > out[j].TotalDurationSecs
@@ -478,7 +510,7 @@ func aggregateBrowserStats(startDate, endDate string) ([]storage.AppDailyStat, e
 		if out[i].AppName != out[j].AppName {
 			return out[i].AppName < out[j].AppName
 		}
-		return false
+		return out[i].AppID < out[j].AppID
 	})
 	return out, nil
 }
@@ -521,7 +553,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clock = time.Time(msg)
 		m.splashFrame++
 		m.pruneToasts()
-		cmds = append(cmds, secondTick(), checkDaemon())
+		cmds = append(cmds, secondTick())
+		if !m.statusPending {
+			m.statusPending = true
+			cmds = append(cmds, m.daemonStatusCmd())
+		}
+		if m.operationID != "" && !m.operationPending {
+			m.operationPending = true
+			cmds = append(cmds, m.rpcCmd(coreapi.Request{Command: "operation-status", OperationID: m.operationID, Generation: m.daemonGeneration}))
+		}
 
 		// Reload on elapsed time rather than Second()%N, which fires on every multiple
 		// of N within a minute.
@@ -534,6 +574,44 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case statusMsg:
 		m.daemonActive = bool(msg)
+	case daemonStatusMsg:
+		m.statusPending = false
+		m.daemonActive = msg.err == nil
+		m.leaseRegistered = msg.err == nil
+		if msg.response.Generation != "" {
+			m.daemonGeneration = msg.response.Generation
+		}
+		if msg.err == nil {
+			if msg.status.Shutdown {
+				return m, tea.Quit
+			}
+			m.acceptClockStatus(msg.status.Clock)
+		} else if msg.offlineState != nil {
+			m.acceptClockStatus(*msg.offlineState)
+		}
+	case daemonRPCMsg:
+		cmds = append(cmds, m.handleRPCResult(msg))
+	case exportDoneMsg:
+		if msg.err != nil {
+			m.addToast("Export failed: "+msg.err.Error(), toastError)
+		} else {
+			m.addToast("Exported to "+msg.path, toastSuccess)
+		}
+	case timerDoneMsg:
+		if msg.err != nil {
+			m.addToast("Timer action failed: "+msg.err.Error(), toastError)
+		} else if msg.start {
+			m.addToast("Focus timer started", toastSuccess)
+		} else {
+			m.addToast("Focus timer stopped", toastInfo)
+		}
+		cmds = append(cmds, m.daemonStatusCmd())
+	case daemonStartMsg:
+		if msg.err != nil {
+			m.addToast("Failed to start daemon: "+msg.err.Error(), toastError)
+		} else {
+			m.addToast("Daemon started", toastSuccess)
+		}
 	case daemonStopMsg:
 		if bool(msg) {
 			m.addToast("Daemon stopped gracefully", toastSuccess)
@@ -555,6 +633,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statsBrowserOffset = min(m.statsBrowserOffset, max(0, len(m.stats.Browsers)-1))
 		m.refreshing = false
 	case tea.KeyMsg:
+		if m.clockPrompt {
+			next, cmd := m.handleClockKey(msg)
+			*m = next
+			return m, cmd
+		}
 		if m.splash {
 			if msg.String() == "ctrl+c" || msg.String() == "q" {
 				return m, tea.Quit
@@ -574,6 +657,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) contentHeight() int {
 	contentHeight := m.height - lipgloss.Height(m.renderHeader()) - lipgloss.Height(m.renderTabs()) - lipgloss.Height(m.renderFooter())
+	if m.clockState.Incident != nil {
+		contentHeight--
+	}
 	if contentHeight < 1 {
 		return 1
 	}
@@ -589,6 +675,13 @@ func (m Model) clampBodyBottom(y, height int) int {
 
 func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	key := msg.String()
+	if m.clockState.Incident != nil && key == "c" {
+		m.clockPrompt = true
+		return m, nil
+	}
+	if m.settingsEditor != "" {
+		return m.handleSettingsEditor(msg)
+	}
 	if m.showHelp {
 		switch key {
 		case "?", "esc", "q":
@@ -598,6 +691,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	}
 	if m.modal.Active {
 		return m.handleModalKey(msg)
+	}
+	if m.insertFormRunes(msg) {
+		return m, nil
 	}
 
 	isInputActive := (m.activeTab == tabLimits && m.limitForm.Visible) ||
@@ -673,40 +769,40 @@ func (m Model) handleModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	if m.modal.Title == "CUSTOM RANGE" {
 		return m.handleCustomRangeModalKey(msg)
 	}
+	if m.modal.Title == "EXPORT RANGE" {
+		return m.handleExportKey(msg)
+	}
+	if msg.Type == tea.KeyRunes && !msg.Alt {
+		m.modal.Input = appendInputRunes(m.modal.Input, msg.Runes, 32)
+		return m, nil
+	}
 
 	switch key {
 	case "esc":
 		m.modal = modal{}
 	case "backspace":
-		if len(m.modal.Input) > 0 {
-			m.modal.Input = m.modal.Input[:len(m.modal.Input)-1]
-		}
+		m.modal.Input = deleteInputRune(m.modal.Input)
 	case "enter":
 		if m.modal.Required == "" || m.modal.Input == m.modal.Required {
 			if m.modal.Title == "WIPE DATA" {
-				if err := storage.ClearAllTrackingData(); err != nil {
-					m.addToast("Failed to wipe data", toastError)
-				} else {
-					m.addToast("Tracking data wiped", toastSuccess)
-					m.dashboard = tuiData{}
-					m.stats = tuiData{}
-					m.sortedAppsCache = nil
-					m.dashSelected = 0
-					m.limitsSelected = 0
-					m.statsSelected = 0
-					m.browserSelected = 0
-					m.statsUsageOffset = 0
-					m.statsBrowserOffset = 0
-				}
+				request := m.clockRequest
+				request.Confirm = true
+				m.clockRequest = request
 				m.modal = modal{}
-				return m, tea.Batch(loadDashboard(), loadStats(m.statsRange, m.statsCustomFrom, m.statsCustomTo))
+				m.operationPending = true
+				if m.resetOffline {
+					return m, offlineResetCmd(request)
+				}
+				return m, m.rpcCmd(request)
+			}
+			if m.modal.Title == "REVIEW CLEANUP" {
+				m.modal = modal{}
+				return m, m.rpcCmd(coreapi.Request{Command: "retention-confirm", Confirm: true, ConfirmToken: m.retentionPreview.Token, Generation: m.daemonGeneration})
 			}
 			m.modal = modal{}
 		}
 	default:
-		if len(key) == 1 && len(m.modal.Input) < 32 {
-			m.modal.Input += key
-		}
+		m.modal.Input = appendInputRunes(m.modal.Input, inputRunesForKey(key), 32)
 	}
 	return m, nil
 }
@@ -714,7 +810,7 @@ func (m Model) handleModalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 func (m Model) panelCount() int {
 	switch m.activeTab {
 	case tabDashboard:
-		return 3
+		return 5
 	case tabStats:
 		return 4
 	case tabFocus:
@@ -754,12 +850,21 @@ func (m *Model) View() string {
 		return ""
 	}
 	if m.width < 80 || m.height < 24 {
+		if m.clockPrompt {
+			return m.renderClockPrompt()
+		}
+		if m.clockState.Incident != nil {
+			return clipLines("Clock warning: tracking is paused. Press c to review.\nResize to 80×24 for all panels.", m.height, m.width)
+		}
 		return appStyle.Width(m.width).Height(m.height).Render(
 			lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center,
 				amberStyle.Render("⚠ Terminal too small. Resize to at least 80×24.")),
 		)
 	}
 	if m.splash {
+		if m.clockPrompt {
+			return m.renderClockPrompt()
+		}
 		return appStyle.Width(m.width).Height(m.height).Render(m.renderSplash())
 	}
 
@@ -771,6 +876,9 @@ func (m *Model) View() string {
 
 	header := m.renderHeader()
 	nav := m.renderTabs()
+	if m.clockState.Incident != nil {
+		nav += "\n" + fitLine(amberStyle.Render("Clock warning: tracking paused. [c] Review choices"), m.width)
+	}
 	footer := m.renderFooter()
 
 	contentHeight := m.contentHeight()
@@ -803,6 +911,12 @@ func (m *Model) View() string {
 	}
 	if len(m.toasts) > 0 {
 		screen = m.placeToasts(screen)
+	}
+	if m.settingsEditor != "" {
+		screen = m.overlay(screen, m.renderSettingsEditor())
+	}
+	if m.clockPrompt {
+		screen = m.overlay(screen, m.renderClockPrompt())
 	}
 	return appStyle.Width(originalWidth).Height(m.height).Render(screen)
 }
@@ -941,6 +1055,10 @@ func (m *Model) renderFooter() string {
 func (m Model) renderModal() string {
 	if m.modal.Title == "CUSTOM RANGE" {
 		return m.renderCustomRangeModal()
+	}
+	if m.modal.Title == "EXPORT RANGE" || m.modal.Title == "REVIEW CLEANUP" {
+		width := min(72, m.width-2)
+		return panelWithHover(m.modal.Title, "", width, wrapModalText(m.modal.Message, width-4)+"\n\nEnter confirms; Esc cancels.", true, false)
 	}
 
 	msg := []string{
@@ -1097,7 +1215,6 @@ func (m Model) renderHelp() string {
 		"",
 		boldStyle.Render("FOCUS TAB"),
 		cyanStyle.Render("s") + "       Start timer",
-		cyanStyle.Render("p") + "       Pause timer",
 		cyanStyle.Render("x") + "       Stop timer",
 		cyanStyle.Render("r") + "       Reset timer",
 		"",
@@ -1122,7 +1239,10 @@ func (m Model) renderHelp() string {
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) (Model, tea.Cmd) {
-	if m.splash || m.showHelp || m.modal.Active {
+	if m.clockPrompt {
+		return m.handleClockMouse(msg)
+	}
+	if m.splash || m.showHelp || m.modal.Active || m.settingsEditor != "" {
 		return m, nil
 	}
 
