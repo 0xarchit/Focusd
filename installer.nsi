@@ -2,6 +2,13 @@
   !define VERSION "0.0.0"
 !endif
 
+!ifndef BINARY_DIR
+  !define BINARY_DIR "."
+!endif
+!ifndef OUTPUT_FILE
+  !define OUTPUT_FILE "focusd_setup.exe"
+!endif
+
 !include "MUI2.nsh"
 !include "WinMessages.nsh"
 
@@ -11,13 +18,8 @@ RequestExecutionLevel user
 
 
 Name "Focusd"
-OutFile "focusd_setup.exe"
+OutFile "${OUTPUT_FILE}"
 InstallDir "$APPDATA\focusd"
-
-; Holds the PowerShell executable used by the process-filter fallbacks. The
-; 32-bit installer must reach the 64-bit PowerShell (via Sysnative) to read
-; executable paths of the 64-bit focusd processes.
-Var PsExe
 
 ; Registry key for uninstall info
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Focusd"
@@ -41,31 +43,33 @@ Var PsExe
 ; Languages
 !insertmacro MUI_LANGUAGE "English"
 
-Section "Install"
-  SetOutPath "$INSTDIR"
-  
-  ; Stop the daemon and any running TUI before overwriting the binaries.
-  ; Only processes running from this install directory are stopped, so a
-  ; copy running from elsewhere keeps working. The path travels through
-  ; the environment, which keeps quotes or wildcard characters in it from
-  ; breaking the PowerShell filter.
-  DetailPrint "Stopping existing daemon if active..."
-  IfFileExists "$INSTDIR\focusd.exe" 0 +3
-    ExecWait '"$INSTDIR\focusd.exe" stop'
-    Sleep 1000
-  ; A plain "powershell.exe" would run the 32-bit PowerShell under WOW64,
-  ; which cannot read the executable path of a 64-bit focusd process, so
-  ; the filter would never match. Sysnative selects the 64-bit PowerShell.
-  StrCpy $PsExe "powershell.exe"
-  IfFileExists "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
-    StrCpy $PsExe "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
-  System::Call 'kernel32::SetEnvironmentVariable(t "FOCUSD_INSTDIR", t "$INSTDIR")'
-  ExecWait `"$PsExe" -NoProfile -Command "Get-Process focusd_daemon -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ne $$null -and $$_.Path.StartsWith($$env:FOCUSD_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
-  ExecWait `"$PsExe" -NoProfile -Command "Get-Process focusd -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ne $$null -and $$_.Path.StartsWith($$env:FOCUSD_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
-  Sleep 500
+; Bundle the new control protocol even when replacing an older CLI. This helper
+; is named differently so scoped focusd.exe exit checks cannot count themselves.
+!macro PrepareFocusdProcesses
+  InitPluginsDir
+  ClearErrors
+  File /oname=$PLUGINSDIR\focusd-control.exe "${BINARY_DIR}\focusd.exe"
+  IfErrors shutdown_failed
+  DetailPrint "Waiting for Focusd terminals and daemon to exit gracefully..."
+  ClearErrors
+  ExecWait '"$PLUGINSDIR\focusd-control.exe" shutdown-clients --install-dir "$INSTDIR"' $0
+  IfErrors shutdown_failed
+  StrCmp $0 "0" shutdown_ready
+  shutdown_failed:
+    DetailPrint "Focusd could not shut down safely. Close all Focusd terminals and stop the daemon manually, then retry. Older versions must be stopped manually."
+    IfSilent +2
+      MessageBox MB_OK|MB_ICONEXCLAMATION "Focusd could not shut down safely. Close all Focusd terminals and stop the daemon manually, then retry. Older versions must be stopped manually."
+    SetErrorLevel 2
+    Abort
+  shutdown_ready:
+!macroend
 
-  File "focusd.exe"
-  File "focusd_daemon.exe"
+Section "Install"
+  !insertmacro PrepareFocusdProcesses
+  SetOutPath "$INSTDIR"
+
+  File "${BINARY_DIR}\focusd.exe"
+  File "${BINARY_DIR}\focusd_daemon.exe"
 
   ; Delete legacy Startup shortcut if it exists
   Delete "$SMSTARTUP\Focus Daemon.lnk"
@@ -99,32 +103,17 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
-  ; Stop the daemon process gracefully
-  DetailPrint "Stopping daemon process..."
-  IfFileExists "$INSTDIR\focusd.exe" 0 +3
-    ExecWait '"$INSTDIR\focusd.exe" stop'
-    Sleep 1000
-
-  ; Force kill if still running to release file locks. Scoped to this
-  ; directory like the install section; a copy running from elsewhere is
-  ; left alone.
-  ; A plain "powershell.exe" would run the 32-bit PowerShell under WOW64,
-  ; which cannot read the executable path of a 64-bit focusd process, so
-  ; the filter would never match. Sysnative selects the 64-bit PowerShell.
-  StrCpy $PsExe "powershell.exe"
-  IfFileExists "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" 0 +2
-    StrCpy $PsExe "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
-  System::Call 'kernel32::SetEnvironmentVariable(t "FOCUSD_INSTDIR", t "$INSTDIR")'
-  ExecWait `"$PsExe" -NoProfile -Command "Get-Process focusd_daemon -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ne $$null -and $$_.Path.StartsWith($$env:FOCUSD_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
-  ExecWait `"$PsExe" -NoProfile -Command "Get-Process focusd -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ne $$null -and $$_.Path.StartsWith($$env:FOCUSD_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"`
-  Sleep 500
+  !insertmacro PrepareFocusdProcesses
 
   ; Remove from user PATH while the exe still exists. focusd.exe owns the
   ; logic; see the install section.
   IfFileExists "$INSTDIR\focusd.exe" 0 skip_path_disable
     ExecWait '"$INSTDIR\focusd.exe" path disable' $0
-    StrCmp $0 "0" +2
-      DetailPrint "WARNING: could not remove focusd from PATH (exit code $0). Run 'focusd path disable' manually."
+    StrCmp $0 "0" path_disable_succeeded
+    DetailPrint "WARNING: could not remove focusd from PATH (exit code $0). The PATH backup is retained for recovery."
+    Goto skip_path_disable
+  path_disable_succeeded:
+    DeleteRegValue HKCU "Environment" "Path.focusd-backup"
   skip_path_disable:
 
   Delete "$INSTDIR\focusd.exe"
@@ -136,6 +125,7 @@ Section "Uninstall"
 
   ; Remove registry uninstall keys
   DeleteRegKey HKCU "${UNINST_KEY}"
+  DeleteRegKey HKCU "Software\Classes\AppUserModelId\Focusd.Desktop"
 
   ; $INSTDIR also holds focusd.db and config.json, which is the user's tracking
   ; history. It is deliberately not removed, so uninstall and reinstall keep the

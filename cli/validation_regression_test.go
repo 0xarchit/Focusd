@@ -99,3 +99,28 @@ func TestRetentionInvalidInputReportsActualSupportedRange(t *testing.T) {
 		t.Fatalf("output %q does not contain %q", output, want)
 	}
 }
+
+func TestCompareVersionsSemVerIdentifiers(t *testing.T) {
+	tests := []struct {
+		name, a, b string
+		want       int
+	}{
+		{"metadata with hyphen", "1.2.3+meta-build", "1.2.3", 0},
+		{"prerelease metadata ignored", "1.2.3-rc.2+build.9", "1.2.3-rc.2+other", 0},
+		{"numeric prerelease", "1.2.3-rc.10", "1.2.3-rc.2", 1},
+		{"large numeric prerelease", "1.2.3-999999999999999999999999", "1.2.3-99999999999999999999999", 1},
+		{"numeric before alphanumeric", "1.2.3-10", "1.2.3-alpha", -1},
+		{"additional identifier", "1.2.3-alpha.1", "1.2.3-alpha", 1},
+		{"alphanumeric retains lexical precedence", "1.2.3-rc10", "1.2.3-rc2", -1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := compareVersions(tc.a, tc.b); got != tc.want {
+				t.Errorf("compareVersions(%q, %q) = %d; want %d", tc.a, tc.b, got, tc.want)
+			}
+			if got := compareVersions(tc.b, tc.a); got != -tc.want {
+				t.Errorf("reverse comparison = %d; want %d", got, -tc.want)
+			}
+		})
+	}
+}
