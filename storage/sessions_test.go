@@ -34,6 +34,8 @@ func TestGetAppUsageTodaySecondsForConfig(t *testing.T) {
 		{"Chrome", 1500},
 		// A full key matches one install only.
 		{"chrome|aaaa1111", 1200},
+		{"Chrome.exe|AAAA1111", 1200},
+		{" Chrome.exe | AAAA1111 ", 1200},
 		{"chrome|bbbb2222", 300},
 		{"firefox", 900},
 		{"notepad", 0},
@@ -73,6 +75,9 @@ func TestGetAppUsageTodaySecondsForConfigIncludesLiveSession(t *testing.T) {
 	// ...a full key of the live install too...
 	if got := GetAppUsageTodaySecondsForConfig("chrome|aaaa1111"); got <= 600 || got > 900 {
 		t.Errorf("full key usage = %d; want the live elapsed time added on top of 600", got)
+	}
+	if got, want := GetAppUsageTodaySecondsForConfig("Chrome.exe|AAAA1111"), GetAppUsageTodaySecondsForConfig("chrome|aaaa1111"); got != want {
+		t.Errorf("legacy uppercase full key usage = %d; want stored and live total %d", got, want)
 	}
 	// ...while another install does not pick it up.
 	if got := GetAppUsageTodaySecondsForConfig("chrome|bbbb2222"); got != 0 {
