@@ -10,9 +10,7 @@ import (
 	"time"
 )
 
-// IPC listens on a fixed loopback port, so a per-install token file keeps it
-// closed to other local processes. The 0600 mode applies off Windows; on Windows
-// the file inherits the %APPDATA% ACL.
+// The per-profile token authenticates clients to the published loopback endpoint.
 
 const ipcTokenFile = "ipc.key"
 
@@ -90,6 +88,11 @@ func createIPCToken(path, token string) error {
 		return err
 	}
 	if _, err := f.WriteString(token + "\n"); err != nil {
+		f.Close()
+		os.Remove(path)
+		return err
+	}
+	if err := f.Sync(); err != nil {
 		f.Close()
 		os.Remove(path)
 		return err
