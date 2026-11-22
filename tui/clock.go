@@ -218,7 +218,7 @@ func (m *Model) handleRPCResult(msg daemonRPCMsg) tea.Cmd {
 		if msg.request.Command == "clock-resolve" {
 			m.clockError = "Reset will back up history, clear usage and timer, and preserve settings. Press 2 or Enter again to confirm."
 		} else {
-			m.modal = modal{Active: true, Title: "WIPE DATA", Required: "DELETE", Message: "Type DELETE to clear usage and timer. Settings are preserved."}
+			m.modal = modal{Active: true, Title: "WIPE DATA", Required: "DELETE", Message: "Type DELETE to back up and clear usage and timer. The backup retains history; settings are preserved."}
 		}
 		return nil
 	case "running":
