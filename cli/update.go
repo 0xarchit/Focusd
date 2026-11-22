@@ -2,24 +2,20 @@ package cli
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"focusd/coreapi"
 	"focusd/system"
 	"focusd/ui"
-
-	"golang.org/x/sys/windows"
 )
 
 // metaClient has a short timeout for small API calls. The download client
@@ -63,36 +59,8 @@ func runUpdate() {
 		return
 	}
 
-	// Ask the daemon to stop over IPC first so buffered sessions are written
-	// out. Hard-killing it dropped up to five minutes of tracked time.
-	daemonWasRunning := system.CountInstancesInDir(system.DaemonProcessName, system.GetInstallDir()) >= 1
-	if daemonWasRunning {
-		ui.PrintStatus("Stopping focusd daemon...", "", false)
-		if !coreapi.SendIPCCmd("stop") {
-			ui.PrintWarn("Daemon did not acknowledge the stop request.")
-			if err := system.KillInstancesInDir(system.DaemonProcessName, system.GetInstallDir()); err != nil {
-				ui.PrintWarn(fmt.Sprintf("Could not stop daemon: %v", err))
-			}
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	ui.PrintStatus("Closing other focusd instances...", "", false)
-	// Scoped to the install directory so an unrelated focusd.exe elsewhere on
-	// the machine is not terminated.
-	if err := system.KillInstancesInDir("focusd.exe", system.GetInstallDir()); err != nil {
-		log.Printf("WARN: could not close other focusd instances: %v", err)
-	}
-	time.Sleep(500 * time.Millisecond)
-
 	if err := performUpdate(latestVer); err != nil {
 		ui.PrintError(fmt.Sprintf("Update failed: %v", err))
-		if daemonWasRunning {
-			ui.PrintInfo("Attempting to restart daemon...")
-			if _, err := system.StartDaemon(); err != nil {
-				log.Printf("WARN: failed to restart daemon after update: %v", err)
-			}
-		}
 		os.Exit(1)
 	}
 
@@ -104,13 +72,13 @@ func runUpdate() {
 // the release it leads to; build metadata ("+build") is ignored.
 func parseVersion(v string) ([]int, string) {
 	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	if i := strings.IndexByte(v, '+'); i >= 0 {
+		v = v[:i]
+	}
 
 	pre := ""
 	if i := strings.IndexByte(v, '-'); i >= 0 {
 		pre = v[i:]
-		v = v[:i]
-	}
-	if i := strings.IndexByte(v, '+'); i >= 0 {
 		v = v[:i]
 	}
 
@@ -157,10 +125,52 @@ func compareVersions(a, b string) int {
 	if preB == "" {
 		return -1
 	}
-	if preA < preB {
+	aIdentifiers := strings.Split(strings.TrimPrefix(preA, "-"), ".")
+	bIdentifiers := strings.Split(strings.TrimPrefix(preB, "-"), ".")
+	for i := 0; i < len(aIdentifiers) && i < len(bIdentifiers); i++ {
+		aID, bID := aIdentifiers[i], bIdentifiers[i]
+		if aID == bID {
+			continue
+		}
+		aNumeric, bNumeric := numericVersionIdentifier(aID), numericVersionIdentifier(bID)
+		if aNumeric != bNumeric {
+			if aNumeric {
+				return -1
+			}
+			return 1
+		}
+		if aNumeric {
+			aID, bID = strings.TrimLeft(aID, "0"), strings.TrimLeft(bID, "0")
+			if len(aID) < len(bID) {
+				return -1
+			}
+			if len(aID) > len(bID) {
+				return 1
+			}
+		}
+		if order := strings.Compare(aID, bID); order != 0 {
+			return order
+		}
+	}
+	if len(aIdentifiers) < len(bIdentifiers) {
 		return -1
 	}
-	return 1
+	if len(aIdentifiers) > len(bIdentifiers) {
+		return 1
+	}
+	return 0
+}
+
+func numericVersionIdentifier(identifier string) bool {
+	if identifier == "" {
+		return false
+	}
+	for _, r := range identifier {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // checksumsURL is published alongside the installer in every release.
@@ -260,26 +270,30 @@ func fetchLatestVersion() (string, error) {
 	return strings.TrimPrefix(release.TagName, "v"), nil
 }
 
-func performUpdate(version string) (err error) {
+const maxInstallerBytes = 128 << 20
+
+type updateStage interface {
+	Launch() error
+	Close() error
+}
+
+var (
+	stageInstaller = func(reader io.Reader, expected string, limit int64) (updateStage, error) {
+		return system.StageVerifiedInstaller(reader, expected, limit)
+	}
+	prepareForUpdate = prepareUpdateProcesses
+	updateRPC        = coreapi.Call
+	updateEndpoint   = coreapi.ReadEndpoint
+	updateCount      = system.CountInstancesInDirChecked
+)
+
+func performUpdate(version string) error {
 	expectedHash, err := fetchExpectedSHA256(version)
 	if err != nil {
 		return fmt.Errorf("refusing to update without a verified checksum: %w", err)
 	}
 
 	ui.PrintStatus("Downloading update...", "0%", false)
-
-	tmpFile, err := os.CreateTemp("", "focusd-setup-*.exe")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-
-	defer func() {
-		tmpFile.Close()
-		if err != nil {
-			os.Remove(tmpPath)
-		}
-	}()
 
 	resp, err := downloadClient.Get(installerURL(version))
 	if err != nil {
@@ -291,44 +305,100 @@ func performUpdate(version string) (err error) {
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	hasher := sha256.New()
-	if _, err = io.Copy(io.MultiWriter(tmpFile, hasher), resp.Body); err != nil {
-		return fmt.Errorf("write failed: %w", err)
+	if resp.ContentLength > maxInstallerBytes {
+		return fmt.Errorf("installer exceeds %d byte limit", maxInstallerBytes)
 	}
-	if err = tmpFile.Close(); err != nil {
+	stage, err := stageInstaller(resp.Body, expectedHash, maxInstallerBytes)
+	if err != nil {
+		return fmt.Errorf("verify installer: %w", err)
+	}
+	defer stage.Close()
+
+	restart, err := prepareForUpdate()
+	if err != nil {
+		if restart != nil {
+			if restartErr := restart(); restartErr != nil {
+				return fmt.Errorf("update preparation failed: %v; daemon restart failed: %w", err, restartErr)
+			}
+		}
 		return err
 	}
-
-	// The installer runs unelevated from here on. Verifying first means a
-	// tampered or truncated download never reaches ShellExecute.
-	actual := hex.EncodeToString(hasher.Sum(nil))
-	if !strings.EqualFold(actual, expectedHash) {
-		return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedHash, actual)
-	}
-
 	ui.PrintStatus("Installing...", "", false)
-
-	pathPtr, err := syscall.UTF16PtrFromString(tmpPath)
-	if err != nil {
-		return err
-	}
-	argsPtr, err := syscall.UTF16PtrFromString("/S")
-	if err != nil {
-		return err
-	}
-
-	// No "runas" verb: focusd installs per-user under %APPDATA% and writes
-	// HKCU, so elevation is unnecessary. It also wrote to the wrong profile
-	// when an over-the-shoulder token was used.
-	verbPtr, err := syscall.UTF16PtrFromString("open")
-	if err != nil {
-		return err
-	}
-
-	if err = windows.ShellExecute(0, verbPtr, pathPtr, argsPtr, nil, windows.SW_HIDE); err != nil {
+	if err := stage.Launch(); err != nil {
+		if restart != nil && !errors.Is(err, system.ErrInstallerStartupUncertain) {
+			if restartErr := restart(); restartErr != nil {
+				return fmt.Errorf("installer launch failed: %v; daemon restart failed: %w", err, restartErr)
+			}
+		}
 		return fmt.Errorf("failed to start installer: %w", err)
 	}
 
 	ui.PrintOK("Installer started silently. focusd will now close to complete the update.")
 	return nil
+}
+
+func prepareUpdateProcesses() (func() error, error) {
+	endpoint, err := updateEndpoint()
+	if os.IsNotExist(err) {
+		siblingDirectory, dirErr := daemonDirectory()
+		if dirErr != nil {
+			return nil, dirErr
+		}
+		for _, directory := range []string{siblingDirectory, system.GetInstallDir()} {
+			if directory == "" {
+				continue
+			}
+			count, countErr := updateCount(system.DaemonProcessName, directory)
+			if countErr != nil || count > 0 {
+				return nil, fmt.Errorf("cannot verify running daemon before update: %v", countErr)
+			}
+		}
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read daemon identity: %w", err)
+	}
+	request := coreapi.Request{Command: "shutdown-clients", Generation: endpoint.Generation}
+	if _, err := updateRPC(request); err != nil {
+		return nil, fmt.Errorf("request terminal cleanup: %w", err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		response, err := updateRPC(coreapi.Request{Command: "status", Generation: endpoint.Generation})
+		if err != nil {
+			return nil, fmt.Errorf("verify terminal cleanup: %w", err)
+		}
+		var status struct {
+			ActiveClients *int `json:"active_clients"`
+		}
+		if err := json.Unmarshal(response.Data, &status); err != nil || status.ActiveClients == nil {
+			return nil, fmt.Errorf("daemon did not provide terminal cleanup status")
+		}
+		if *status.ActiveClients == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("a Focusd terminal has not exited; update cancelled")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if _, err := updateRPC(coreapi.Request{Command: "stop", Generation: endpoint.Generation}); err != nil {
+		return nil, fmt.Errorf("stop daemon before update: %w", err)
+	}
+	restart := func() error { return system.StartUpdateDaemon(endpoint.ExePath) }
+	deadline = time.Now().Add(3 * time.Second)
+	for {
+		count, err := updateCount(system.DaemonProcessName, filepath.Dir(endpoint.ExePath))
+		if err != nil {
+			return restart, fmt.Errorf("verify daemon shutdown: %w", err)
+		}
+		if count == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("daemon has not exited; update cancelled")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return restart, nil
 }
