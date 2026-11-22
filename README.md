@@ -54,8 +54,13 @@ Competitor distribution details come from each vendor's own product pages and re
 ## Quick Start
 
 **PowerShell** (recommended):
-```powershell
-iwr "https://github.com/0xarchit/focusd/releases/latest/download/focusd_setup.exe" -OutFile focusd_setup.exe; ./focusd_setup.exe
+```mermaid
+flowchart LR
+    client[CLI / TUI] <-->|Authenticated per-profile loopback| daemon[Daemon controller]
+    daemon --> db[(Local SQLite history, clock and timer)]
+    client -->|Read bounded history| db
+    client --> config[Local preferences]
+    daemon --> config
 ```
 
 **Command Prompt**:
@@ -75,10 +80,10 @@ Open a new terminal and type `focusd` to launch the TUI.
 Launching `focusd` with no arguments opens a Bubble Tea / Lipgloss terminal UI with five tabs: **Dashboard**, **Stats**, **Focus**, **Limits**, **Settings**. Mouse and alt-screen are enabled; minimum terminal size is 80×24. Press `?` for the full key-binding overlay.
 
 ### Background daemon
-`focusd_daemon.exe` is built with the `-H=windowsgui` linker flag so it runs with no console window. It polls the active window every **5 seconds** (configurable 1–60s), batches sessions to SQLite every **5 minutes**, persists the active session every 5 minutes (so a crash recovers cleanly), enforces retention every hour, and checks Pomodoro / break / app-limit conditions every 5 seconds.
+`focusd_daemon.exe` is built with the `-H=windowsgui` linker flag so it runs with no console window. It polls the active window every **5 seconds** (configurable 1–60s), batches sessions to SQLite every **5 minutes**, persists bounded active checkpoints on a throttled heartbeat (so a crash recovers cleanly), enforces retention every hour, and checks Pomodoro / break / app-limit conditions every 5 seconds.
 
 ### Per-app and per-browser tracking
-The daemon reads the foreground window's title and process executable using `GetForegroundWindow`, `GetWindowTextW`, and `GetModuleBaseNameW`. App sessions are written to the `sessions` table; daily totals are upserted into `apps_daily`. When the foreground process is a recognised browser, the cleaned window **title** (not URL) is upserted into `browsing_daily`.
+The daemon reads the foreground title and verified process identity, resolving frame-hosted app windows when possible. App sessions are written to the `sessions` table; daily totals are upserted into `apps_daily`. When the foreground process is a recognised browser, the cleaned window **title** (not URL) is upserted into `browsing_daily`.
 
 ### Smart browser-tab grouping
 Tab titles are matched against 74 hard-coded categories (91 pattern strings) in `coreapi/app_groups.go` and grouped under a parent (YouTube, GitHub, LeetCode, ChatGPT, Claude, Notion, Figma, AWS, Coursera, Discord, Gmail, Reddit, and so on). Sub-entries are listed under each category in stats output.
@@ -87,7 +92,17 @@ Tab titles are matched against 74 hard-coded categories (91 pattern strings) in 
 `chrome`, `firefox`, `msedge`, `brave`, `opera`, `vivaldi`, `waterfox`, `arc`, `iexplore`, `safari`, `whale`, `yandex`, `thorium`, `librewolf`, `chromium`, `floorp`, `zen`. Add others with `focusd browser add <name>.exe`.
 
 ### Pomodoro timer
-File-backed timer at `%APPDATA%\focusd\pomodoro.json` so state survives across processes. Default 25 minutes; configurable. Completion is announced through a Windows Toast (`Windows.UI.Notifications.ToastNotification`, invoked from `core/notifications.go` via a short PowerShell command). A 10-second cooldown suppresses duplicate toasts.
+The timer is persisted in SQLite so state survives across processes; an existing `pomodoro.json` is migrated. Default 25 minutes; configurable up to 1440 minutes. Completion uses a Windows notification.
+
+### Unexpected date/time changes
+
+Focusd checks the clock at startup and while running. An unexpected change pauses tracking and freezes the timer. An open TUI shows the recovery choices; otherwise a Windows notification offers them. Dismissing the warning leaves tracking paused.
+
+- **Continue:** accept the current system time, keep history, and resume the timer's remaining duration.
+- **Reset and continue:** confirm a verified backup, clear usage and the timer, and keep preferences and limits.
+- **Turn off:** preserve history and stop the daemon and timer. Autostart remains configured.
+
+Continue leaves automatic cleanup on hold. Review the affected rows in Settings before resuming retention. Focusd never changes Windows time, and offline checks cannot prove that an otherwise plausible date is correct.
 
 ### Break reminders
 When enabled, the daemon notifies after a configurable number of minutes of continuous use (default 60). The reminder can be snoozed for the global snooze duration (default 60 min).
@@ -99,7 +114,7 @@ Set per-executable limits (`focusd limit chrome.exe 60`). The daemon notifies on
 Whitelisted executables are skipped entirely by the tracker (never recorded).
 
 ### Data export
-Export tracking data to CSV or JSON from the TUI Settings tab. Files are saved to `%USERPROFILE%\Desktop`. You can also open the SQLite database directly at `%APPDATA%\focusd\focusd.db`.
+Export all history from Settings, or the selected date range with `e` in Stats. CSV and JSON files are saved to `%USERPROFILE%\Downloads`. Exports use a private Windows ACL and atomic replacement; CSV text is escaped to prevent spreadsheet formulas. You can also open the SQLite database directly at `%APPDATA%\focusd\focusd.db`.
 
 ### Auto-update
 `focusd update` queries `api.github.com/repos/0xarchit/focusd/releases/latest`, downloads `focusd_setup.exe` for that tag, then invokes the installer silently (`/S`). The daemon is stopped before install and restarted afterwards; no elevation prompt appears — the installer is per-user.
@@ -118,7 +133,7 @@ focusd status        (s)     Daemon + tracking status with today's top 5 apps
 focusd stats         (st)    Full daily breakdown: top apps + grouped browsing
 focusd pause         (p)     Pause tracking (daemon keeps running, drops samples)
 focusd resume        (r)     Resume tracking
-focusd focus [min]           Start a Pomodoro timer (default 25 min)
+focusd focus [min]           Start a Pomodoro timer (saved default, max 1440)
 focusd stop-timer            Stop the running Pomodoro
 focusd limit <app> <min>     Set a daily time limit (omit args to list)
 focusd update                Check for and install updates
@@ -130,7 +145,7 @@ focusd version       (-v)    Print version
 
 ```
 focusd retention status      Show current retention window
-focusd retention set <days>  Set retention (1–30, default 7)
+focusd retention set <days>  Set retention (1–365, default 7)
 focusd retention reset       Reset retention to default
 
 focusd autostart status      Show autostart state
@@ -144,49 +159,52 @@ focusd path disable          Remove install dir from user PATH
 focusd browser list          Show user-defined browsers
 focusd browser add <exe>     Add a custom browser executable
 focusd browser remove <exe>  Remove a custom browser
+
+focusd privacy [status|set <titles|categories|strict>]
+focusd idle [status|set <0..240>]
+focusd track-while-idle [status|enable|disable]
+focusd display [list|set <app-id> <label>|remove <app-id>]
+focusd site [list|set <site-name> <label>|remove <site-name>]
 ```
 
-`focusd --daemon` is the entry the daemon binary uses to enter its tracker loop; you should not invoke it directly.
+PATH and autostart controls require an existing installation and do not overwrite its binaries. A portable pair uses the daemon beside the running CLI and shares the current user's data profile; one daemon can own a profile at a time.
 
 ---
 
 ## Architecture
 
-```
-┌─────────────────┐   TCP 127.0.0.1:48321   ┌──────────────────────┐
-│   focusd.exe    │ ────── "stop" / ──────► │  focusd_daemon.exe   │
-│  (CLI + TUI)    │ ◄──── "flush" / "ok" ── │  (windowsgui, no UI) │
-└────────┬────────┘                         └──────────┬───────────┘
-         │                                             │
-         │ reads / writes                              │ reads / writes
-         ▼                                             ▼
-┌────────────────────────────────────────────────────────────────────┐
-│                       %APPDATA%\focusd\                            │
-│  focusd.db (SQLite WAL)   config.json   browsers.json              │
-│                           pomodoro.json                            │
-└────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    client[CLI / TUI] <-->|Authenticated per-profile loopback| daemon[Daemon controller]
+    daemon --> db[(Local SQLite history, clock and timer)]
+    client -->|Read bounded history| db
+    client --> config[Local preferences]
+    daemon --> config
 ```
 
 | Package | Purpose |
 |---------|---------|
-| `cmd/focusd` | Entry point for the CLI/TUI binary. Calls `system.AttachParentConsole`, `system.CleanupOldBinary`, then `cli.Run`. |
-| `cmd/focusd_daemon` | Entry point for the silent daemon. Calls `cli.RunDaemon`. |
+| `cmd/focusd` | Entry point for the CLI/TUI binary. Attaches the parent console and dispatches CLI/TUI commands. |
+| `cmd/focusd_daemon` | Entry point for the silent daemon. Acquires profile ownership, initializes storage and starts the guarded tracker. |
 | `cmd/release_notes` | Build-time helper that generates `release_notes.md` from `git log` via the GitHub Models API. |
 | `cli` | Command parsing, interactive menu, update flow, status / stats / export commands. |
 | `core` | Tracker loop, IPC client helpers, app classification, title cleaner, notifications (Windows Toast). |
-| `coreapi` | Shared cross-package data: IPC address/constants, browser-tab group definitions, Pomodoro state on disk, aggregation. |
+| `coreapi` | Shared cross-package data: authenticated IPC, browser categories, timer state, exports and aggregation. |
 | `storage` | SQLite schema and queries, retention enforcement, browser registry, durable config. |
-| `system` | All Windows-specific code: Win32 syscalls (`user32`, `kernel32`, `psapi`), process enumeration, registry (autostart + PATH), user-config file, daemon process spawn. Stubs exist for non-Windows builds so `go build` still passes on other OSes (the daemon refuses to run). |
+| `system` | All Windows-specific code: Win32 syscalls (`user32`, `kernel32`, `psapi`), process enumeration, registry (autostart + PATH), user-config file, daemon process spawn. Windows is the supported build platform. |
 | `tui` | Bubble Tea / Lipgloss model, splash, tabs, dashboard, stats, focus, limits, settings panels. |
 | `ui` | ANSI colours, table renderer, duration formatter for the classic CLI commands. |
 
 ### IPC
-The daemon listens on **`127.0.0.1:48321`** and accepts two text commands:
+The daemon publishes an ephemeral loopback endpoint in `%APPDATA%\focusd\ipc.endpoint.json`. Requests are authenticated with the private `ipc.key`, bound to the daemon generation, and limited to 4 KiB. Connection and controller queues are bounded.
 
 | Command | Effect |
 |---------|--------|
-| `stop` | Acknowledge with `ok`, flush state, exit. |
-| `flush` | Close the current session, write batched sessions, persist active-session checkpoint, reply `ok`. |
+| `stop` | Flush safe tracking state and exit; a running timer remains available for offline completion. |
+| `flush` | Persist completed and active intervals together without closing the current session or increasing its open count. |
+| `clock-resolve` | Apply a current, revision-bound Continue/reset/off decision. |
+| `reset` | Confirm a backup and reset through the single writer; return a durable operation receipt. |
+| `timer-start` / `timer-stop` | Serialize timer changes with tracking and reset. |
 
 The CLI calls `flush` before reading stats so reports never miss the in-flight session.
 
@@ -209,27 +227,28 @@ Everything lives under `%APPDATA%\focusd\`.
 |------|----------|
 | `focusd.db` | SQLite database (WAL mode, incremental autovacuum, NORMAL synchronous) |
 | `config.json` | User config: whitelist, app limits, Pomodoro minutes, break reminder, snooze duration, custom browsers |
-| `pomodoro.json` | Current Pomodoro state (active flag, start time, duration, notified flag) |
+| `ipc.endpoint.json`, `ipc.key` | Per-profile daemon discovery and authentication |
+| `daemon.lock`, `tui-clients/` | Writer ownership and bounded TUI presence leases |
 
 ### Database schema
 
 ```sql
-config           (key, value, updated_at)
-sessions         (id, app_name, exe_name, window_title, start_time, end_time, duration_secs, date)
-apps_daily       (id, date, app_name, exe_name, total_duration_secs, open_count)   -- UNIQUE(date, exe_name)
-browsing_daily   (id, date, domain_or_title, total_duration_secs, open_count)      -- UNIQUE(date, domain_or_title)
-active_session   (id=1, app_name, exe_name, window_title, start_time, last_seen, date)
+config           (key, value, updated_at) -- clock, timer, generation and reset receipts
+sessions         -- app/session identities, permitted metadata, safe interval and local date
+apps_daily       -- daily per-install usage; UNIQUE(date, app_id)
+browsing_daily   -- daily per-install site usage; UNIQUE(date, app_id, site_name)
+active_session   -- singleton checkpoint; usage is bounded by last_seen
 ```
 
-Indexes: `idx_sessions_date`, `idx_sessions_start`, `idx_apps_daily_date`.
+Schema version 4 adds safe site metadata, session identities and generation checks. Migrations back up existing databases; legacy identity buckets remain separate from new installs.
 
 ### Defaults & ranges (from `storage/config.go` and `system/userconfig.go`)
 
 | Setting | Default | Range |
 |---------|---------|-------|
-| Retention (days) | 7 | 1 – 30 |
+| Retention (days) | 7 | 1 – 365 |
 | Tracking poll interval (s) | 5 | 1 – 60 |
-| Pomodoro (min) | 25 | > 0 |
+| Pomodoro (min) | 25 | 1 – 1440 |
 | Break reminder (min) | 60 | > 0 |
 | Snooze (min) | 60 | > 0 |
 
@@ -242,6 +261,8 @@ Indexes: `idx_sessions_date`, `idx_sessions_start`, `idx_apps_daily_date`.
 ---
 
 ## Privacy
+
+Privacy mode is available in Settings and `focusd privacy`. `titles` keeps window titles, `categories` keeps only recognized public site categories, and `strict` stores no browser titles or site categories. Existing title-redaction preferences stay strict until explicitly changed. New private/Tor activity keeps generic browser app time with `[redacted]` metadata and no site row. Private-window suffix detection is best effort; choose strict mode to prevent unknown browser titles from being stored. Changing modes does not erase old history.
 
 focusd is built for privacy by design:
 
@@ -279,7 +300,7 @@ Replace `dev-build` with the release version. The `-X 'focusd/system.Version=...
 
 | Workflow | Trigger | Output |
 |----------|---------|--------|
-| `.github/workflows/release.yml` | Push of a `vX.Y.Z` tag | Builds both binaries, NSIS installer, SHA-256 `checksums.txt`, AI-generated release notes via GitHub Models (`gpt-4o-mini`), publishes a GitHub Release. |
+| `.github/workflows/release.yml` | Push of a `vX.Y.Z` tag | Builds both binaries, NSIS installer, SHA-256 `checksums.txt`, release notes with a checked raw-changelog fallback, publishes a GitHub Release. |
 | `.github/workflows/test_build.yml` | Push to `test` branch | Builds an unsigned dev installer, uploads as a 5-day artifact. |
 | `.github/workflows/deploy-site.yml` | Push to `main`/`master` touching `website/**` | Deploys the static site under `website/` to GitHub Pages (`focusd.0xarchit.is-a.dev`). |
 

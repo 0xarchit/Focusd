@@ -219,7 +219,7 @@
       <span class="cap__num">01</span>
       <div>
         <h3>Track</h3>
-        <p>A silent daemon polls the foreground window on a configurable interval (default 5 s) via Win32 syscalls. Per-app and per-browser-tab time land in a local SQLite database. Browser titles are matched against 74 hard-coded categories - YouTube, GitHub, ChatGPT, Reddit, Netflix, Spotify, and so on - so the report reads like a story, not a title dump.</p>
+        <p>A silent daemon polls the foreground window on a configurable interval (default 5 s) via Win32 syscalls. Per-app and per-browser-tab time land in a local SQLite database. In title mode, browser titles are matched against 74 hard-coded categories - YouTube, GitHub, ChatGPT, Reddit, Netflix, Spotify, and so on - so the report reads like a story, not a title dump.</p>
         <code>focusd stats</code>
       </div>
     </li>
@@ -235,7 +235,7 @@
       <span class="cap__num">03</span>
       <div>
         <h3>Focus</h3>
-        <p>A file-backed Pomodoro at <code>%APPDATA%\focusd\pomodoro.json</code> - state survives process restarts. Default 25 min, configurable. Break reminders fire after N minutes of continuous use. Completion arrives as a Windows toast, not a modal that seizes your desktop.</p>
+        <p>A Pomodoro persisted in local SQLite - state survives process restarts. Default 25 min, configurable. Break reminders fire after N minutes of continuous use. Completion arrives as a Windows toast, not a modal that seizes your desktop.</p>
         <code>focusd focus 45</code>
       </div>
     </li>
@@ -243,7 +243,7 @@
       <span class="cap__num">04</span>
       <div>
         <h3>Export</h3>
-        <p>Your data leaves only when you say so. Export CSV or JSON from the TUI's Settings tab; files land on your Desktop. Or open <code>%APPDATA%\focusd\focusd.db</code> in any SQLite browser and query it yourself - the schema is documented.</p>
+        <p>Your data leaves only when you say so. Export CSV or JSON from the TUI's Settings tab; files land in your Downloads folder. Or open <code>%APPDATA%\focusd\focusd.db</code> in any SQLite browser and query it yourself - the schema is documented.</p>
         <code>Settings → Export → CSV</code>
       </div>
     </li>
@@ -329,7 +329,7 @@ focusd browser add zen.exe   <span class="c-com">register a custom browser</span
     <aside class="arch" data-reveal aria-label="Architecture">
       <h3 class="arch__h">How the pieces fit</h3>
       <svg class="arch__svg" role="img"
-           aria-label="Architecture: focusd.exe (CLI + TUI) exchanges 'stop' and 'flush' messages with focusd_daemon.exe over TCP 127.0.0.1:48321. Both processes read and write %APPDATA%\focusd\ which holds focusd.db, config.json, and pomodoro.json."
+           aria-label="Architecture: focusd.exe (CLI + TUI) exchanges 'stop' and 'flush' messages with focusd_daemon.exe over per-profile loopback TCP. Both processes read and write %APPDATA%\focusd\ which holds the SQLite history, clock and timer state, config.json, and private endpoint discovery."
            viewBox="0 0 820 300" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
         <defs>
           <marker id="arch-arrow" viewBox="0 0 10 10" refX="9" refY="5"
@@ -340,7 +340,7 @@ focusd browser add zen.exe   <span class="c-com">register a custom browser</span
 
         <!-- IPC label -->
         <text class="arch__t arch__t--lbl" x="410" y="30" text-anchor="middle">
-          TCP 127.0.0.1:48321
+          per-profile loopback TCP
         </text>
 
         <!-- Left process box -->
@@ -368,7 +368,7 @@ focusd browser add zen.exe   <span class="c-com">register a custom browser</span
         <!-- Storage box -->
         <rect class="arch__box" x="80" y="212" width="660" height="72" rx="12"/>
         <text class="arch__t arch__t--sub"  x="410" y="238" text-anchor="middle">%APPDATA%\focusd\</text>
-        <text class="arch__t arch__t--head" x="410" y="262" text-anchor="middle">focusd.db · config.json · pomodoro.json</text>
+        <text class="arch__t arch__t--head" x="410" y="262" text-anchor="middle">focusd.db · config.json · private IPC</text>
       </svg>
       <p class="arch__note">
         The CLI calls <code>flush</code> over local TCP before every report,
