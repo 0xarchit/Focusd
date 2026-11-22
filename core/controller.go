@@ -695,10 +695,8 @@ func (c *daemonController) requestReset(request coreapi.Request, response coreap
 		return response
 	}
 	if !c.guarded {
-		if !c.guarded {
-			c.tracker.flushCurrentSession()
-			c.tracker.flushPendingSessions()
-		}
+		c.tracker.flushCurrentSession()
+		c.tracker.flushPendingSessions()
 	}
 	c.cancelNotification()
 	c.busy = true
