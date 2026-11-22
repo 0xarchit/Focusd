@@ -3,6 +3,9 @@ package coreapi
 import (
 	"regexp"
 	"strings"
+	"sync"
+
+	"focusd/system"
 )
 
 // siteRule describes one catalogue entry.
@@ -256,9 +259,12 @@ var siteCatalog = []siteRule{
 
 // siteOverrides lets a user rename or add entries without touching the code.
 var siteOverrides = map[string]string{}
+var siteOverridesMu sync.RWMutex
 
 // SetSiteOverride records a user label for a site key. An empty name removes it.
 func SetSiteOverride(key, name string) {
+	siteOverridesMu.Lock()
+	defer siteOverridesMu.Unlock()
 	key = strings.ToLower(strings.TrimSpace(key))
 	if strings.TrimSpace(name) == "" {
 		delete(siteOverrides, key)
@@ -269,6 +275,8 @@ func SetSiteOverride(key, name string) {
 
 // ClearSiteOverrides resets the override table. Used by tests.
 func ClearSiteOverrides() {
+	siteOverridesMu.Lock()
+	defer siteOverridesMu.Unlock()
 	siteOverrides = map[string]string{}
 }
 
@@ -352,14 +360,40 @@ func domainMatchesHost(host, domain string) bool {
 // SiteNameFor returns the friendly name for a cleaned title or domain, or an
 // empty string when nothing matches.
 func SiteNameFor(titleOrDomain string) string {
+	overrides := normalizedSiteOverrides()
+	siteOverridesMu.RLock()
+	for key, value := range siteOverrides {
+		overrides[key] = value
+	}
+	siteOverridesMu.RUnlock()
+	text := strings.TrimSpace(titleOrDomain)
+	if override := overrides[strings.ToLower(text)]; override != "" {
+		return override
+	}
+	name := CanonicalSiteNameFor(text)
+	if override := overrides[strings.ToLower(name)]; name != "" && override != "" {
+		return override
+	}
+	return name
+}
+
+func normalizedSiteOverrides() map[string]string {
+	source := system.GetSiteOverrides()
+	overrides := make(map[string]string, len(source))
+	for key, value := range source {
+		key = strings.ToLower(strings.TrimSpace(key))
+		if key != "" && strings.TrimSpace(value) != "" {
+			overrides[key] = strings.TrimSpace(value)
+		}
+	}
+	return overrides
+}
+
+// CanonicalSiteNameFor resolves catalog categories without user labels or raw titles.
+func CanonicalSiteNameFor(titleOrDomain string) string {
 	text := strings.TrimSpace(titleOrDomain)
 	if text == "" {
 		return ""
-	}
-
-	// A user override wins over everything.
-	if override, ok := siteOverrides[strings.ToLower(text)]; ok {
-		return override
 	}
 
 	host := domainOf(text)

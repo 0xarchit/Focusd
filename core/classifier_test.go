@@ -2,6 +2,12 @@ package core
 
 import "testing"
 
+func TestCleanWindowTitleTorSuffix(t *testing.T) {
+	if got := cleanWindowTitle("Page — Tor Browser", "firefox.exe"); got != "Page" {
+		t.Errorf("cleanWindowTitle Tor suffix = %q; want Page", got)
+	}
+}
+
 func TestSanitizeTitle(t *testing.T) {
 	tests := []struct {
 		name string

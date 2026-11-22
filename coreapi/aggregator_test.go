@@ -44,3 +44,23 @@ func TestGetDailySummaryTieOrderIsStable(t *testing.T) {
 		}
 	}
 }
+
+func TestGetDailySummarySameSiteTiePreservesInstallOrder(t *testing.T) {
+	setupPomodoroEnv(t)
+	start := time.Date(2026, 10, 10, 12, 0, 0, 0, time.Local)
+	for _, id := range []string{"firefox|work", "firefox|personal"} {
+		if err := storage.InsertSessionWithDaily(&storage.Session{
+			AppName: "Firefox", ExeName: "firefox.exe", AppID: id,
+			StartTime: start, EndTime: start.Add(time.Minute), DurationSecs: 60, Date: "2026-10-10",
+		}, "GitHub"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	summary, err := GetDailySummary("2026-10-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summary.TopSites) != 2 || summary.TopSites[0].AppID != "firefox|personal" || summary.TopSites[1].AppID != "firefox|work" {
+		t.Fatalf("same-site install rows = %+v", summary.TopSites)
+	}
+}
