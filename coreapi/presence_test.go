@@ -9,9 +9,41 @@ import (
 	"testing"
 
 	"focusd/system"
+	"golang.org/x/sys/windows"
 )
 
 const testPresenceID = "00112233445566778899aabbccddeeff"
+
+func TestPresenceTrusteesCompareSIDValues(t *testing.T) {
+	for _, ownerValue := range []string{"S-1-5-21-111-222-333-500", "S-1-5-21-111-222-333-1001", "S-1-5-18"} {
+		owner, err := windows.StringToSid(ownerValue)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			name, entries string
+			accept        bool
+		}{
+			{"owner with system and administrators", "(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;" + ownerValue + ")", true},
+			{"world access", "(A;;FA;;;" + ownerValue + ")(A;;FR;;;WD)", false},
+			{"other account access", "(A;;FA;;;S-1-5-21-111-222-333-1002)", false},
+		} {
+			t.Run(ownerValue+"/"+tc.name, func(t *testing.T) {
+				descriptor, err := windows.SecurityDescriptorFromString("D:P" + tc.entries)
+				if err != nil {
+					t.Fatal(err)
+				}
+				dacl, _, err := descriptor.DACL()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := validatePresenceTrustees(dacl, owner); (err == nil) != tc.accept {
+					t.Fatalf("ACL acceptance=%v, want %v: %v", err == nil, tc.accept, err)
+				}
+			})
+		}
+	}
+}
 
 func stubPresenceIdentity(t *testing.T) {
 	t.Helper()
