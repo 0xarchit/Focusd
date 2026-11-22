@@ -1,11 +1,11 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"focusd/core"
 	"focusd/coreapi"
 	"focusd/storage"
-	"focusd/system"
 	"focusd/ui"
 	"os"
 	"time"
@@ -18,25 +18,32 @@ func runStatus() {
 	}
 	defer storage.Close()
 
-	coreapi.SendIPCCmd("flush")
-
-	// Count only this user's daemon: a system-wide process count could see
-	// another user's focusd_daemon.exe and mask a stopped daemon.
-	isRunning := false
-	if system.CountInstancesInDir(system.DaemonProcessName, system.GetInstallDir()) >= 1 {
-		isRunning = true
+	response, stateErr := coreapi.Call(coreapi.Request{Command: "status"})
+	isRunning := stateErr == nil && response.OK
+	var daemon struct {
+		Clock storage.ClockState `json:"clock"`
+		Error string             `json:"error"`
+	}
+	if isRunning {
+		stateErr = json.Unmarshal(response.Data, &daemon)
+		coreapi.SendIPCCmd("flush")
+	}
+	if _, err := coreapi.ReadEndpoint(); os.IsNotExist(err) {
+		stateErr = nil
 	}
 
 	// Finish an expired timer only while this user's daemon is stopped: a
 	// running daemon announces completion itself, so checking here too
 	// could toast the same timer twice.
-	if !isRunning {
+	if stateErr == nil && !isRunning {
 		core.CheckPomodoroCompletion()
 	}
 
 	ui.PrintHeader()
 
-	if isRunning {
+	if stateErr != nil {
+		ui.PrintWarn(fmt.Sprintf("Daemon: UNKNOWN (%v)", stateErr))
+	} else if isRunning {
 		ui.PrintOK("Daemon: RUNNING")
 	} else {
 		ui.PrintWarn("Daemon: STOPPED")
@@ -45,10 +52,17 @@ func runStatus() {
 
 	if storage.IsPaused() {
 		ui.PrintWarn("Tracking: PAUSED")
+	} else if daemon.Clock.Incident != nil || daemon.Error != "" || storage.TimeGuarded() {
+		ui.PrintWarn("Tracking: WAITING FOR CLOCK DECISION")
+	} else if stateErr != nil {
+		ui.PrintWarn("Tracking: UNKNOWN (daemon state unavailable)")
 	} else if isRunning {
 		ui.PrintOK("Tracking: ACTIVE")
 	} else {
 		ui.PrintInfo("Tracking: INACTIVE (daemon not running)")
+	}
+	if daemon.Clock.Incident != nil {
+		fmt.Printf("  Clock warning: %s\n  Open 'focusd tui' to continue, reset history, or turn off.\n", daemon.Clock.Incident.Reason)
 	}
 
 	fmt.Println()

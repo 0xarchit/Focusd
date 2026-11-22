@@ -33,6 +33,11 @@ func printHelp() {
 	fmt.Println("  focusd autostart (auto)   Manage auto-start")
 	fmt.Println("  focusd path               Manage PATH integration")
 	fmt.Println("  focusd browser            Manage custom browsers")
+	fmt.Println("  focusd privacy            Show/set titles, categories, or strict mode")
+	fmt.Println("  focusd idle               Show/set idle threshold (0-240 minutes)")
+	fmt.Println("  focusd track-while-idle    Show/enable/disable unattended tracking")
+	fmt.Println("  focusd display            List/set/remove app display labels")
+	fmt.Println("  focusd site               List/set/remove site display labels")
 	fmt.Println()
 	fmt.Println("Other:")
 	fmt.Println("  focusd help      (h)      Show this help message")
@@ -65,6 +70,8 @@ func Run(args []string) {
 		runStart()
 	case "stop":
 		runStop()
+	case "shutdown-clients":
+		runShutdownClients(args)
 	case "status", "s":
 		runStatus()
 	case "stats", "st":
@@ -81,6 +88,8 @@ func Run(args []string) {
 		handlePath(args)
 	case "browser":
 		handleBrowsersCommand(args)
+	case "privacy", "idle", "track-while-idle", "display", "site":
+		handleSettingsCommand(args)
 	case "help", "-h", "--help", "h":
 		printHelp()
 	case "version", "-v", "--version":
