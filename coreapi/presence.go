@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unsafe"
 
 	"focusd/system"
 	"golang.org/x/sys/windows"
@@ -22,7 +23,6 @@ const (
 
 var (
 	clientIDPattern   = regexp.MustCompile(`^[0-9a-f]{32}$`)
-	presenceTrustees  = regexp.MustCompile(`\([^()]*;;;([^()]*)\)`)
 	readPresenceOwner = presenceProcessIdentity
 )
 
@@ -226,10 +226,8 @@ func readPresenceFile(path string) (TUIPresence, error) {
 	if err != nil || dacl == nil {
 		return presence, fmt.Errorf("TUI presence has no restrictive ACL")
 	}
-	for _, ace := range presenceTrustees.FindAllStringSubmatch(descriptor.String(), -1) {
-		if ace[1] != "SY" && ace[1] != "BA" && ace[1] != user.User.Sid.String() {
-			return presence, fmt.Errorf("TUI presence grants access outside its owner")
-		}
+	if err := validatePresenceTrustees(dacl, user.User.Sid); err != nil {
+		return presence, err
 	}
 	data, err := io.ReadAll(io.LimitReader(file, MaxIPCBytes+1))
 	if err != nil {
@@ -247,6 +245,25 @@ func readPresenceFile(path string) (TUIPresence, error) {
 		return presence, fmt.Errorf("TUI presence contains trailing data")
 	}
 	return presence, nil
+}
+
+// Compare SID values because Windows can format the current user's SID as an
+// SDDL alias (for example LA) instead of the numeric SID used by the writer.
+func validatePresenceTrustees(dacl *windows.ACL, owner *windows.SID) error {
+	for i := uint32(0); i < uint32(dacl.AceCount); i++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, i, &ace); err != nil {
+			return err
+		}
+		if ace == nil || (ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE && ace.Header.AceType != windows.ACCESS_DENIED_ACE_TYPE) || ace.Header.AceSize < uint16(unsafe.Sizeof(*ace)) {
+			return fmt.Errorf("TUI presence has an unsupported ACL entry")
+		}
+		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
+		if !sid.IsValid() || (!sid.Equals(owner) && !sid.IsWellKnown(windows.WinLocalSystemSid) && !sid.IsWellKnown(windows.WinBuiltinAdministratorsSid)) {
+			return fmt.Errorf("TUI presence grants access outside its owner")
+		}
+	}
+	return nil
 }
 
 func presenceProcessIdentity(pid int) (string, uint64, error) {
