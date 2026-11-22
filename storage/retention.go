@@ -2,10 +2,12 @@ package storage
 
 import (
 	"log"
-	"time"
 )
 
 func EnforceRetention() {
+	if RetentionHeld() {
+		return
+	}
 	days, err := resolveRetentionDays()
 	if err != nil {
 		// Never fall back to the default here: one transient read failure
@@ -16,7 +18,11 @@ func EnforceRetention() {
 	}
 	// The window counts date rows: "7 days" keeps today plus the six days
 	// before it, so the cutoff day itself is retained.
-	cutoff := time.Now().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	cutoff, err := retentionCutoff(days)
+	if err != nil {
+		log.Printf("WARN: retention skipped, current calendar unavailable: %v", err)
+		return
+	}
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -24,6 +30,10 @@ func EnforceRetention() {
 		return
 	}
 	defer tx.Rollback()
+	state, _, err := readRetentionClock(tx)
+	if err != nil || state.Incident != nil || state.RetentionHold {
+		return
+	}
 
 	queries := []string{
 		"DELETE FROM sessions WHERE date < ?",
@@ -48,28 +58,10 @@ func EnforceRetention() {
 }
 
 func ClearAllTrackingData() error {
-	tx, err := db.Begin()
+	id, err := backupID()
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-
-	queries := []string{
-		"DELETE FROM sessions",
-		"DELETE FROM apps_daily",
-		"DELETE FROM browsing_daily",
-		"DELETE FROM active_session",
-	}
-	for _, q := range queries {
-		if _, err := tx.Exec(q); err != nil {
-			return err
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-
-	_, err = db.Exec("VACUUM")
+	_, err = ResetTrackingData(id, false)
 	return err
 }
