@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"focusd/storage"
+	"focusd/system"
 	"log"
 	"os"
 	"path/filepath"
@@ -18,11 +19,17 @@ const defaultPomodoroMinutes = 25
 const MaxPomodoroMinutes = 1440
 
 type PomodoroState struct {
-	Active    bool      `json:"active"`
-	StartTime time.Time `json:"start_time"`
-	Duration  int       `json:"duration_minutes"`
-	Notified  bool      `json:"notified"`
+	Active         bool      `json:"active"`
+	StartTime      time.Time `json:"start_time"`
+	Duration       int       `json:"duration_minutes"`
+	Notified       bool      `json:"notified"`
+	Frozen         bool      `json:"frozen,omitempty"`
+	RemainingNS    *int64    `json:"remaining_ns,omitempty"`
+	BootID         string    `json:"boot_id,omitempty"`
+	InterruptTicks uint64    `json:"interrupt_ticks,omitempty"`
 }
+
+var readPomodoroClock = system.ReadClockSample
 
 func LoadPomodoroStateFresh() *PomodoroState {
 	state, _ := LoadPomodoroStateRaw()
@@ -74,6 +81,9 @@ func SavePomodoroStateCAS(expectedRaw string, state *PomodoroState) (bool, error
 }
 
 func StartPomodoro(minutes int) error {
+	if storage.TimeGuarded() {
+		return fmt.Errorf("resolve the clock warning before starting a timer")
+	}
 	for i := 0; i < 5; i++ {
 		existing, raw := LoadPomodoroStateRaw()
 		if existing.Active {
@@ -93,6 +103,7 @@ func StartPomodoro(minutes int) error {
 			Duration:  minutes,
 			Notified:  false,
 		}
+		anchorPomodoroClock(state, state.StartTime)
 
 		ok, err := SavePomodoroStateCAS(raw, state)
 		if err != nil {
@@ -133,9 +144,7 @@ func GetPomodoroStatus() (active bool, remaining time.Duration, total int) {
 		return false, 0, 0
 	}
 
-	elapsed := time.Since(state.StartTime)
-	totalDuration := time.Duration(state.Duration) * time.Minute
-	remaining = totalDuration - elapsed
+	remaining = currentPomodoroRemaining(state)
 
 	if remaining <= 0 {
 		return true, 0, state.Duration
@@ -150,16 +159,16 @@ func GetPomodoroStatus() (active bool, remaining time.Duration, total int) {
 // at worst re-announce, and any writer that beats it either marks the timer
 // notified itself or starts a new one.
 func CheckPomodoroAndNotify(notifyFn func(title, msg string) bool) {
+	if storage.TimeGuarded() {
+		return
+	}
 	for i := 0; i < 5; i++ {
 		state, raw := LoadPomodoroStateRaw()
-		if !state.Active || state.Notified {
+		if !state.Active || state.Notified || state.Frozen {
 			return
 		}
 
-		elapsed := time.Since(state.StartTime)
-		totalDuration := time.Duration(state.Duration) * time.Minute
-
-		if elapsed < totalDuration {
+		if currentPomodoroRemaining(state) > 0 {
 			return
 		}
 
@@ -182,4 +191,109 @@ func CheckPomodoroAndNotify(notifyFn func(title, msg string) bool) {
 		}
 		return
 	}
+}
+
+func pomodoroRemainingAt(state *PomodoroState, at time.Time) time.Duration {
+	if !state.Active {
+		return 0
+	}
+	duration := time.Duration(min(max(state.Duration, 1), MaxPomodoroMinutes)) * time.Minute
+	if state.RemainingNS != nil {
+		duration = time.Duration(min(max(*state.RemainingNS, 0), int64(MaxPomodoroMinutes)*int64(time.Minute)))
+	}
+	if state.Frozen {
+		return duration
+	}
+	elapsed := at.Sub(state.StartTime)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	return max(0, duration-elapsed)
+}
+
+func currentPomodoroRemaining(state *PomodoroState) time.Duration {
+	if sample, err := readPomodoroClock(); err == nil {
+		return pomodoroRemainingAtSample(state, sample)
+	}
+	return pomodoroRemainingAt(state, time.Now())
+}
+
+func pomodoroRemainingAtSample(state *PomodoroState, sample system.ClockSample) time.Duration {
+	if !state.Active {
+		return 0
+	}
+	if state.Frozen {
+		return pomodoroRemainingAt(state, sample.WallUTC)
+	}
+	if state.BootID != "" && sample.BootID == state.BootID && sample.InterruptTicks >= state.InterruptTicks {
+		duration := time.Duration(min(max(state.Duration, 1), MaxPomodoroMinutes)) * time.Minute
+		if state.RemainingNS != nil {
+			duration = time.Duration(min(max(*state.RemainingNS, 0), int64(MaxPomodoroMinutes)*int64(time.Minute)))
+		}
+		ticks := sample.InterruptTicks - state.InterruptTicks
+		if ticks > uint64(duration)/100 {
+			return 0
+		}
+		return max(0, duration-time.Duration(ticks)*100)
+	}
+	return pomodoroRemainingAt(state, sample.WallUTC)
+}
+
+func anchorPomodoroClock(state *PomodoroState, at time.Time) {
+	state.BootID = ""
+	state.InterruptTicks = 0
+	if sample, err := readPomodoroClock(); err == nil && sample.WallUTC.Sub(at).Abs() <= 2*time.Second {
+		state.BootID = sample.BootID
+		state.InterruptTicks = sample.InterruptTicks
+	}
+}
+
+// FreezePomodoroAt preserves only the duration left at the last accepted sample.
+func FreezePomodoroAt(lastSafe time.Time) error {
+	return freezePomodoro(func(state *PomodoroState) time.Duration { return pomodoroRemainingAt(state, lastSafe) })
+}
+
+func FreezePomodoroAtSample(lastSafe system.ClockSample) error {
+	return freezePomodoro(func(state *PomodoroState) time.Duration { return pomodoroRemainingAtSample(state, lastSafe) })
+}
+
+func freezePomodoro(remainingAt func(*PomodoroState) time.Duration) error {
+	for attempt := 0; attempt < 5; attempt++ {
+		state, raw := LoadPomodoroStateRaw()
+		if !state.Active || state.Frozen {
+			return nil
+		}
+		remaining := int64(remainingAt(state))
+		state.RemainingNS = &remaining
+		state.Frozen = true
+		ok, err := SavePomodoroStateCAS(raw, state)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
+	}
+	return fmt.Errorf("failed to freeze timer due to lock contention")
+}
+
+// ResumeFrozenPomodoroAt reanchors the exact remaining duration to accepted wall time.
+func ResumeFrozenPomodoroAt(now time.Time) error {
+	for attempt := 0; attempt < 5; attempt++ {
+		state, raw := LoadPomodoroStateRaw()
+		if !state.Active || !state.Frozen {
+			return nil
+		}
+		state.StartTime = now
+		state.Frozen = false
+		anchorPomodoroClock(state, now)
+		ok, err := SavePomodoroStateCAS(raw, state)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
+	}
+	return fmt.Errorf("failed to resume timer due to lock contention")
 }
