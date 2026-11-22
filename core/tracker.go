@@ -1,24 +1,25 @@
 package core
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"focusd/coreapi"
 	"focusd/storage"
 	"focusd/system"
-	"io"
 	"log"
 	"net"
-	"os"
-	"os/signal"
-	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
 type activeSession struct {
+	calendar    *sessionCalendar
+	SessionID   string
+	SliceID     string
+	SiteName    string
+	SiteKnown   bool
+	Generation  uint64
+	PrivacyMode string
 	AppName     string
 	ExeName     string
 	ExePath     string
@@ -37,6 +38,13 @@ const gapFactor = 3
 const persistInterval = 30 * time.Second
 
 type Tracker struct {
+	writeCheckpoint func([]*storage.Session, *storage.ActiveSessionRecord) error
+	ipcHandlers     sync.WaitGroup
+	ipcDone         chan struct{}
+	calendarFactory func() (*sessionCalendar, error)
+	calendarErr     error
+	controller      *daemonController
+	checkpointMu    sync.Mutex
 	mu              sync.Mutex
 	currentSession  *activeSession
 	pollInterval    time.Duration
@@ -72,207 +80,16 @@ func NewTracker() *Tracker {
 		log.Printf("ERROR: IPC token unavailable, remote control disabled: %v", err)
 	}
 	return &Tracker{
-		pollInterval: time.Duration(pollSeconds) * time.Second,
-		ctx:          ctx,
-		cancel:       cancel,
-		ipcToken:     token,
+		calendarFactory: captureWindowsCalendar,
+		pollInterval:    time.Duration(pollSeconds) * time.Second,
+		ctx:             ctx,
+		cancel:          cancel,
+		ipcToken:        token,
 	}
 }
 
 func (t *Tracker) Start() error {
-	listener, err := net.Listen("tcp", coreapi.IPCAddress)
-	if err != nil {
-		return err
-	}
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-		t.Stop()
-	}()
-
-	if err := t.recoverOrphanedSession(); err != nil {
-		return err
-	}
-
-	go t.startIPCOnPort(listener)
-
-	pollTicker := time.NewTicker(t.pollInterval)
-	persistTicker := time.NewTicker(5 * time.Minute)
-	retentionTicker := time.NewTicker(1 * time.Hour)
-	focusTicker := time.NewTicker(5 * time.Second)
-	defer pollTicker.Stop()
-	defer persistTicker.Stop()
-	defer retentionTicker.Stop()
-	defer focusTicker.Stop()
-
-	storage.EnforceRetention()
-
-	var stateMu sync.Mutex
-	var continuousUseStart time.Time
-	var breakSnoozedUntil time.Time
-	prevSessionApp := "" // limit key whose alert has already fired
-	prevSessionExe := "" // executable active when that alert fired
-	disabledLimitApps := make(map[string]time.Time)
-	appLimitDate := ""
-
-	for {
-		select {
-		case <-t.ctx.Done():
-			t.flushCurrentSession()
-			t.flushPendingSessions()
-			clearActiveSessionLogged()
-			// Tear down any in-flight toast process with the daemon.
-			cancelNotify()
-			return nil
-		case <-pollTicker.C:
-			if storage.IsPaused() {
-				t.flushCurrentSession()
-				stateMu.Lock()
-				continuousUseStart = time.Time{}
-				stateMu.Unlock()
-				continue
-			}
-			t.poll()
-			t.mu.Lock()
-			t.rotateActiveSessionAtMidnight()
-			// Force a write on identity change so an unexpected termination
-			// recovers the correct app.
-			forcePersist := t.needsPersist()
-			t.mu.Unlock()
-			if forcePersist {
-				t.forcePersistActiveSession()
-			} else {
-				t.persistActiveSession()
-			}
-			stateMu.Lock()
-			t.mu.Lock()
-			hasActive := t.currentSession != nil
-			t.mu.Unlock()
-			if !hasActive {
-				continuousUseStart = time.Time{}
-			} else if continuousUseStart.IsZero() {
-				continuousUseStart = time.Now()
-			}
-			stateMu.Unlock()
-		case <-persistTicker.C:
-			t.flushPendingSessions()
-			t.persistActiveSession()
-		case <-retentionTicker.C:
-			storage.EnforceRetention()
-		case <-focusTicker.C:
-			CheckPomodoroCompletion()
-
-			today := storage.Today()
-			now := time.Now()
-			snoozeDuration := time.Duration(system.GetSnoozeDurationMinutes()) * time.Minute
-
-			stateMu.Lock()
-			breakSnoozed := !breakSnoozedUntil.IsZero() && now.Before(breakSnoozedUntil)
-			continuousUseActive := !continuousUseStart.IsZero()
-			var elapsed time.Duration
-			if continuousUseActive {
-				elapsed = time.Since(continuousUseStart)
-			}
-			stateMu.Unlock()
-
-			if system.GetBreakReminderEnabled() && !breakSnoozed && continuousUseActive {
-				mins := system.GetBreakReminderMinutes()
-				if elapsed >= time.Duration(mins)*time.Minute {
-					// Reset the anchor only once the toast actually goes out:
-					// resetting it before a throttled notify dropped the
-					// reminder for another full interval.
-					if showNotificationWithAction(notifyContext, "Break Reminder",
-						fmt.Sprintf("You've been working for %d min. Take a break!", mins),
-						func(disable bool) {
-							if disable {
-								stateMu.Lock()
-								breakSnoozedUntil = time.Now().Add(snoozeDuration)
-								stateMu.Unlock()
-							}
-						}) {
-						stateMu.Lock()
-						continuousUseStart = time.Now()
-						stateMu.Unlock()
-					}
-				}
-			}
-
-			stateMu.Lock()
-			if appLimitDate != today {
-				disabledLimitApps = make(map[string]time.Time)
-				// Reset the fired guard with the day so a session that stays
-				// on the same app across midnight alerts again next day.
-				prevSessionApp = ""
-				prevSessionExe = ""
-				appLimitDate = today
-			}
-			stateMu.Unlock()
-
-			limits := system.GetAppTimeLimits()
-
-			t.mu.Lock()
-			var sessionExe, sessionAppName, sessionAppID string
-			if t.currentSession != nil {
-				sessionExe = strings.ToLower(t.currentSession.ExeName)
-				sessionAppName = t.currentSession.AppName
-				sessionAppID = t.currentSession.AppID
-			}
-			t.mu.Unlock()
-
-			if sessionExe != prevSessionExe {
-				prevSessionApp = ""
-				prevSessionExe = ""
-			}
-
-			if len(limits) > 0 && sessionExe != "" {
-				// Limits are configured against an app key. A bare exe name is
-				// a wildcard across installs, so existing settings keep firing.
-				limitKey, hasLimit := system.MatchLimitKey(limits, sessionAppID, sessionExe)
-
-				stateMu.Lock()
-				snoozeTime := disabledLimitApps[limitKey]
-				appSnoozed := !snoozeTime.IsZero() && now.Before(snoozeTime)
-				if !snoozeTime.IsZero() && !now.Before(snoozeTime) {
-					disabledLimitApps[limitKey] = time.Time{}
-					if prevSessionApp == limitKey {
-						prevSessionApp = ""
-						prevSessionExe = ""
-					}
-					appSnoozed = false
-				}
-				stateMu.Unlock()
-
-				if limit, ok := limits[limitKey]; ok && hasLimit && !appSnoozed && prevSessionApp != limitKey {
-					// GetAppUsageTodaySecondsForConfig already includes the live
-					// active session elapsed time and counts every install the
-					// limit key covers, matching the wildcard used to match it.
-					todayUsageSeconds := storage.GetAppUsageTodaySecondsForConfig(limitKey)
-					todayUsage := todayUsageSeconds / 60
-					if todayUsage >= limit {
-						keyCopy := limitKey
-						// Arm the guard only once the toast actually goes out:
-						// arming it before a throttled notify dropped the alert
-						// until the app was switched away and back.
-						if showNotificationWithAction(notifyContext, "App Time Limit",
-							sessionAppName+" has exceeded daily limit!",
-							func(disable bool) {
-								if disable {
-									stateMu.Lock()
-									disabledLimitApps[keyCopy] = time.Now().Add(snoozeDuration)
-									stateMu.Unlock()
-								}
-							}) {
-							prevSessionApp = limitKey
-							prevSessionExe = sessionExe
-						}
-					}
-				}
-			}
-		}
-	}
+	return t.startControlled()
 }
 
 func (t *Tracker) Stop() {
@@ -303,13 +120,29 @@ func (t *Tracker) recoverOrphanedSession() error {
 		return nil
 	}
 
-	// Recompute the browser title so recovered sessions keep their site totals.
-	cleanTitle := ""
-	if system.IsBrowser(recovered.ExeName) {
-		cleanTitle = cleanWindowTitle(recovered.WindowTitle, recovered.ExeName)
+	if !recovered.SiteKnown {
+		classified := ClassifyObservation(recovered.ExeName, recovered.ExePath, recovered.WindowTitle)
+		if recovered.WindowTitle == privateWindowLabel(recovered.ExeName) {
+			classified.StoredTitle = "[redacted]"
+			classified.SiteName = ""
+		}
+		recovered.WindowTitle, recovered.SiteName, recovered.SiteKnown = classified.StoredTitle, classified.SiteName, true
 	}
-
-	for _, segment := range splitRecoveredAtMidnight(recovered) {
+	var sessions []*storage.Session
+	segments := splitRecoveredAtMidnight(recovered)
+	if t.calendarFactory != nil {
+		calendar, err := t.calendarFactory()
+		if err != nil {
+			t.calendarErr = err
+			return err
+		}
+		segments, err = splitSessionWithCalendar(&activeSession{SessionID: recovered.SessionID, SliceID: recovered.SliceID, SiteName: recovered.SiteName, SiteKnown: recovered.SiteKnown, Generation: recovered.Generation, AppName: recovered.AppName, ExeName: recovered.ExeName, ExePath: recovered.ExePath, AppID: recovered.AppID, WindowTitle: recovered.WindowTitle, StartTime: recovered.StartTime, Date: recovered.Date}, recovered.EndTime, calendar)
+		if err != nil {
+			t.calendarErr = err
+			return err
+		}
+	}
+	for _, segment := range segments {
 		alreadyStored, err := storage.SessionExists(segment)
 		if err != nil {
 			return fmt.Errorf("failed to check for a stored copy of the session: %w", err)
@@ -320,14 +153,9 @@ func (t *Tracker) recoverOrphanedSession() error {
 			log.Printf("WARN: recovered session is already in history; skipping insert")
 			continue
 		}
-		if err := storage.InsertSessionWithDaily(segment, cleanTitle); err != nil {
-			return fmt.Errorf("failed to recover orphaned session: %w", err)
-		}
+		sessions = append(sessions, segment)
 	}
-	if err := storage.ClearActiveSession(); err != nil {
-		return fmt.Errorf("failed to clear recovered active session: %w", err)
-	}
-	return nil
+	return storage.WriteCheckpoint(sessions, nil)
 }
 
 // splitRecoveredAtMidnight splits an orphaned interval at local-midnight
@@ -346,6 +174,7 @@ func splitRecoveredAtMidnight(s *storage.Session) []*storage.Session {
 		if !s.EndTime.After(nextMidnight) {
 			segment := *s
 			segment.StartTime = start
+			segment.SliceID = sliceID(s.SessionID, start)
 			segment.Date = date
 			segment.DurationSecs = int(s.EndTime.Sub(start).Seconds())
 			out = append(out, &segment)
@@ -354,6 +183,7 @@ func splitRecoveredAtMidnight(s *storage.Session) []*storage.Session {
 
 		segment := *s
 		segment.StartTime = start
+		segment.SliceID = sliceID(s.SessionID, start)
 		segment.EndTime = nextMidnight
 		segment.Date = date
 		segment.DurationSecs = int(nextMidnight.Sub(start).Seconds())
@@ -392,42 +222,82 @@ func (t *Tracker) forcePersistActiveSession() {
 // write outside it: a busy or slow disk must not stall the poll loop or the
 // IPC handlers queued on the mutex.
 func (t *Tracker) writeActiveSession(force bool) {
+	t.checkpointMu.Lock()
+	defer t.checkpointMu.Unlock()
 	t.mu.Lock()
-	if t.currentSession == nil {
+	if t.calendarErr != nil {
 		t.mu.Unlock()
-		clearActiveSessionLogged()
 		return
 	}
 
 	now := time.Now()
 	changed := t.needsPersist()
-	if !force && !changed && now.Sub(t.lastPersistAt) < persistInterval {
+	if !force && len(t.pendingSessions) == 0 && t.currentSession != nil && !changed && now.Sub(t.lastPersistAt) < persistInterval {
 		t.mu.Unlock()
 		return
 	}
-
-	record := &storage.ActiveSessionRecord{
-		AppName:     t.currentSession.AppName,
-		ExeName:     t.currentSession.ExeName,
-		ExePath:     t.currentSession.ExePath,
-		AppID:       t.currentSession.AppID,
-		WindowTitle: t.currentSession.WindowTitle,
-		StartTime:   t.currentSession.StartTime,
-		LastSeen:    now,
-		Date:        t.currentSession.Date,
+	var record *storage.ActiveSessionRecord
+	if t.currentSession != nil {
+		record = &storage.ActiveSessionRecord{
+			SessionID:   t.currentSession.SessionID,
+			SliceID:     t.currentSession.SliceID,
+			SiteName:    t.currentSession.SiteName,
+			SiteKnown:   t.currentSession.SiteKnown,
+			Generation:  t.currentSession.Generation,
+			AppName:     t.currentSession.AppName,
+			ExeName:     t.currentSession.ExeName,
+			ExePath:     t.currentSession.ExePath,
+			AppID:       t.currentSession.AppID,
+			WindowTitle: t.currentSession.WindowTitle,
+			StartTime:   t.currentSession.StartTime,
+			LastSeen:    now,
+			Date:        t.currentSession.Date,
+		}
 	}
+	originals := append([]*storage.Session(nil), t.pendingSessions...)
+	sessions := make([]*storage.Session, len(originals))
+	for i, session := range originals {
+		if session != nil {
+			clone := *session
+			sessions[i] = &clone
+		}
+	}
+	active := t.currentSession
+	write := t.writeCheckpoint
 	t.mu.Unlock()
-
-	if err := storage.SaveActiveSession(record); err != nil {
+	for _, session := range sessions {
+		if session != nil && !session.SiteKnown {
+			classified := ClassifyObservation(session.ExeName, session.ExePath, session.WindowTitle)
+			session.WindowTitle, session.SiteName, session.SiteKnown = classified.StoredTitle, classified.SiteName, true
+		}
+	}
+	if write == nil {
+		write = storage.WriteCheckpoint
+	}
+	if err := write(sessions, record); err != nil {
 		log.Printf("ERROR: failed to save active session: %v", err)
 		return
 	}
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	// Direct helper callers may append while SQLite is busy. Remove only the
+	// snapshot that committed; preserve newer pending intervals and identities.
+	prefixMatches := len(t.pendingSessions) >= len(originals)
+	for i, original := range originals {
+		if !prefixMatches || t.pendingSessions[i] != original {
+			prefixMatches = false
+			break
+		}
+	}
+	if prefixMatches {
+		t.pendingSessions = t.pendingSessions[len(originals):]
+	}
 	// Only mark as persisted when the same session is still active; a newer
 	// session started mid-write sets its own bookkeeping on its first persist.
-	if t.currentSession != nil &&
+	if record != nil && t.currentSession == active && t.currentSession != nil &&
+		t.currentSession.SessionID == record.SessionID && t.currentSession.SliceID == record.SliceID &&
+		t.currentSession.Generation == record.Generation &&
 		t.currentSession.StartTime.Equal(record.StartTime) &&
 		t.currentSession.AppName == record.AppName {
 		t.persistedAppName = record.AppName
@@ -505,12 +375,28 @@ type pollObservation struct {
 }
 
 func (t *Tracker) poll() {
-	t.detectWallClockGap()
+	if t.controller == nil {
+		t.detectWallClockGap()
+	}
+	if t.controller != nil {
+		state, err := system.ReadSessionState()
+		if err != nil || !state.Active() {
+			t.controller.reminders.setPresent(time.Now(), false)
+			t.mu.Lock()
+			t.closeCurrentSession()
+			t.mu.Unlock()
+			return
+		}
+		t.controller.reminders.setPresent(time.Now(), true)
+	}
 
 	// Idle time must not accrue: close the session at the moment the user
 	// stopped interacting, so the away stretch is never billed. Returning to
 	// any window then starts a fresh session.
 	if idle, idleFor := t.idleFor(); idle {
+		if t.controller != nil {
+			t.controller.reminders.setPresent(time.Now(), false)
+		}
 		t.mu.Lock()
 		t.closeCurrentSessionAt(time.Now().Add(-idleFor))
 		t.mu.Unlock()
@@ -552,12 +438,11 @@ func (t *Tracker) applyPoll(obs *pollObservation) {
 	// Compute the stored form once: the comparison below must see the same
 	// text that gets persisted, or a private or redacted title looks changed
 	// on every poll and splits the session.
-	stored := storableTitle(obs.title)
-	if stored == "" && IsPrivateWindowTitle(obs.title) {
-		stored = privateWindowLabel(obs.exeName)
-	}
+	classified := ClassifyObservation(obs.exeName, obs.exePath, obs.title)
+	stored := classified.StoredTitle
 
 	if t.currentSession != nil {
+		policyChanged := t.currentSession.PrivacyMode != "" && t.currentSession.PrivacyMode != system.GetPrivacyMode()
 		// Identity, not the exe base name, decides whether this is the same
 		// app. Firefox and Firefox Nightly share a base name.
 		isSameApp := t.currentSession.AppID == obs.appID &&
@@ -566,24 +451,35 @@ func (t *Tracker) applyPoll(obs *pollObservation) {
 		// A blank caption means a child window of the app we are already
 		// tracking took focus. Closing here would split one session into many
 		// and inflate open counts for no user-visible change.
-		if isSameApp && obs.title == "" {
+		if isSameApp && obs.title == "" && !policyChanged {
 			return
 		}
+		if isSameApp && obs.title == "" && policyChanged {
+			classified = ClassifyObservation(obs.exeName, obs.exePath, t.currentSession.WindowTitle)
+			stored = classified.StoredTitle
+		}
 
-		isBrowser := system.IsBrowser(obs.exeName)
+		isBrowser := classified.Browser
 
 		// Browsers compare on the cleaned title: a raw title ticks with notification
 		// counts and tab-group noise, which would split the session repeatedly.
 		isSameTitle := t.currentSession.WindowTitle == stored
 		if isBrowser && isSameApp {
-			isSameTitle = cleanWindowTitle(t.currentSession.WindowTitle, obs.exeName) ==
+			if !t.currentSession.SiteKnown {
+				previous := ClassifyObservation(t.currentSession.ExeName, t.currentSession.ExePath, t.currentSession.WindowTitle)
+				t.currentSession.SiteName, t.currentSession.SiteKnown = previous.SiteName, true
+			}
+			isSameTitle = t.currentSession.SiteName == classified.SiteName && cleanWindowTitle(t.currentSession.WindowTitle, obs.exeName) ==
 				cleanWindowTitle(stored, obs.exeName)
 		}
 
-		if isSameApp && (!isBrowser || isSameTitle) {
+		if isSameApp && !policyChanged && (!isBrowser || isSameTitle) {
 			return
 		}
 		t.closeCurrentSession()
+		if t.calendarErr != nil {
+			return
+		}
 	}
 
 	if stored == "" {
@@ -594,14 +490,40 @@ func (t *Tracker) applyPoll(obs *pollObservation) {
 	identity := system.ResolveIdentity(obs.exeName, obs.exePath)
 	displayName := system.ResolveDisplayName(identity.AppID, identity.ExeName, identity.DisplayName)
 
+	sessionID, err := randomClockID()
+	if err != nil {
+		log.Printf("ERROR: session identity unavailable: %v", err)
+		return
+	}
+	generation, err := storage.GetDataGeneration()
+	if err != nil {
+		log.Printf("ERROR: data generation unavailable: %v", err)
+		return
+	}
+	started := time.Now()
+	var calendar *sessionCalendar
+	date := dateStr(started)
+	if t.calendarFactory != nil {
+		calendar, err = t.calendarFactory()
+		if err == nil {
+			date, err = calendar.date(started)
+		}
+		if err != nil {
+			t.calendarErr = err
+			return
+		}
+	}
 	t.currentSession = &activeSession{
+		calendar:    calendar,
+		PrivacyMode: system.GetPrivacyMode(),
+		SessionID:   sessionID, SliceID: sliceID(sessionID, started), SiteName: classified.SiteName, SiteKnown: true, Generation: generation,
 		AppName:     displayName,
 		ExeName:     obs.exeName,
 		ExePath:     obs.exePath,
 		AppID:       obs.appID,
 		WindowTitle: stored,
-		StartTime:   time.Now(),
-		Date:        storage.Today(),
+		StartTime:   started,
+		Date:        date,
 	}
 }
 
@@ -630,7 +552,17 @@ func (t *Tracker) closeCurrentSessionAt(end time.Time) {
 		// start must not drop the session entirely.
 		end = t.currentSession.StartTime
 	}
-	slices := splitSessionAtMidnight(t.currentSession, end)
+	var slices []*storage.Session
+	if t.currentSession.calendar != nil {
+		var err error
+		slices, err = splitSessionWithCalendar(t.currentSession, end, t.currentSession.calendar)
+		if err != nil {
+			t.calendarErr = err
+			return
+		}
+	} else {
+		slices = splitSessionAtMidnight(t.currentSession, end)
+	}
 	t.pendingSessions = append(t.pendingSessions, slices...)
 	t.currentSession = nil
 }
@@ -653,6 +585,7 @@ func splitSessionAtMidnight(s *activeSession, now time.Time) []*storage.Session 
 		}
 		if duration := int(midnight.Sub(cursor).Seconds()); duration >= 1 {
 			out = append(out, &storage.Session{
+				SessionID: s.SessionID, SliceID: sliceID(s.SessionID, cursor), SiteName: s.SiteName, SiteKnown: s.SiteKnown, Generation: s.Generation,
 				AppName:      s.AppName,
 				ExeName:      s.ExeName,
 				ExePath:      s.ExePath,
@@ -669,6 +602,7 @@ func splitSessionAtMidnight(s *activeSession, now time.Time) []*storage.Session 
 
 	if duration := int(now.Sub(cursor).Seconds()); duration >= 1 {
 		out = append(out, &storage.Session{
+			SessionID: s.SessionID, SliceID: sliceID(s.SessionID, cursor), SiteName: s.SiteName, SiteKnown: s.SiteKnown, Generation: s.Generation,
 			AppName:      s.AppName,
 			ExeName:      s.ExeName,
 			ExePath:      s.ExePath,
@@ -706,27 +640,41 @@ func (t *Tracker) rotateActiveSessionAtMidnight() {
 
 	now := time.Now()
 	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	date := dateStr(midnight)
+	if t.currentSession.calendar != nil {
+		var err error
+		midnight, _, err = t.currentSession.calendar.dayBounds(now)
+		if err == nil {
+			date, err = t.currentSession.calendar.date(midnight)
+		}
+		if err != nil {
+			t.calendarErr = err
+			return
+		}
+	}
 	if !t.currentSession.StartTime.Before(midnight) {
 		return
 	}
 
 	// Write the elapsed slice for the previous day before rebasing, so the two
 	// halves are recorded exactly once.
-	slices := splitSessionAtMidnight(t.currentSession, now)
-	priorOnly := slices[:0]
-	for _, s := range slices {
-		if s.Date == t.currentSession.Date {
-			priorOnly = append(priorOnly, s)
+	var slices []*storage.Session
+	if t.currentSession.calendar != nil {
+		var err error
+		slices, err = splitSessionWithCalendar(t.currentSession, midnight, t.currentSession.calendar)
+		if err != nil {
+			t.calendarErr = err
+			return
 		}
+	} else {
+		slices = splitSessionAtMidnight(t.currentSession, midnight)
 	}
-	t.pendingSessions = append(t.pendingSessions, priorOnly...)
+	t.pendingSessions = append(t.pendingSessions, slices...)
 
 	t.currentSession.StartTime = midnight
-	t.currentSession.Date = midnight.Format("2006-01-02")
+	t.currentSession.SliceID = sliceID(t.currentSession.SessionID, midnight)
+	t.currentSession.Date = date
 
-	if err := storage.RebaseActiveSessionStart(midnight, t.currentSession.Date); err != nil {
-		log.Printf("ERROR: failed to rebase active session at midnight: %v", err)
-	}
 }
 
 func (t *Tracker) flushCurrentSession() {
@@ -736,24 +684,14 @@ func (t *Tracker) flushCurrentSession() {
 }
 
 func (t *Tracker) flushPendingSessions() {
-	t.mu.Lock()
-	sessions := t.pendingSessions
-	t.pendingSessions = nil
-	t.mu.Unlock()
+	t.writeActiveSession(true)
+}
 
-	for _, s := range sessions {
-		cleanBrowserTitle := ""
-		if system.IsBrowser(s.ExeName) {
-			cleanBrowserTitle = cleanWindowTitle(s.WindowTitle, s.ExeName)
-		}
-		if err := storage.InsertSessionWithDaily(s, cleanBrowserTitle); err != nil {
-			log.Printf("ERROR: failed to insert session with daily (exe: %s, date: %s, start: %s): %v",
-				s.ExeName, s.Date, s.StartTime.Format(time.RFC3339), err)
-			t.mu.Lock()
-			t.pendingSessions = append(t.pendingSessions, s)
-			t.mu.Unlock()
-		}
+func sliceID(sessionID string, start time.Time) string {
+	if sessionID == "" {
+		return ""
 	}
+	return fmt.Sprintf("%s:%d", sessionID, start.Unix())
 }
 
 // flushForRead persists what a read needs without closing the live session.
@@ -767,79 +705,42 @@ func (t *Tracker) flushForRead() {
 }
 
 func (t *Tracker) startIPCOnPort(listener net.Listener) {
+	if t.ipcDone != nil {
+		defer close(t.ipcDone)
+	}
 	defer listener.Close()
-
-	go func() {
-		<-t.ctx.Done()
-		listener.Close()
-	}()
-
+	slots := make(chan struct{}, 8)
+	go func() { <-t.ctx.Done(); listener.Close() }()
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			select {
-			case <-t.ctx.Done():
+			if t.ctx.Err() != nil {
 				return
-			default:
-				time.Sleep(100 * time.Millisecond)
-				continue
 			}
+			continue
 		}
-		go t.handleIPCConnection(conn)
+		select {
+		case slots <- struct{}{}:
+			t.ipcHandlers.Add(1)
+			go func() { defer t.ipcHandlers.Done(); defer func() { <-slots }(); t.handleIPCConnection(conn) }()
+		default:
+			conn.Close()
+		}
 	}
 }
 
-// maxIPCLineBytes bounds a single IPC request line. Real commands are far
-// smaller; the cap stops an unauthenticated peer from streaming bytes without
-// a newline and growing the read buffer within the deadline.
-const maxIPCLineBytes = 4 * 1024
+const maxIPCLineBytes = coreapi.MaxIPCBytes
 
 func (t *Tracker) handleIPCConnection(conn net.Conn) {
 	defer conn.Close()
-	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
-		log.Printf("WARN: IPC set deadline failed: %v", err)
-		return
-	}
-	// The line is read before the token is checked, so the read must be bound
-	// up front: without it, any local process could make this buffer grow to
-	// gigabytes within the deadline.
-	reader := bufio.NewReader(io.LimitReader(conn, maxIPCLineBytes))
-	raw, err := reader.ReadString('\n')
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+	request, err := coreapi.ReadRequest(conn)
 	if err != nil {
-		log.Printf("WARN: IPC connection read failed: %v", err)
 		return
 	}
-
-	cmd, token, err := coreapi.ParseIPCCommand(raw)
-	if err != nil {
-		log.Printf("WARN: IPC command rejected: %v", err)
+	if !coreapi.TokensMatch(request.Token, t.ipcToken) || t.controller == nil || request.Generation != t.controller.generation {
 		return
 	}
-
-	if coreapi.IPCCommandNeedsToken(cmd) {
-		if !coreapi.TokensMatch(token, t.ipcToken) {
-			// No reply, so a caller cannot distinguish a bad token from an
-			// unknown command or a closed port.
-			log.Printf("WARN: IPC command refused: bad token")
-			return
-		}
-	}
-
-	switch cmd {
-	case "stop":
-		t.flushCurrentSession()
-		t.flushPendingSessions()
-		t.persistActiveSession()
-		if _, err := conn.Write([]byte("ok\n")); err != nil {
-			log.Printf("WARN: IPC write failed: %v", err)
-		}
-		t.Stop()
-	case "flush":
-		t.flushForRead()
-		if _, err := conn.Write([]byte("ok\n")); err != nil {
-			log.Printf("WARN: IPC write failed: %v", err)
-		}
-	default:
-		log.Printf("WARN: Unknown IPC command received")
-	}
+	response := t.SubmitRequest(request)
+	_ = coreapi.WriteResponse(conn, response)
 }
