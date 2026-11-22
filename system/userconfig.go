@@ -1,8 +1,10 @@
 package system
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -24,7 +26,8 @@ type UserConfig struct {
 	IdleThresholdMinutes  int            `json:"idle_threshold_minutes"`
 	TrackWhileIdle        bool           `json:"track_while_idle"`
 	// RedactTitles stores a placeholder instead of window title text.
-	RedactTitles bool `json:"redact_titles"`
+	RedactTitles bool   `json:"redact_titles"`
+	PrivacyMode  string `json:"privacy_mode,omitempty"`
 	// DisplayOverrides renames an app in the UI without touching history,
 	// keyed by app id.
 	DisplayOverrides map[string]string `json:"display_overrides,omitempty"`
@@ -46,6 +49,7 @@ type userConfigFile struct {
 	IdleThresholdMinutes  *int              `json:"idle_threshold_minutes"`
 	TrackWhileIdle        *bool             `json:"track_while_idle"`
 	RedactTitles          bool              `json:"redact_titles"`
+	PrivacyMode           string            `json:"privacy_mode"`
 	DisplayOverrides      map[string]string `json:"display_overrides"`
 	SiteOverrides         map[string]string `json:"site_overrides"`
 }
@@ -56,12 +60,22 @@ const (
 	DefaultIdleThresholdMinutes = 5
 	MinIdleThresholdMinutes     = 0
 	MaxIdleThresholdMinutes     = 240
+	PrivacyModeTitles           = "titles"
+	PrivacyModeCategories       = "categories"
+	PrivacyModeStrict           = "strict"
+	configFingerprintInterval   = 250 * time.Millisecond
+	maxConfigBytes              = 1 << 20
 )
 
 var (
-	userConfig  *UserConfig
-	configMu    sync.RWMutex
-	lastModTime time.Time
+	userConfig         *UserConfig
+	configMu           sync.RWMutex
+	lastModTime        time.Time
+	lastConfigPath     string
+	lastConfigSize     int64
+	lastConfigHash     [32]byte
+	lastConfigCheck    time.Time
+	configBeforeUpdate *UserConfig
 )
 
 func getUserConfigPath() (string, error) {
@@ -100,6 +114,14 @@ func loadFromDisk() {
 // always starts from the freshest file.
 func reloadFromDiskLocked(force bool) {
 	configPath, err := getUserConfigPath()
+	if configPath != lastConfigPath {
+		userConfig = defaultUserConfig()
+		lastConfigPath = configPath
+		lastModTime = time.Time{}
+		lastConfigSize = 0
+		lastConfigHash = [32]byte{}
+		lastConfigCheck = time.Time{}
+	}
 	if err != nil || configPath == "" {
 		if userConfig == nil {
 			userConfig = defaultUserConfig()
@@ -115,18 +137,24 @@ func reloadFromDiskLocked(force bool) {
 		return
 	}
 
-	if !force && userConfig != nil && !fi.ModTime().After(lastModTime) {
+	if !force && userConfig != nil && fi.ModTime().Equal(lastModTime) && fi.Size() == lastConfigSize && time.Since(lastConfigCheck) < configFingerprintInterval {
 		return
 	}
 
-	lastModTime = fi.ModTime()
+	lastConfigCheck = time.Now()
 	if userConfig == nil {
 		userConfig = defaultUserConfig()
 	}
 
-	if data, err := os.ReadFile(configPath); err == nil {
+	if data, err := readBoundedConfig(configPath); err == nil {
+		fingerprint := sha256.Sum256(data)
+		if !force && fingerprint == lastConfigHash {
+			lastModTime, lastConfigSize = fi.ModTime(), fi.Size()
+			return
+		}
 		var temp userConfigFile
 		if err := json.Unmarshal(data, &temp); err == nil {
+			lastModTime, lastConfigSize, lastConfigHash = fi.ModTime(), fi.Size(), fingerprint
 			userConfig.WhitelistApps = temp.WhitelistApps
 			userConfig.BreakReminderEnabled = temp.BreakReminderEnabled
 			userConfig.BreakReminderMinutes = temp.BreakReminderMinutes
@@ -144,6 +172,7 @@ func reloadFromDiskLocked(force bool) {
 				userConfig.TrackWhileIdle = *temp.TrackWhileIdle
 			}
 			userConfig.RedactTitles = temp.RedactTitles
+			userConfig.PrivacyMode = temp.PrivacyMode
 			// Overrides are replaced wholesale, never merged. The file omits
 			// them when they are empty, and a nil-check merge resurrected
 			// entries the file no longer had, so deleting an override in
@@ -152,7 +181,11 @@ func reloadFromDiskLocked(force bool) {
 			userConfig.SiteOverrides = temp.SiteOverrides
 		} else {
 			log.Printf("WARN: failed to parse user config %s: %v", configPath, err)
+			return
 		}
+	} else {
+		log.Printf("WARN: failed to read user config %s: %v", configPath, err)
+		return
 	}
 
 	if userConfig.AppTimeLimits == nil {
@@ -182,7 +215,28 @@ func reloadFromDiskLocked(force bool) {
 	}
 }
 
-func saveUserConfigLocked() error {
+func readBoundedConfig(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxConfigBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxConfigBytes {
+		return nil, fmt.Errorf("configuration exceeds %d bytes", maxConfigBytes)
+	}
+	return data, nil
+}
+
+func saveUserConfigLocked() (err error) {
+	defer func() {
+		if err != nil && configBeforeUpdate != nil {
+			userConfig = configBeforeUpdate
+		}
+	}()
 	if userConfig == nil {
 		userConfig = defaultUserConfig()
 	}
@@ -200,6 +254,9 @@ func saveUserConfigLocked() error {
 	data, err := json.MarshalIndent(userConfig, "", "  ")
 	if err != nil {
 		return err
+	}
+	if len(data) > maxConfigBytes {
+		return fmt.Errorf("configuration exceeds %d bytes", maxConfigBytes)
 	}
 
 	tempPath := configPath + ".tmp"
@@ -231,7 +288,11 @@ func saveUserConfigLocked() error {
 
 	if fi, err := os.Stat(configPath); err == nil {
 		lastModTime = fi.ModTime()
+		lastConfigSize = fi.Size()
 	}
+	lastConfigPath = configPath
+	lastConfigHash = sha256.Sum256(data)
+	lastConfigCheck = time.Now()
 	return nil
 }
 
@@ -278,10 +339,31 @@ func beginConfigUpdate() (func(), error) {
 		return nil, err
 	}
 	reloadFromDiskLocked(true)
+	configBeforeUpdate = cloneUserConfig(userConfig)
 	return func() {
+		configBeforeUpdate = nil
 		release()
 		configMu.Unlock()
 	}, nil
+}
+
+func cloneUserConfig(source *UserConfig) *UserConfig {
+	out := *source
+	out.WhitelistApps = append([]string{}, source.WhitelistApps...)
+	out.CustomBrowsers = append([]string{}, source.CustomBrowsers...)
+	out.AppTimeLimits = make(map[string]int, len(source.AppTimeLimits))
+	for key, value := range source.AppTimeLimits {
+		out.AppTimeLimits[key] = value
+	}
+	out.DisplayOverrides = make(map[string]string, len(source.DisplayOverrides))
+	for key, value := range source.DisplayOverrides {
+		out.DisplayOverrides[key] = value
+	}
+	out.SiteOverrides = make(map[string]string, len(source.SiteOverrides))
+	for key, value := range source.SiteOverrides {
+		out.SiteOverrides[key] = value
+	}
+	return &out
 }
 
 // IsWhitelisted reports whether an app should be excluded from tracking. The
@@ -394,18 +476,49 @@ func GetAppTimeLimits() map[string]int {
 }
 
 func SetAppTimeLimit(exeName string, minutes int) error {
+	return RenameAppTimeLimit(exeName, exeName, minutes)
+}
+
+// RenameAppTimeLimit edits or renames a limit in one cross-process-locked write.
+func RenameAppTimeLimit(oldKey, newKey string, minutes int) error {
+	oldKey, newKey = canonicalLimitKey(oldKey), canonicalLimitKey(newKey)
+	if oldKey == "" || newKey == "" {
+		return fmt.Errorf("app name is required")
+	}
 	release, err := beginConfigUpdate()
 	if err != nil {
 		return err
 	}
 	defer release()
-	exeName = normalizeConfigName(exeName)
-	if minutes <= 0 {
-		delete(userConfig.AppTimeLimits, exeName)
-	} else {
-		userConfig.AppTimeLimits[exeName] = minutes
+	previous := userConfig.AppTimeLimits
+	updated := make(map[string]int, len(previous)+1)
+	for key, value := range previous {
+		canonical := canonicalLimitKey(key)
+		if canonical != oldKey && canonical != newKey {
+			updated[key] = value
+		}
 	}
-	return saveUserConfigLocked()
+	if minutes > 0 {
+		updated[newKey] = minutes
+	}
+	userConfig.AppTimeLimits = updated
+	if err := saveUserConfigLocked(); err != nil {
+		userConfig.AppTimeLimits = previous
+		return err
+	}
+	return nil
+}
+
+func canonicalLimitKey(key string) string {
+	base, suffix, exact := strings.Cut(strings.TrimSpace(key), "|")
+	base = normalizeExe(base)
+	if base == "unknown" {
+		return ""
+	}
+	if exact {
+		return base + "|" + strings.ToLower(strings.TrimSpace(suffix))
+	}
+	return base
 }
 
 func GetPomodoroMinutes() int {
@@ -428,24 +541,22 @@ func SetPomodoroMinutes(minutes int) error {
 // MatchLimitKey finds the config entry that governs an app. A bare exe name
 // acts as a wildcard across every install; a specific app key wins.
 func MatchLimitKey(limits map[string]int, appID, exeName string) (string, bool) {
-	if appID != "" {
-		if _, ok := limits[appID]; ok {
-			return appID, true
+	for _, target := range []string{canonicalLimitKey(appID), canonicalLimitKey(exeName)} {
+		if target == "" {
+			continue
 		}
-	}
-
-	bare := normalizeExe(exeName)
-	if bare == "" || bare == "unknown" {
-		return "", false
-	}
-	if _, ok := limits[bare]; ok {
-		return bare, true
-	}
-
-	// Accept the historical ".exe" spelling too.
-	withExt := bare + ".exe"
-	if _, ok := limits[withExt]; ok {
-		return withExt, true
+		if _, ok := limits[target]; ok {
+			return target, true
+		}
+		matched := ""
+		for key := range limits {
+			if canonicalLimitKey(key) == target && (matched == "" || key < matched) {
+				matched = key
+			}
+		}
+		if matched != "" {
+			return matched, true
+		}
 	}
 
 	return "", false
@@ -510,6 +621,58 @@ func GetDisplayOverrides() map[string]string {
 	return out
 }
 
+// GetSiteOverrides returns a snapshot of user site labels.
+func GetSiteOverrides() map[string]string {
+	loadFromDisk()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	out := make(map[string]string, len(userConfig.SiteOverrides))
+	for key, value := range userConfig.SiteOverrides {
+		out[key] = value
+	}
+	return out
+}
+
+// SetSiteOverride stores a presentation label; an empty label removes it.
+func SetSiteOverride(key, name string) error {
+	key = strings.ToLower(strings.TrimSpace(key))
+	if key == "" {
+		return fmt.Errorf("site name is required")
+	}
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
+	name = strings.TrimSpace(name)
+	if name == "" {
+		delete(userConfig.SiteOverrides, key)
+	} else {
+		userConfig.SiteOverrides[key] = name
+	}
+	return saveUserConfigLocked()
+}
+
+type PresentationOverrides struct {
+	Display map[string]string
+	Sites   map[string]string
+}
+
+// GetPresentationOverrides returns both label maps from the same config state.
+func GetPresentationOverrides() PresentationOverrides {
+	loadFromDisk()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	out := PresentationOverrides{Display: make(map[string]string, len(userConfig.DisplayOverrides)), Sites: make(map[string]string, len(userConfig.SiteOverrides))}
+	for key, value := range userConfig.DisplayOverrides {
+		out.Display[key] = value
+	}
+	for key, value := range userConfig.SiteOverrides {
+		out.Sites[key] = value
+	}
+	return out
+}
+
 // lookupNameMap resolves the built-in friendly names.
 func lookupNameMap(exeName string) (string, bool) {
 	name := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(exeName)), ".exe")
@@ -540,13 +703,60 @@ func GetTrackWhileIdle() bool {
 	return userConfig.TrackWhileIdle
 }
 
+func SetTrackWhileIdle(enabled bool) error {
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
+	userConfig.TrackWhileIdle = enabled
+	return saveUserConfigLocked()
+}
+
+func privacyModeLocked() string {
+	switch userConfig.PrivacyMode {
+	case PrivacyModeTitles, PrivacyModeCategories, PrivacyModeStrict:
+		return userConfig.PrivacyMode
+	}
+	if userConfig.PrivacyMode != "" {
+		return PrivacyModeStrict
+	}
+	if userConfig.RedactTitles {
+		return PrivacyModeStrict
+	}
+	return PrivacyModeTitles
+}
+
+// GetPrivacyMode preserves legacy redact_titles when privacy_mode is absent.
+func GetPrivacyMode() string {
+	loadFromDisk()
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return privacyModeLocked()
+}
+
+func SetPrivacyMode(mode string) error {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode != PrivacyModeTitles && mode != PrivacyModeCategories && mode != PrivacyModeStrict {
+		return fmt.Errorf("privacy mode must be titles, categories, or strict")
+	}
+	release, err := beginConfigUpdate()
+	if err != nil {
+		return err
+	}
+	defer release()
+	userConfig.PrivacyMode = mode
+	userConfig.RedactTitles = mode != PrivacyModeTitles
+	return saveUserConfigLocked()
+}
+
 // GetRedactTitles reports whether window titles are stored as a placeholder
 // instead of their text.
 func GetRedactTitles() bool {
 	loadFromDisk()
 	configMu.RLock()
 	defer configMu.RUnlock()
-	return userConfig.RedactTitles
+	return privacyModeLocked() != PrivacyModeTitles
 }
 
 // SetRedactTitles turns window-title redaction on or off.
@@ -557,6 +767,7 @@ func SetRedactTitles(enabled bool) error {
 	}
 	defer release()
 	userConfig.RedactTitles = enabled
+	userConfig.PrivacyMode = ""
 	return saveUserConfigLocked()
 }
 
