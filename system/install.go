@@ -32,6 +32,21 @@ func getInstalledDaemonPath() string {
 	return filepath.Join(installDir, "focusd_daemon.exe")
 }
 
+func requireInstalledBinary(name string) error {
+	dir := getInstallDir()
+	if dir == "" {
+		return fmt.Errorf("APPDATA environment variable not set")
+	}
+	info, err := os.Stat(filepath.Join(dir, name))
+	if err != nil {
+		return fmt.Errorf("install Focusd with its installer before enabling integration: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("install Focusd with its installer: %s is not a regular executable", name)
+	}
+	return nil
+}
+
 func installExes() error {
 	src, err := os.Executable()
 	if err != nil {

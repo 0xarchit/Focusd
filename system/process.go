@@ -1,6 +1,7 @@
 package system
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,6 +35,12 @@ var (
 	procProcess32NextW      = kernel32.NewProc("Process32NextW")
 	procTerminateProcess    = kernel32.NewProc("TerminateProcess")
 	procQueryFullProcessImg = kernel32.NewProc("QueryFullProcessImageNameW")
+	enumerateProcesses      = iterateProcesses
+	lookupProcessPath       = getProcessPath
+	openKillProcess         = openProcessForKill
+	queryKillProcessPath    = queryProcessPath
+	terminateKillProcess    = terminateHandle
+	closeKillProcess        = func(handle uintptr) { procCloseHandle.Call(handle) }
 )
 
 const (
@@ -119,18 +126,24 @@ func iterateProcesses(callback func(pe *processentry32w) bool) error {
 	var pe processentry32w
 	pe.Size = uint32(unsafe.Sizeof(pe))
 
-	ret, _, _ := procProcess32FirstW.Call(uintptr(snapshot), uintptr(unsafe.Pointer(&pe)))
+	ret, _, callErr := procProcess32FirstW.Call(uintptr(snapshot), uintptr(unsafe.Pointer(&pe)))
 	if ret == 0 {
-		return nil
+		if errors.Is(callErr, syscall.ERROR_NO_MORE_FILES) {
+			return nil
+		}
+		return fmt.Errorf("enumerate first process: %w", callErr)
 	}
 
 	for {
 		if !callback(&pe) {
 			break
 		}
-		ret, _, _ = procProcess32NextW.Call(uintptr(snapshot), uintptr(unsafe.Pointer(&pe)))
+		ret, _, callErr = procProcess32NextW.Call(uintptr(snapshot), uintptr(unsafe.Pointer(&pe)))
 		if ret == 0 {
-			break
+			if errors.Is(callErr, syscall.ERROR_NO_MORE_FILES) {
+				return nil
+			}
+			return fmt.Errorf("enumerate next process: %w", callErr)
 		}
 	}
 	return nil
@@ -141,14 +154,20 @@ func processName(pe *processentry32w) string {
 }
 
 func GetProcessCount(name string) int {
+	count, _ := GetProcessCountChecked(name)
+	return count
+}
+
+// GetProcessCountChecked distinguishes a failed snapshot from an empty one.
+func GetProcessCountChecked(name string) (int, error) {
 	count := 0
-	iterateProcesses(func(pe *processentry32w) bool {
+	err := enumerateProcesses(func(pe *processentry32w) bool {
 		if strings.EqualFold(processName(pe), name) {
 			count++
 		}
 		return true
 	})
-	return count
+	return count, err
 }
 
 func terminateProcessByPID(pid uint32) error {
@@ -172,30 +191,30 @@ func terminateHandle(handle uintptr, pid uint32) error {
 }
 
 func KillProcess(name string) error {
-	var lastErr error
-	iterateProcesses(func(pe *processentry32w) bool {
+	var failures []error
+	err := enumerateProcesses(func(pe *processentry32w) bool {
 		if strings.EqualFold(processName(pe), name) {
 			if err := terminateProcessByPID(pe.ProcessID); err != nil {
-				lastErr = err
+				failures = append(failures, err)
 			}
 		}
 		return true
 	})
-	return lastErr
+	return errors.Join(append(failures, err)...)
 }
 
 func KillOtherInstances(name string) error {
 	myPID := uint32(os.Getpid())
-	var lastErr error
-	iterateProcesses(func(pe *processentry32w) bool {
+	var failures []error
+	err := enumerateProcesses(func(pe *processentry32w) bool {
 		if strings.EqualFold(processName(pe), name) && pe.ProcessID != myPID {
 			if err := terminateProcessByPID(pe.ProcessID); err != nil {
-				lastErr = err
+				failures = append(failures, err)
 			}
 		}
 		return true
 	})
-	return lastErr
+	return errors.Join(append(failures, err)...)
 }
 
 // KillInstancesInDir terminates instances of name running from dir. Matching on
@@ -208,8 +227,8 @@ func KillInstancesInDir(name, dir string) error {
 	}
 
 	myPID := uint32(os.Getpid())
-	var lastErr error
-	iterateProcesses(func(pe *processentry32w) bool {
+	var failures []error
+	err := enumerateProcesses(func(pe *processentry32w) bool {
 		if pe.ProcessID == myPID || !strings.EqualFold(processName(pe), name) {
 			return true
 		}
@@ -217,28 +236,33 @@ func KillInstancesInDir(name, dir string) error {
 		// Verify and terminate through a single handle: reopening the pid
 		// between the two calls races pid reuse, and the kill could then land
 		// on an unrelated process.
-		handle, oerr := openProcessForKill(pe.ProcessID)
+		handle, oerr := openKillProcess(pe.ProcessID)
 		if oerr != nil {
+			failures = append(failures, fmt.Errorf("open process %d for verified termination: %w", pe.ProcessID, oerr))
 			return true
 		}
-		defer procCloseHandle.Call(handle)
+		defer closeKillProcess(handle)
 
-		exePath, qerr := queryProcessPath(handle)
+		exePath, qerr := queryKillProcessPath(handle)
 		if qerr != nil || exePath == "" {
 			// Cannot confirm the location, so leave it alone rather than
 			// terminate a process that may not be ours.
+			if qerr == nil {
+				qerr = fmt.Errorf("empty executable path")
+			}
+			failures = append(failures, fmt.Errorf("verify process %d before termination: %w", pe.ProcessID, qerr))
 			return true
 		}
 		if !sameDir(exePath, target) {
 			return true
 		}
 
-		if err := terminateHandle(handle, pe.ProcessID); err != nil {
-			lastErr = err
+		if err := terminateKillProcess(handle, pe.ProcessID); err != nil {
+			failures = append(failures, err)
 		}
 		return true
 	})
-	return lastErr
+	return errors.Join(append(failures, err)...)
 }
 
 // normalizeDir puts a directory into a comparable form: separators unified,
@@ -252,18 +276,29 @@ func normalizeDir(dir string) string {
 
 // CountInstancesInDir reports how many processes with this name run from dir.
 func CountInstancesInDir(name, dir string) int {
+	count, _ := CountInstancesInDirChecked(name, dir)
+	return count
+}
+
+// CountInstancesInDirChecked returns verified matches and errors for unresolved candidates.
+func CountInstancesInDirChecked(name, dir string) (int, error) {
 	target := normalizeDir(dir)
 	if target == "" {
-		return 0
+		return 0, fmt.Errorf("target directory not available")
 	}
 
 	count := 0
-	iterateProcesses(func(pe *processentry32w) bool {
+	var lookupErrors []error
+	err := enumerateProcesses(func(pe *processentry32w) bool {
 		if !strings.EqualFold(processName(pe), name) {
 			return true
 		}
-		exePath, err := getProcessPath(pe.ProcessID)
+		exePath, err := lookupProcessPath(pe.ProcessID)
 		if err != nil || exePath == "" {
+			if err == nil {
+				err = fmt.Errorf("empty executable path")
+			}
+			lookupErrors = append(lookupErrors, fmt.Errorf("resolve process %d: %w", pe.ProcessID, err))
 			return true
 		}
 		if sameDir(exePath, target) {
@@ -271,5 +306,5 @@ func CountInstancesInDir(name, dir string) int {
 		}
 		return true
 	})
-	return count
+	return count, errors.Join(append(lookupErrors, err)...)
 }
