@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"focusd/core"
 	"focusd/coreapi"
 	"focusd/system"
 	"strings"
@@ -71,31 +72,32 @@ func (m *Model) triggerFocusButton() (Model, tea.Cmd) {
 	case 0:
 		return m.startFocus()
 	case 1, 2:
-		action := "stop"
-		toastType := toastWarning
-		msg := "Focus timer stopped"
-		if m.focusButton == 2 {
-			action = "reset"
-			toastType = toastInfo
-			msg = "Focus timer reset"
-		}
-		if err := coreapi.StopPomodoro(); err != nil {
-			m.addToast(fmt.Sprintf("Failed to %s timer: %v", action, err), toastError)
-		} else {
-			m.addToast(msg, toastType)
-		}
+		return *m, m.timerCmd(false)
 	}
 	return *m, nil
 }
 
 func (m *Model) startFocus() (Model, tea.Cmd) {
-	if err := coreapi.StartPomodoro(m.focusDuration); err != nil {
-		m.addToast("Could not start focus timer", toastError)
-	} else {
-		system.SetPomodoroMinutes(m.focusDuration)
-		m.addToast("Focus timer started", toastSuccess)
+	return *m, m.timerCmd(true)
+}
+
+type timerDoneMsg struct {
+	start bool
+	err   error
+}
+
+func (m Model) timerCmd(start bool) tea.Cmd {
+	change := m.changeTimer
+	if change == nil {
+		change = core.ChangePomodoro
 	}
-	return *m, nil
+	return func() tea.Msg {
+		err := change(start, m.focusDuration)
+		if err == nil && start {
+			err = system.SetPomodoroMinutes(m.focusDuration)
+		}
+		return timerDoneMsg{start, err}
+	}
 }
 
 func (m *Model) renderFocus(width, height int) string {
