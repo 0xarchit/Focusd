@@ -20,7 +20,7 @@ const (
 )
 
 var IncludedPaths = []string{
-	"cli/*", "cmd/*", "core/*", "storage/*", "system/*", "tui/*", "ui/*", "installer.nsi", "go.mod",
+	"cli/*", "cmd/*", "core/*", "coreapi/*", "storage/*", "system/*", "tui/*", "ui/*", "installer.nsi", "go.mod",
 }
 
 type Message struct {
@@ -48,8 +48,13 @@ func main() {
 		apiKey = os.Getenv("OPENROUTER_API_KEY")
 	}
 
-	commitData := getCommitData()
+	if err := runReleaseNotes(getCommitData(), apiKey, generateAIReleaseNotes); err != nil {
+		fmt.Fprintln(os.Stderr, "Failed to write release notes:", err)
+		os.Exit(1)
+	}
+}
 
+func runReleaseNotes(commitData []string, apiKey string, generate func([]string, string) (string, error)) error {
 	var rawLines []string
 	for _, c := range commitData {
 		lines := strings.Split(c, "\n")
@@ -65,25 +70,26 @@ func main() {
 		rawChangelog += "Maintenance release."
 	}
 
-	if apiKey == "" {
+	notes := rawChangelog
+	switch {
+	case apiKey == "":
 		fmt.Println("No GH_MODELS_API_KEY or OPENROUTER_API_KEY environment variable found. Writing raw changelog fallback...")
-		_ = os.WriteFile(OutputFile, []byte(rawChangelog), 0644)
-		return
-	}
-
-	if len(commitData) == 0 {
+	case len(commitData) == 0:
 		fmt.Println("No commits detected. Writing default fallback...")
-		_ = os.WriteFile(OutputFile, []byte("System optimizations and stability improvements."), 0644)
-		return
+		notes = "System optimizations and stability improvements."
+	default:
+		generated, err := generate(commitData, apiKey)
+		if err != nil {
+			fmt.Printf("AI generation failed (falling back to commit messages): %v\n", err)
+		} else {
+			notes = generated
+		}
 	}
-
-	err := generateAIReleaseNotes(commitData, apiKey)
-	if err != nil {
-		fmt.Printf("AI generation failed (falling back to commit messages): %v\n", err)
-		_ = os.WriteFile(OutputFile, []byte(rawChangelog), 0644)
-	} else {
-		fmt.Println("Successfully generated release notes via OpenRouter AI!")
+	if err := os.WriteFile(OutputFile, []byte(notes), 0644); err != nil {
+		return err
 	}
+	fmt.Println("Release notes written successfully.")
+	return nil
 }
 
 func getCommitData() []string {
@@ -146,7 +152,7 @@ func getCommitData() []string {
 	return commitData
 }
 
-func generateAIReleaseNotes(commitData []string, apiKey string) error {
+func generateAIReleaseNotes(commitData []string, apiKey string) (string, error) {
 	var chunks []string
 	curr := ""
 	for _, d := range commitData {
@@ -174,7 +180,7 @@ func generateAIReleaseNotes(commitData []string, apiKey string) error {
 		}
 		summary, err := callAIWithRetries(payload, apiKey)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if summary != "" {
 			summaries = append(summaries, summary)
@@ -194,13 +200,13 @@ func generateAIReleaseNotes(commitData []string, apiKey string) error {
 
 	finalNotes, err := callAIWithRetries(finalPayload, apiKey)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if finalNotes == "" {
-		return fmt.Errorf("empty AI response")
+		return "", fmt.Errorf("empty AI response")
 	}
 
-	return os.WriteFile(OutputFile, []byte(finalNotes), 0644)
+	return finalNotes, nil
 }
 
 func callAIWithRetries(payload ChatPayload, apiKey string) (string, error) {
