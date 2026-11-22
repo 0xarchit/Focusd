@@ -212,7 +212,7 @@ func GetAppUsageTodaySecondsForConfig(configKey string) int {
 func splitConfigKeyForUsage(configKey string) (base, hash string) {
 	trimmed := strings.TrimSpace(configKey)
 	if i := strings.Index(trimmed, "|"); i >= 0 {
-		return normalizeExeName(trimmed[:i]), trimmed[i+1:]
+		return normalizeExeName(trimmed[:i]), strings.ToLower(strings.TrimSpace(trimmed[i+1:]))
 	}
 	return normalizeExeName(trimmed), ""
 }
