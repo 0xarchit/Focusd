@@ -38,6 +38,7 @@ const gapFactor = 3
 const persistInterval = 30 * time.Second
 
 type Tracker struct {
+	writeCheckpoint func([]*storage.Session, *storage.ActiveSessionRecord) error
 	ipcHandlers     sync.WaitGroup
 	ipcDone         chan struct{}
 	calendarFactory func() (*sessionCalendar, error)
@@ -224,14 +225,15 @@ func (t *Tracker) writeActiveSession(force bool) {
 	t.checkpointMu.Lock()
 	defer t.checkpointMu.Unlock()
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.calendarErr != nil {
+		t.mu.Unlock()
 		return
 	}
 
 	now := time.Now()
 	changed := t.needsPersist()
 	if !force && len(t.pendingSessions) == 0 && t.currentSession != nil && !changed && now.Sub(t.lastPersistAt) < persistInterval {
+		t.mu.Unlock()
 		return
 	}
 	var record *storage.ActiveSessionRecord
@@ -252,22 +254,50 @@ func (t *Tracker) writeActiveSession(force bool) {
 			Date:        t.currentSession.Date,
 		}
 	}
-	for _, session := range t.pendingSessions {
-		if !session.SiteKnown {
+	originals := append([]*storage.Session(nil), t.pendingSessions...)
+	sessions := make([]*storage.Session, len(originals))
+	for i, session := range originals {
+		if session != nil {
+			clone := *session
+			sessions[i] = &clone
+		}
+	}
+	active := t.currentSession
+	write := t.writeCheckpoint
+	t.mu.Unlock()
+	for _, session := range sessions {
+		if session != nil && !session.SiteKnown {
 			classified := ClassifyObservation(session.ExeName, session.ExePath, session.WindowTitle)
 			session.WindowTitle, session.SiteName, session.SiteKnown = classified.StoredTitle, classified.SiteName, true
 		}
 	}
-
-	if err := storage.WriteCheckpoint(t.pendingSessions, record); err != nil {
+	if write == nil {
+		write = storage.WriteCheckpoint
+	}
+	if err := write(sessions, record); err != nil {
 		log.Printf("ERROR: failed to save active session: %v", err)
 		return
 	}
 
-	t.pendingSessions = nil
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	// Direct helper callers may append while SQLite is busy. Remove only the
+	// snapshot that committed; preserve newer pending intervals and identities.
+	prefixMatches := len(t.pendingSessions) >= len(originals)
+	for i, original := range originals {
+		if !prefixMatches || t.pendingSessions[i] != original {
+			prefixMatches = false
+			break
+		}
+	}
+	if prefixMatches {
+		t.pendingSessions = t.pendingSessions[len(originals):]
+	}
 	// Only mark as persisted when the same session is still active; a newer
 	// session started mid-write sets its own bookkeeping on its first persist.
-	if record != nil && t.currentSession != nil &&
+	if record != nil && t.currentSession == active && t.currentSession != nil &&
+		t.currentSession.SessionID == record.SessionID && t.currentSession.SliceID == record.SliceID &&
+		t.currentSession.Generation == record.Generation &&
 		t.currentSession.StartTime.Equal(record.StartTime) &&
 		t.currentSession.AppName == record.AppName {
 		t.persistedAppName = record.AppName

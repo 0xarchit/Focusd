@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -160,5 +161,62 @@ func TestWriteActiveSessionNilClearsRow(t *testing.T) {
 	}
 	if active != nil {
 		t.Error("expected the stored session to be cleared when nothing is active")
+	}
+}
+
+func TestCheckpointWriteReleasesStateMutexAndPreservesNewWork(t *testing.T) {
+	tracker := newPersistTestTracker()
+	original := &storage.Session{AppName: "Old", ExeName: "old.exe", WindowTitle: "Window", SiteKnown: true}
+	newer := &storage.Session{AppName: "New", ExeName: "new.exe", SiteKnown: true}
+	tracker.pendingSessions = []*storage.Session{original}
+	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	tracker.writeCheckpoint = func(sessions []*storage.Session, active *storage.ActiveSessionRecord) error {
+		close(entered)
+		<-release
+		if len(sessions) != 1 || sessions[0] == original {
+			t.Error("checkpoint did not receive independent snapshot")
+		}
+		return nil
+	}
+	go func() { tracker.writeActiveSession(true); close(done) }()
+	<-entered
+	acquired := make(chan struct{})
+	go func() {
+		tracker.mu.Lock()
+		tracker.pendingSessions = append(tracker.pendingSessions, newer)
+		tracker.currentSession = &activeSession{AppName: "Replacement", ExeName: "replacement.exe", StartTime: time.Now(), Date: "2026-11-22"}
+		tracker.mu.Unlock()
+		close(acquired)
+	}()
+	select {
+	case <-acquired:
+	case <-time.After(time.Second):
+		close(release)
+		<-done
+		t.Fatal("SQLite checkpoint held tracker state mutex")
+	}
+	close(release)
+	<-done
+	if len(tracker.pendingSessions) != 1 || tracker.pendingSessions[0] != newer {
+		t.Fatal("checkpoint discarded interval queued during write")
+	}
+	if tracker.persistedAppName != "" {
+		t.Fatal("old checkpoint marked newer active session persisted")
+	}
+}
+
+func TestCheckpointFailurePreservesPendingAndSharedMetadata(t *testing.T) {
+	tracker := newPersistTestTracker()
+	session := &storage.Session{AppName: "App", ExeName: "app.exe", WindowTitle: "Window"}
+	tracker.pendingSessions = []*storage.Session{session}
+	tracker.writeCheckpoint = func(sessions []*storage.Session, active *storage.ActiveSessionRecord) error {
+		return fmt.Errorf("database busy")
+	}
+	tracker.writeActiveSession(true)
+	if len(tracker.pendingSessions) != 1 || tracker.pendingSessions[0] != session || tracker.persistWrites != 0 {
+		t.Fatal("failed checkpoint lost pending work")
+	}
+	if session.SiteKnown {
+		t.Fatal("write snapshot reclassified shared pending session")
 	}
 }
